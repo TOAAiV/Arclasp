@@ -1,0 +1,432 @@
+"""
+aag.crewai.adapter — Governance wrapper for CrewAI Crew objects.
+
+3-line integration pattern
+--------------------------
+    import aag
+    from aag.crewai import govern
+
+    aag.init(api_key="aag_...")
+    governed = govern(crew, chain_name="research-crew")
+
+    # Drop-in replacement — same interface as the original crew:
+    result = await governed.kickoff_async(inputs={"topic": "AI safety"})
+
+How it works
+------------
+1.  ``govern()`` wraps a CrewAI ``Crew`` in a ``GovernedCrew`` instance that
+    exposes identical ``.kickoff`` / ``.kickoff_async`` signatures.
+2.  On every invocation, an aag ``Chain`` context manager is opened so the
+    full crew run appears as a single governed chain in the dashboard.
+3.  Instrumentation is applied via one of two strategies, tried in order:
+
+    Strategy A — Native callbacks (CrewAI >= 0.28, preferred)
+        If ``crew.task_callback`` exists, the existing value is wrapped so
+        that ``AagCrewAICallback.on_task_end_from_output`` fires for every
+        completed task while preserving any existing user-provided hook.
+        Additionally, if ``crew.before_task_callback`` exists, it is wrapped
+        to fire ``on_task_start``.
+
+    Strategy B — Monkey-patch ``Agent.execute_task`` (fallback)
+        For each agent in ``crew.agents``, the instance-level
+        ``execute_task`` method is replaced with a wrapper that fires
+        ``on_task_start`` before and ``on_task_end`` / ``on_task_error``
+        after the original executes.
+
+        Because ``execute_task`` is *synchronous* and ``record_agent_action``
+        is *async*, the wrapper uses ``asyncio.run_coroutine_threadsafe``
+        with the event loop captured at patch-installation time.  This works
+        correctly whether CrewAI runs the crew directly in the async context
+        or dispatches it to a thread executor.
+
+Cleanup
+-------
+All patches are removed in a ``finally`` block, guaranteeing that every
+agent and crew object is restored to its original state even if an
+``ActionDeniedError`` or any other exception terminates the run early.
+
+Known limitations
+-----------------
+*   When ``kickoff_async`` is unavailable (older CrewAI) the crew is run via
+    ``loop.run_in_executor`` — governance events are fire-and-forget and
+    may appear slightly out of sequence in high-concurrency scenarios.
+*   Governance events are scheduled on the event loop via
+    ``run_coroutine_threadsafe``; they are not awaited inside the synchronous
+    ``execute_task`` wrapper.  A ``deny`` decision therefore does not halt
+    task execution mid-flight — it surfaces as an ``ActionDeniedError`` the
+    next time the event loop processes the recording coroutine.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from concurrent.futures import Future as _CFFuture
+from typing import Any
+
+from aag import client as _aag_client
+from aag.chain import Chain
+from aag.crewai.callbacks import AagCrewAICallback
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+def govern(
+    crew: Any,
+    chain_name: str = "crewai_workflow",
+    metadata: dict | None = None,
+) -> "GovernedCrew":
+    """
+    Wrap a CrewAI ``Crew`` with aag governance.
+
+    Parameters
+    ----------
+    crew :
+        A CrewAI ``Crew`` instance with a ``.kickoff()`` method.
+    chain_name : str
+        Name recorded in the aag dashboard for each invocation.  Defaults
+        to ``"crewai_workflow"``.
+    metadata : dict, optional
+        Extra key/value pairs attached to every chain opened by this wrapper
+        (e.g. ``{"crew_version": "1.0", "department": "research"}``).
+
+    Returns
+    -------
+    GovernedCrew
+        A drop-in wrapper exposing ``.kickoff`` and ``.kickoff_async``.
+
+    Raises
+    ------
+    ImportError
+        If ``crewai`` is not installed.
+    TypeError
+        If the object does not have a ``.kickoff`` method.
+    """
+    try:
+        import crewai  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "crewai is not installed.  Install it with:\n\n"
+            "    pip install crewai\n"
+        )
+
+    if not hasattr(crew, "kickoff"):
+        raise TypeError(
+            f"Expected a CrewAI Crew with a .kickoff method, "
+            f"got {type(crew).__name__!r}."
+        )
+
+    return GovernedCrew(
+        crew=crew,
+        chain_name=chain_name,
+        metadata=metadata or {},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Governed crew wrapper
+# ---------------------------------------------------------------------------
+
+class GovernedCrew:
+    """
+    Drop-in replacement for a CrewAI ``Crew`` that wraps every invocation
+    in an aag governance chain.
+
+    Do not instantiate directly — use :func:`govern`.
+    """
+
+    def __init__(self, crew: Any, chain_name: str, metadata: dict) -> None:
+        self._crew = crew
+        self._chain_name = chain_name
+        self._chain_metadata = metadata
+
+    # ------------------------------------------------------------------
+    # Async kickoff (preferred)
+    # ------------------------------------------------------------------
+
+    async def kickoff_async(self, inputs: dict | None = None, **kwargs: Any) -> Any:
+        """
+        Async-kickoff the governed crew.
+
+        Opens an aag chain, instruments all agents, runs the crew, restores
+        original methods, then closes the aag chain.  Returns the crew's
+        result unchanged.
+
+        Raises
+        ------
+        RuntimeError
+            If ``aag.init()`` has not been called.
+        ActionDeniedError
+            If a task execution is denied by the aag policy engine.
+        """
+        _aag_client.get_config()
+
+        # Capture the running loop now — passed into patches so they can
+        # schedule coroutines from synchronous worker threads.
+        loop = asyncio.get_running_loop()
+
+        async with Chain(self._chain_name, metadata=self._chain_metadata) as aag_chain:
+            callback = AagCrewAICallback(aag_chain)
+            patch_records = _install_instrumentation(self._crew, callback, loop)
+
+            try:
+                if hasattr(self._crew, "kickoff_async"):
+                    result = await self._crew.kickoff_async(inputs, **kwargs)
+                else:
+                    # Older CrewAI only has a sync kickoff — run it in a
+                    # thread pool so we don't block the event loop.
+                    _inputs = inputs  # capture for lambda
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: self._crew.kickoff(_inputs),
+                    )
+            finally:
+                _restore_instrumentation(patch_records)
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Sync kickoff (non-async scripts only)
+    # ------------------------------------------------------------------
+
+    def kickoff(self, inputs: dict | None = None, **kwargs: Any) -> Any:
+        """
+        Synchronously kickoff the governed crew.
+
+        Runs :meth:`kickoff_async` via ``asyncio.run()``.  Raises
+        ``RuntimeError`` if called from inside a running event loop — use
+        ``kickoff_async`` instead.
+        """
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "Cannot use GovernedCrew.kickoff() inside a running async "
+                "event loop.  Use 'await governed_crew.kickoff_async(...)' instead."
+            )
+        except RuntimeError as exc:
+            if (
+                "no running event loop" not in str(exc)
+                and "no current event loop" not in str(exc)
+            ):
+                raise
+
+        return asyncio.run(self.kickoff_async(inputs, **kwargs))
+
+    # ------------------------------------------------------------------
+    # Pass-through attributes (crew.agents, crew.tasks, etc.)
+    # ------------------------------------------------------------------
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._crew, name)
+
+    def __repr__(self) -> str:
+        return (
+            f"GovernedCrew(chain_name={self._chain_name!r}, crew={self._crew!r})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Instrumentation — installation
+# ---------------------------------------------------------------------------
+
+def _install_instrumentation(
+    crew: Any,
+    callback: AagCrewAICallback,
+    loop: asyncio.AbstractEventLoop,
+) -> list:
+    """
+    Instrument *crew* to fire aag governance events for every task execution.
+
+    Tries Strategy A (native CrewAI callbacks) first.  Falls back to
+    Strategy B (per-agent ``execute_task`` monkey-patches) if the native
+    hooks are not present.
+
+    Returns a list of *patch records* that :func:`_restore_instrumentation`
+    uses to undo all changes.
+    """
+    patch_records: list = []
+
+    # ------------------------------------------------------------------
+    # Strategy A — native CrewAI task callbacks
+    # ------------------------------------------------------------------
+    has_before = hasattr(crew, "before_task_callback")
+    has_after = hasattr(crew, "task_callback")
+
+    if has_before or has_after:
+        logger.debug("aag: using native CrewAI task callbacks (Strategy A)")
+
+        if has_before:
+            original_before = crew.before_task_callback
+
+            def _wrapped_before(task: Any, agent: Any) -> None:
+                _fire(callback.on_task_start(task, agent), loop)
+                if callable(original_before):
+                    original_before(task, agent)
+
+            crew.before_task_callback = _wrapped_before
+            patch_records.append(("crew_before", crew, original_before))
+
+        if has_after:
+            original_after = crew.task_callback
+
+            def _wrapped_after(task_output: Any) -> None:
+                _fire(callback.on_task_end_from_output(task_output), loop)
+                if callable(original_after):
+                    original_after(task_output)
+
+            crew.task_callback = _wrapped_after
+            patch_records.append(("crew_after", crew, original_after))
+
+        # If we only have after_callback (no before), also patch execute_task
+        # so we can capture pre-task events.
+        if has_after and not has_before:
+            logger.debug(
+                "aag: no before_task_callback found — also patching "
+                "execute_task for pre-task events"
+            )
+            _patch_all_agents(crew, callback, loop, patch_records)
+
+        return patch_records
+
+    # ------------------------------------------------------------------
+    # Strategy B — monkey-patch Agent.execute_task
+    # ------------------------------------------------------------------
+    logger.debug(
+        "aag: no native CrewAI callbacks found — monkey-patching "
+        "execute_task on %d agent(s) (Strategy B)",
+        len(getattr(crew, "agents", [])),
+    )
+    _patch_all_agents(crew, callback, loop, patch_records)
+    return patch_records
+
+
+def _patch_all_agents(
+    crew: Any,
+    callback: AagCrewAICallback,
+    loop: asyncio.AbstractEventLoop,
+    patch_records: list,
+) -> None:
+    """Patch ``execute_task`` on every agent in *crew.agents*."""
+    for agent in getattr(crew, "agents", []):
+        if not hasattr(agent, "execute_task"):
+            logger.debug(
+                "aag: agent %r has no execute_task — skipping",
+                getattr(agent, "role", agent),
+            )
+            continue
+
+        original_method = agent.execute_task
+        patched = _make_patched_execute_task(original_method, agent, callback, loop)
+        agent.execute_task = patched
+        patch_records.append(("agent", agent, original_method))
+        logger.debug(
+            "aag: patched execute_task on agent %r",
+            getattr(agent, "role", agent),
+        )
+
+
+def _make_patched_execute_task(
+    original_method: Any,
+    agent_ref: Any,
+    callback: AagCrewAICallback,
+    loop: asyncio.AbstractEventLoop,
+) -> Any:
+    """
+    Return a replacement for ``agent.execute_task`` that fires aag governance
+    events before and after the original synchronous method runs.
+
+    The wrapper uses ``asyncio.run_coroutine_threadsafe`` so that recording
+    coroutines are correctly scheduled on *loop* regardless of whether the
+    wrapper is called from the event loop thread or a worker thread.
+    """
+
+    def patched(*args: Any, **kwargs: Any) -> Any:
+        # The first positional argument is always the task object.
+        task = args[0] if args else kwargs.get("task")
+
+        # --- pre-task ---
+        _fire(callback.on_task_start(task, agent_ref), loop)
+
+        # --- execute original ---
+        error: BaseException | None = None
+        result: Any = None
+        try:
+            result = original_method(*args, **kwargs)
+        except BaseException as exc:
+            error = exc
+
+        # --- post-task ---
+        if error is not None:
+            _fire(callback.on_task_error(task, agent_ref, error), loop)
+            raise error  # re-raise after recording
+
+        _fire(callback.on_task_end(task, agent_ref, result), loop)
+        return result
+
+    return patched
+
+
+# ---------------------------------------------------------------------------
+# Instrumentation — cleanup
+# ---------------------------------------------------------------------------
+
+def _restore_instrumentation(patch_records: list) -> None:
+    """
+    Undo all patches installed by :func:`_install_instrumentation`.
+
+    Called in a ``finally`` block so cleanup always runs, even when the
+    crew run is interrupted by ``ActionDeniedError`` or another exception.
+    """
+    for record in patch_records:
+        kind = record[0]
+        try:
+            if kind == "agent":
+                _, agent, original = record
+                agent.execute_task = original
+                logger.debug(
+                    "aag: restored execute_task on agent %r",
+                    getattr(agent, "role", agent),
+                )
+            elif kind == "crew_before":
+                _, crew, original = record
+                crew.before_task_callback = original
+                logger.debug("aag: restored crew.before_task_callback")
+            elif kind == "crew_after":
+                _, crew, original = record
+                crew.task_callback = original
+                logger.debug("aag: restored crew.task_callback")
+        except Exception as exc:
+            # Log but never raise from cleanup — we must not mask the
+            # original exception that triggered the finally block.
+            logger.warning("aag: error while restoring patch %r: %s", kind, exc)
+
+
+# ---------------------------------------------------------------------------
+# Coroutine scheduling helper
+# ---------------------------------------------------------------------------
+
+def _fire(
+    coro: Any,
+    loop: asyncio.AbstractEventLoop,
+) -> "_CFFuture[Any]":
+    """
+    Schedule *coro* on *loop* from any thread context (fire-and-forget).
+
+    Returns the ``concurrent.futures.Future`` for the scheduled coroutine.
+    Callers do not need to await or inspect the return value — errors are
+    logged but never propagated so that a recording failure never disrupts
+    crew execution.
+    """
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+
+    def _log_error(f: "_CFFuture[Any]") -> None:
+        exc = f.exception()
+        if exc is not None:
+            logger.warning("aag: governance recording error: %s", exc)
+
+    future.add_done_callback(_log_error)
+    return future
