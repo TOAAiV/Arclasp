@@ -49,7 +49,11 @@ class ChainConfig(BaseModel):
     fallback_approvers: list[str] = Field(default_factory=list)
 
     # --- Failure behaviour ---
-    fail_mode: str = "deny"           # "deny" | "allow"
+    fail_mode: str = "deny"           # "deny" | "allow" — global default
+    # Per-action-class overrides.  Keys are action_type strings (e.g.
+    # "tool_call", "llm_inference"); values are "deny" or "allow".
+    # When an action_type is present here it takes precedence over fail_mode.
+    fail_modes: dict[str, str] = Field(default_factory=dict)
     backend_timeout_seconds: int = 5
 
     # --- Offline / buffering ---
@@ -63,3 +67,32 @@ class ChainConfig(BaseModel):
 
     # --- Local optimisations ---
     enable_local_fast_path: bool = True
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def resolve_fail_mode(self, action_type: str | None = None) -> str:
+        """
+        Return the effective fail_mode for a given *action_type*.
+
+        Lookup order:
+
+        1. ``fail_modes[action_type]`` — per-class override (if key exists).
+        2. ``fail_mode``              — global default.
+
+        Parameters
+        ----------
+        action_type : str | None
+            The ``action_type`` of the event being recorded (e.g.
+            ``"tool_call"``, ``"llm_inference"``).  Pass ``None`` to get the
+            global default without any per-class lookup.
+
+        Returns
+        -------
+        str
+            ``"deny"`` or ``"allow"``.
+        """
+        if action_type and action_type in self.fail_modes:
+            return self.fail_modes[action_type]
+        return self.fail_mode

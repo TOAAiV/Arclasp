@@ -107,3 +107,39 @@ class ChainTimeoutError(Exception):
         super().__init__(
             f"ChainTimeoutError: chain '{chain_id}' timed out after {timeout_seconds}s"
         )
+
+
+class ProofRailKillSwitchError(Exception):
+    """
+    Raised when the organisation's kill switch is active and an agent action
+    is attempted.  The kill switch is evaluated at the very top of the policy
+    engine — before shadow-mode or any other rule — so it always takes effect
+    regardless of policy configuration.
+
+    Attributes
+    ----------
+    organization_id : str | None
+        The organisation for which the kill switch is active.
+    reason : str | None
+        The human-readable reason recorded when the kill switch was activated,
+        if the backend returns one.
+    """
+
+    def __init__(
+        self,
+        message: str = "All agent actions are denied: organisation kill switch is active",
+        organization_id: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        self.message = message
+        self.organization_id = organization_id
+        self.reason = reason
+        super().__init__(str(self))
+
+    def __str__(self) -> str:
+        lines = [f"ProofRailKillSwitchError: {self.message}"]
+        if self.organization_id:
+            lines.append(f"  Organisation : {self.organization_id}")
+        if self.reason:
+            lines.append(f"  Reason       : {self.reason}")
+        return "\n".join(lines)

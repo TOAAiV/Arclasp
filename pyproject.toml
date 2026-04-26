@@ -13,5 +13,10 @@ dependencies = [
     "cryptography>=41.0.0",
 ]
 
+[project.optional-dependencies]
+mcp = [
+    "mcp>=1.0.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["aag"]

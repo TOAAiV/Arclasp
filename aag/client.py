@@ -108,15 +108,26 @@ def _get_client() -> httpx.AsyncClient:
 # Low-level HTTP helpers
 # ---------------------------------------------------------------------------
 
-async def _post(path: str, data: dict) -> dict:
+async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     """
     POST *data* as JSON to *path* on the configured backend.
 
-    On network failure the configured ``fail_mode`` determines behaviour:
+    On network failure the effective fail_mode determines behaviour:
 
     * ``"deny"``  — raises :exc:`BackendUnavailableError`.
     * ``"allow"`` — logs a warning and returns a synthetic allow decision so
       the chain can continue without the backend.
+
+    Parameters
+    ----------
+    path : str
+        API path relative to ``backend_url``.
+    data : dict
+        Request body (serialised as JSON).
+    action_type : str | None
+        The ``action_type`` of the event being posted (e.g. ``"tool_call"``).
+        When provided, ``ChainConfig.resolve_fail_mode(action_type)`` is used
+        instead of the global ``fail_mode`` so per-class overrides apply.
 
     Returns
     -------
@@ -126,7 +137,7 @@ async def _post(path: str, data: dict) -> dict:
     Raises
     ------
     BackendUnavailableError
-        When the backend is unreachable and fail_mode is "deny".
+        When the backend is unreachable and the resolved fail_mode is "deny".
     httpx.HTTPStatusError
         On 4xx / 5xx responses that are not connectivity failures.
     """
@@ -138,25 +149,32 @@ async def _post(path: str, data: dict) -> dict:
         response.raise_for_status()
         return response.json()
 
-    except httpx.TimeoutException as exc:
+    except httpx.TimeoutException:
         msg = f"Backend request timed out after {config.backend_timeout_seconds}s (POST {path})"
-        return _handle_backend_failure(msg, config)
+        return _handle_backend_failure(msg, config, action_type)
 
-    except httpx.ConnectError as exc:
+    except httpx.ConnectError:
         msg = f"Could not connect to aag backend at {config.backend_url} (POST {path})"
-        return _handle_backend_failure(msg, config)
+        return _handle_backend_failure(msg, config, action_type)
 
-    except httpx.HTTPStatusError as exc:
+    except httpx.HTTPStatusError:
         # 4xx / 5xx — re-raise; these are application errors, not transport
         # failures, so fail_mode does not apply.
         raise
 
 
-async def _get(path: str) -> dict:
+async def _get(path: str, action_type: str | None = None) -> dict:
     """
     GET *path* on the configured backend.
 
-    Applies the same ``fail_mode`` semantics as :func:`_post`.
+    Applies the same fail_mode semantics as :func:`_post`.
+
+    Parameters
+    ----------
+    path : str
+        API path relative to ``backend_url``.
+    action_type : str | None
+        Passed to ``resolve_fail_mode`` if the request fails.
     """
     config = get_config()
     client = _get_client()
@@ -168,29 +186,41 @@ async def _get(path: str) -> dict:
 
     except httpx.TimeoutException:
         msg = f"Backend request timed out after {config.backend_timeout_seconds}s (GET {path})"
-        return _handle_backend_failure(msg, config)
+        return _handle_backend_failure(msg, config, action_type)
 
     except httpx.ConnectError:
         msg = f"Could not connect to aag backend at {config.backend_url} (GET {path})"
-        return _handle_backend_failure(msg, config)
+        return _handle_backend_failure(msg, config, action_type)
 
     except httpx.HTTPStatusError:
         raise
 
 
-def _handle_backend_failure(message: str, config: ChainConfig) -> dict:
+def _handle_backend_failure(
+    message: str,
+    config: ChainConfig,
+    action_type: str | None = None,
+) -> dict:
     """
-    Apply ``fail_mode`` to a transport-level backend failure.
+    Apply the resolved fail_mode to a transport-level backend failure.
+
+    ``action_type`` is forwarded to :meth:`ChainConfig.resolve_fail_mode` so
+    that per-action-class overrides in ``fail_modes`` are honoured.
 
     * ``"deny"``  → raise :exc:`BackendUnavailableError`
     * ``"allow"`` → log a warning and return a synthetic allow payload
     """
-    if config.fail_mode == "allow":
-        logger.warning("%s — fail_mode=allow, continuing without backend", message)
+    effective = config.resolve_fail_mode(action_type)
+    if effective == "allow":
+        logger.warning(
+            "%s — fail_mode=allow (action_type=%s), continuing without backend",
+            message,
+            action_type or "unspecified",
+        )
         return {
             "policy_decision": "allow",
             "decision_reason": "Backend unavailable — fail open (fail_mode=allow)",
             "decision_source": "offline_stub",
         }
 
-    raise BackendUnavailableError(message=message, fail_mode=config.fail_mode)
+    raise BackendUnavailableError(message=message, fail_mode=effective)

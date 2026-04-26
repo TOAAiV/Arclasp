@@ -26,7 +26,7 @@ from types import TracebackType
 from typing import Type
 
 from aag import client as _client
-from aag.exceptions import ActionDeniedError, ChainTimeoutError
+from aag.exceptions import ActionDeniedError, ChainTimeoutError, ProofRailKillSwitchError
 from aag.sanitization import sanitize_payload
 
 logger = logging.getLogger(__name__)
@@ -177,7 +177,8 @@ class Chain:
             }
 
         response = await _client._post(
-            f"/v1/chains/{self._chain_id}/events", event_body
+            f"/v1/chains/{self._chain_id}/events", event_body,
+            action_type=action_type,
         )
 
         decision = response.get("policy_decision", "allow")
@@ -194,6 +195,13 @@ class Chain:
         self._sequence_number += 1
 
         if decision == "deny":
+            # Kill-switch denials carry a distinct flag so callers can
+            # differentiate them from ordinary policy violations.
+            if response.get("kill_switch_active"):
+                raise ProofRailKillSwitchError(
+                    message=reason or "All agent actions are denied: organisation kill switch is active",
+                    reason=response.get("pause_reason"),
+                )
             raise ActionDeniedError(
                 message=reason or "Action denied by policy",
                 decision_source=source,

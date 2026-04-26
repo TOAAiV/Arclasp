@@ -17,7 +17,13 @@ Quick start:
 
 from aag.chain import Chain
 from aag.client import init
-from aag.exceptions import ActionDeniedError, PolicyViolationError
+from aag.exceptions import (
+    ActionDeniedError,
+    BackendUnavailableError,
+    ChainTimeoutError,
+    PolicyViolationError,
+    ProofRailKillSwitchError,
+)
 
 __version__ = "0.1.0"
 
@@ -25,6 +31,9 @@ __all__ = [
     "init",
     "Chain",
     "ActionDeniedError",
+    "BackendUnavailableError",
+    "ChainTimeoutError",
     "PolicyViolationError",
+    "ProofRailKillSwitchError",
     "__version__",
 ]
