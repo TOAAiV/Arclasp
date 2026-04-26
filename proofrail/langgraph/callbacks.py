@@ -1,10 +1,10 @@
 """
-aag.langgraph.callbacks — LangGraph-compatible callback handler.
+proofrail.langgraph.callbacks — LangGraph-compatible callback handler.
 
-Records LangGraph node start and end events as aag chain events.
+Records LangGraph node start and end events as ProofRail chain events.
 
 This module intentionally does NOT import langchain_core at module level so
-that ``aag`` itself can be imported without langgraph/langchain installed.
+that ``proofrail`` itself can be imported without langgraph/langchain installed.
 The ``_AsLangChainCallback`` inner class is constructed lazily and only when
 the adapter detects that langchain_core is available.
 """
@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from aag.chain import Chain
+    from proofrail.chain import Chain
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ _INTERNAL_NODES: frozenset[str] = frozenset(
 def _state_to_dict(state: Any) -> dict:
     """
     Convert a LangGraph state value to a plain ``dict`` suitable for the
-    aag payload.  Handles TypedDict, Pydantic v1/v2 models, NamedTuples,
+    ProofRail payload.  Handles TypedDict, Pydantic v1/v2 models, NamedTuples,
     and plain dicts gracefully.
     """
     if state is None:
@@ -57,9 +57,9 @@ def _state_to_dict(state: Any) -> dict:
 # Primary callback class — clean public interface
 # ---------------------------------------------------------------------------
 
-class AagLangGraphCallback:
+class ProofRailLangGraphCallback:
     """
-    Callback handler that records LangGraph node lifecycle events as aag
+    Callback handler that records LangGraph node lifecycle events as ProofRail
     governance chain events.
 
     This class is framework-agnostic.  The :class:`_AsLangChainCallback`
@@ -80,7 +80,7 @@ class AagLangGraphCallback:
         self._chain = chain
 
     async def on_node_start(self, node_name: str, input_state: Any) -> None:
-        """Record the start of a node execution as an aag chain event."""
+        """Record the start of a node execution as a ProofRail chain event."""
         logger.debug("LangGraph node starting: %s", node_name)
         await self._chain.record_agent_action(
             agent_name=node_name,
@@ -160,33 +160,33 @@ def _build_langchain_base():
 class _AsLangChainCallback:
     """
     Thin adapter that implements ``AsyncCallbackHandler`` and delegates
-    LangGraph node events to an :class:`AagLangGraphCallback`.
+    LangGraph node events to a :class:`ProofRailLangGraphCallback`.
 
-    Constructed via ``AagLangGraphCallback.as_langchain_callback()``.
+    Constructed via ``ProofRailLangGraphCallback.as_langchain_callback()``.
 
     LangGraph maps node execution to ``on_chain_start`` / ``on_chain_end``
     callback calls.  The actual node name appears in the *metadata* dict
     under the key ``"langgraph_node"`` (LangGraph >= 0.1).
     """
 
-    def __init__(self, aag_callback: AagLangGraphCallback) -> None:
+    def __init__(self, proofrail_callback: ProofRailLangGraphCallback) -> None:
         # Inherit from AsyncCallbackHandler at instantiation time so we
         # don't import langchain_core at module level.
         base = _build_langchain_base()
 
-        # Dynamically create a concrete subclass that holds our aag_callback
+        # Dynamically create a concrete subclass that holds our proofrail_callback
         # reference and overrides the relevant handler methods.
         cls = type(
-            "_ConcreteAagCallback",
+            "_ConcreteProofRailCallback",
             (base,),
             {
-                "__init__": lambda self_inner, cb: setattr(self_inner, "_aag", cb),
+                "__init__": lambda self_inner, cb: setattr(self_inner, "_proofrail", cb),
                 "on_chain_start": _make_on_chain_start(),
                 "on_chain_end": _make_on_chain_end(),
                 "on_chain_error": _make_on_chain_error(),
             },
         )
-        self._handler = cls(aag_callback)
+        self._handler = cls(proofrail_callback)
 
     def __getattr__(self, name: str) -> Any:
         # Proxy everything to the dynamically built handler.
@@ -212,7 +212,7 @@ def _make_on_chain_start():
         if not hasattr(self, "_node_runs"):
             self._node_runs = {}
         self._node_runs[run_id] = node_name
-        await self._aag.on_node_start(node_name, inputs)
+        await self._proofrail.on_node_start(node_name, inputs)
 
     return on_chain_start
 
@@ -228,7 +228,7 @@ def _make_on_chain_end():
         node_name = getattr(self, "_node_runs", {}).pop(run_id, None)
         if not node_name:
             return
-        await self._aag.on_node_end(node_name, outputs, error=None)
+        await self._proofrail.on_node_end(node_name, outputs, error=None)
 
     return on_chain_end
 
@@ -244,6 +244,6 @@ def _make_on_chain_error():
         node_name = getattr(self, "_node_runs", {}).pop(run_id, None)
         if not node_name:
             return
-        await self._aag.on_node_end(node_name, None, error=error)
+        await self._proofrail.on_node_end(node_name, None, error=error)
 
     return on_chain_error

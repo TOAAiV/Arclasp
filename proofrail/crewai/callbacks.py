@@ -1,13 +1,13 @@
 """
-aag.crewai.callbacks — CrewAI task and agent event handler.
+proofrail.crewai.callbacks — CrewAI task and agent event handler.
 
-Records task start and end events as aag governance chain events.  Designed
-to be called from both monkey-patched synchronous ``execute_task`` wrappers
-(via ``asyncio.run_coroutine_threadsafe``) and from native CrewAI callback
-hooks where available.
+Records task start and end events as ProofRail governance chain events.
+Designed to be called from both monkey-patched synchronous ``execute_task``
+wrappers (via ``asyncio.run_coroutine_threadsafe``) and from native CrewAI
+callback hooks where available.
 
 This module has no top-level imports from ``crewai`` so that
-``import aag.crewai`` never raises ``ImportError`` when CrewAI is not
+``import proofrail.crewai`` never raises ``ImportError`` when CrewAI is not
 installed — the error is deferred to the first governed invocation.
 """
 
@@ -17,7 +17,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from aag.chain import Chain
+    from proofrail.chain import Chain
 
 logger = logging.getLogger(__name__)
 
@@ -82,15 +82,15 @@ def _extract_task_output(task_output: Any) -> dict:
 # Callback class
 # ---------------------------------------------------------------------------
 
-class AagCrewAICallback:
+class ProofRailCrewAICallback:
     """
-    Handles CrewAI task and agent lifecycle events, recording each as an
-    aag governance chain event via ``chain.record_agent_action``.
+    Handles CrewAI task and agent lifecycle events, recording each as a
+    ProofRail governance chain event via ``chain.record_agent_action``.
 
     Parameters
     ----------
-    chain : aag.chain.Chain
-        The active aag chain context (obtained from inside an
+    chain : proofrail.chain.Chain
+        The active ProofRail chain context (obtained from inside an
         ``async with Chain(...) as chain:`` block in the adapter).
 
     Methods
@@ -119,7 +119,7 @@ class AagCrewAICallback:
 
     async def on_task_start(self, task: Any, agent: Any) -> None:
         """
-        Record the start of a CrewAI task execution as an aag chain event.
+        Record the start of a CrewAI task execution as a ProofRail chain event.
 
         Parameters
         ----------

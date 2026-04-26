@@ -1,12 +1,12 @@
 """
-aag — AI Agent Governance Layer SDK.
+proofrail — AI Agent Governance Layer SDK.
 
 Quick start:
-    import aag
+    import proofrail
 
-    aag.init(api_key="aag_...")
+    proofrail.init(api_key="prail_...")
 
-    async with aag.Chain("my-agent-workflow") as chain:
+    async with proofrail.Chain("my-agent-workflow") as chain:
         await chain.record_agent_action(
             agent_name="my-agent",
             action_type="tool_call",
@@ -15,9 +15,9 @@ Quick start:
         )
 """
 
-from aag.chain import Chain
-from aag.client import init
-from aag.exceptions import (
+from proofrail.chain import Chain
+from proofrail.client import init
+from proofrail.exceptions import (
     ActionDeniedError,
     BackendUnavailableError,
     ChainTimeoutError,

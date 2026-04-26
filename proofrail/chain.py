@@ -1,8 +1,8 @@
 """
-aag.chain — Agent chain tracking and execution context.
+proofrail.chain — Agent chain tracking and execution context.
 
 Usage (async — preferred):
-    async with aag.Chain("order-processing", metadata={"order_id": "123"}) as chain:
+    async with proofrail.Chain("order-processing", metadata={"order_id": "123"}) as chain:
         await chain.record_agent_action(
             agent_name="pricing-agent",
             action_type="calculation",
@@ -11,7 +11,7 @@ Usage (async — preferred):
         )
 
 Usage (sync — for non-async scripts only):
-    with aag.Chain("order-processing") as chain:
+    with proofrail.Chain("order-processing") as chain:
         # record_agent_action is always async; wrap it for sync contexts:
         import asyncio
         asyncio.run(chain.record_agent_action(...))
@@ -25,9 +25,9 @@ from datetime import datetime, timezone
 from types import TracebackType
 from typing import Type
 
-from aag import client as _client
-from aag.exceptions import ActionDeniedError, ChainTimeoutError, ProofRailKillSwitchError
-from aag.sanitization import sanitize_payload
+from proofrail import client as _client
+from proofrail.exceptions import ActionDeniedError, ChainTimeoutError, ProofRailKillSwitchError
+from proofrail.sanitization import sanitize_payload
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ _ORG_ID_PLACEHOLDER = "00000000-0000-0000-0000-000000000001"
 
 class Chain:
     """
-    Context manager that wraps an aag chain lifecycle.
+    Context manager that wraps a ProofRail chain lifecycle.
 
     Supports both ``async with`` (preferred) and ``with`` (sync scripts only).
     The sync interface uses ``asyncio.run()`` internally and will raise a

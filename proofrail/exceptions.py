@@ -1,5 +1,5 @@
 """
-aag.exceptions — SDK exception hierarchy.
+proofrail.exceptions — SDK exception hierarchy.
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ class PolicyViolationError(Exception):
 
 class BackendUnavailableError(Exception):
     """
-    Raised when the aag backend cannot be reached and fail_mode is 'deny'.
+    Raised when the ProofRail backend cannot be reached and fail_mode is 'deny'.
     Carries the original failure message and the configured fail_mode for
     context.
     """

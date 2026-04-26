@@ -1,6 +1,6 @@
 """
-aag.client — SDK client initialization, configuration singleton, and
-low-level HTTP transport to the aag backend.
+proofrail.client — SDK client initialization, configuration singleton, and
+low-level HTTP transport to the ProofRail backend.
 """
 
 from __future__ import annotations
@@ -9,8 +9,8 @@ import logging
 
 import httpx
 
-from aag.exceptions import BackendUnavailableError
-from aag.models import ChainConfig
+from proofrail.exceptions import BackendUnavailableError
+from proofrail.models import ChainConfig
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ _http_client: httpx.AsyncClient | None = None
 
 def init(**kwargs) -> ChainConfig:
     """
-    Initialize the aag SDK with the given configuration values.
+    Initialize the ProofRail SDK with the given configuration values.
 
     Must be called once before creating any Chain.  Calling it again with
     different values reconfigures the SDK and resets the HTTP client.
@@ -36,7 +36,7 @@ def init(**kwargs) -> ChainConfig:
     Parameters
     ----------
     api_key : str  (required)
-        The aag API key generated from the dashboard.
+        The ProofRail API key generated from the dashboard.
     **kwargs :
         Any field accepted by ``ChainConfig`` (see models.py).
 
@@ -54,7 +54,7 @@ def init(**kwargs) -> ChainConfig:
 
     if not kwargs.get("api_key"):
         raise ValueError(
-            "api_key is required. Call aag.init(api_key='aag_...') before using the SDK."
+            "api_key is required. Call proofrail.init(api_key='prail_...') before using the SDK."
         )
 
     _config = ChainConfig(**kwargs)
@@ -75,7 +75,7 @@ def init(**kwargs) -> ChainConfig:
         },
     )
 
-    logger.debug("aag SDK initialized (environment=%s)", _config.environment)
+    logger.debug("ProofRail SDK initialized (environment=%s)", _config.environment)
     return _config
 
 
@@ -90,7 +90,7 @@ def get_config() -> ChainConfig:
     """
     if _config is None:
         raise RuntimeError(
-            "aag has not been initialized. Call aag.init(api_key='aag_...') first."
+            "proofrail has not been initialized. Call proofrail.init(api_key='prail_...') first."
         )
     return _config
 
@@ -99,7 +99,7 @@ def _get_client() -> httpx.AsyncClient:
     """Return the module-level HTTP client, raising if init() was skipped."""
     if _http_client is None:
         raise RuntimeError(
-            "aag has not been initialized. Call aag.init(api_key='aag_...') first."
+            "proofrail has not been initialized. Call proofrail.init(api_key='prail_...') first."
         )
     return _http_client
 
@@ -154,7 +154,7 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
         return _handle_backend_failure(msg, config, action_type)
 
     except httpx.ConnectError:
-        msg = f"Could not connect to aag backend at {config.backend_url} (POST {path})"
+        msg = f"Could not connect to ProofRail backend at {config.backend_url} (POST {path})"
         return _handle_backend_failure(msg, config, action_type)
 
     except httpx.HTTPStatusError:
@@ -189,7 +189,7 @@ async def _get(path: str, action_type: str | None = None) -> dict:
         return _handle_backend_failure(msg, config, action_type)
 
     except httpx.ConnectError:
-        msg = f"Could not connect to aag backend at {config.backend_url} (GET {path})"
+        msg = f"Could not connect to ProofRail backend at {config.backend_url} (GET {path})"
         return _handle_backend_failure(msg, config, action_type)
 
     except httpx.HTTPStatusError:

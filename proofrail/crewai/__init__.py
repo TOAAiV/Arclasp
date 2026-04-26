@@ -1,19 +1,19 @@
 """
-aag.crewai — CrewAI integration for the aag SDK.
+proofrail.crewai — CrewAI integration for the ProofRail SDK.
 
 Wraps a CrewAI Crew so that every task execution is automatically recorded
 as a governed chain event.
 
 Usage
 -----
-    import aag
-    from aag.crewai import govern
+    import proofrail
+    from proofrail.crewai import govern
 
-    aag.init(api_key="aag_...")
+    proofrail.init(api_key="prail_...")
     governed = govern(crew, chain_name="research-crew")
     result = await governed.kickoff_async(inputs={"topic": "AI safety"})
 """
 
-from aag.crewai.adapter import govern
+from proofrail.crewai.adapter import govern
 
 __all__ = ["govern"]

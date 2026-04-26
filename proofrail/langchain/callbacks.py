@@ -1,11 +1,11 @@
 """
-aag.langchain.callbacks — LangChain BaseCallbackHandler that records tool
-calls and LLM calls as aag governance chain events.
+proofrail.langchain.callbacks — LangChain BaseCallbackHandler that records
+tool calls and LLM calls as ProofRail governance chain events.
 
 This module loads ``langchain_core.callbacks.BaseCallbackHandler`` (or falls
 back to ``langchain.callbacks.BaseCallbackHandler`` for older installs) at
 *import time* using a safe loader that substitutes ``object`` when neither
-package is available.  This means ``import aag.langchain`` never raises
+package is available.  This means ``import proofrail.langchain`` never raises
 ``ImportError`` — the error is deferred until an attempt is made to inject
 the callback into a real LangChain object.
 """
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from aag.chain import Chain
+    from proofrail.chain import Chain
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +44,14 @@ def _load_base_handler() -> type:
             mod = importlib.import_module(module_path)
             handler = getattr(mod, "BaseCallbackHandler", None)
             if handler is not None:
-                logger.debug("aag: loaded BaseCallbackHandler from %s", module_path)
+                logger.debug("proofrail: loaded BaseCallbackHandler from %s", module_path)
                 return handler
         except ImportError:
             continue
 
     logger.debug(
-        "aag: langchain / langchain_core not found — "
-        "AagLangChainCallback will use object as base until LangChain is installed"
+        "proofrail: langchain / langchain_core not found — "
+        "ProofRailLangChainCallback will use object as base until LangChain is installed"
     )
     return object
 
@@ -102,18 +102,18 @@ def _serialized_name(serialized: dict[str, Any] | None, fallback: str) -> str:
 # Callback handler
 # ---------------------------------------------------------------------------
 
-class AagLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
+class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
     """
     LangChain ``BaseCallbackHandler`` that records tool calls and LLM calls
-    as aag governance chain events.
+    as ProofRail governance chain events.
 
     Pass an instance of this class to any LangChain chain or
     ``AgentExecutor`` via ``config={"callbacks": [callback]}``.
 
     Parameters
     ----------
-    chain : aag.chain.Chain
-        The active aag chain context (obtained from inside an
+    chain : proofrail.chain.Chain
+        The active ProofRail chain context (obtained from inside an
         ``async with Chain(...) as chain:`` block).
     agent_name : str
         Label used as ``agent_name`` in every recorded event.  Defaults to

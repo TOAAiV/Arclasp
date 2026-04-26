@@ -1,1 +1,1 @@
-# aag SDK
+# ProofRail SDK

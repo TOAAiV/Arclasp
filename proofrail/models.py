@@ -1,5 +1,5 @@
 """
-aag.models — Shared Pydantic models and data types.
+proofrail.models — Shared Pydantic models and data types.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ class PolicyDecision(BaseModel):
 
 class ChainConfig(BaseModel):
     """
-    Full configuration for an aag SDK session.  Created by aag.init() and
-    stored as a module-level singleton.
+    Full configuration for a ProofRail SDK session.  Created by proofrail.init()
+    and stored as a module-level singleton.
     """
 
     # --- Required ---

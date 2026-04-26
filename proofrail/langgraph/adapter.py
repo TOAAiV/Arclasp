@@ -1,12 +1,12 @@
 """
-aag.langgraph.adapter — Governance wrapper for compiled LangGraph graphs.
+proofrail.langgraph.adapter — Governance wrapper for compiled LangGraph graphs.
 
 3-line integration pattern
 --------------------------
-    import aag
-    from aag.langgraph import govern
+    import proofrail
+    from proofrail.langgraph import govern
 
-    aag.init(api_key="aag_...")
+    proofrail.init(api_key="prail_...")
     governed = govern(compiled_graph, chain_name="my-workflow")
 
     # Drop-in replacement — same interface as the original graph:
@@ -16,14 +16,14 @@ How it works
 ------------
 1.  ``govern()`` wraps the compiled graph in a ``GovernedGraph`` instance that
     has identical ``.invoke`` / ``.ainvoke`` signatures.
-2.  On every invocation, an aag ``Chain`` context manager is opened so the
+2.  On every invocation, a ProofRail ``Chain`` context manager is opened so the
     full workflow appears as a single governed chain in the dashboard.
 3.  Node-level events are captured via one of two strategies, tried in order:
 
     Strategy A — ``astream_events`` (LangGraph >= 0.1, preferred)
         ``astream_events(version="v2")`` yields structured events with
         ``metadata["langgraph_node"]`` identifying each node.  We consume the
-        stream, fire ``AagLangGraphCallback.on_node_start`` / ``on_node_end``
+        stream, fire ``ProofRailLangGraphCallback.on_node_start`` / ``on_node_end``
         for each real node, and collect the graph's final output from the
         root-level ``on_chain_end`` event.
 
@@ -36,8 +36,8 @@ How it works
 
 Policy enforcement
 ------------------
-``record_agent_action`` is called for every node.  If the aag backend returns
-a ``"deny"`` decision, ``ActionDeniedError`` propagates out of
+``record_agent_action`` is called for every node.  If the ProofRail backend
+returns a ``"deny"`` decision, ``ActionDeniedError`` propagates out of
 ``ainvoke`` / ``invoke`` — the graph execution is halted at that node.
 """
 
@@ -47,10 +47,10 @@ import asyncio
 import logging
 from typing import Any
 
-from aag import client as _aag_client
-from aag.chain import Chain
-from aag.langgraph.callbacks import (
-    AagLangGraphCallback,
+from proofrail import client as _proofrail_client
+from proofrail.chain import Chain
+from proofrail.langgraph.callbacks import (
+    ProofRailLangGraphCallback,
     _INTERNAL_NODES,
     _state_to_dict,
 )
@@ -68,7 +68,7 @@ def govern(
     metadata: dict | None = None,
 ) -> "GovernedGraph":
     """
-    Wrap a compiled LangGraph graph with aag governance.
+    Wrap a compiled LangGraph graph with ProofRail governance.
 
     Parameters
     ----------
@@ -77,7 +77,7 @@ def govern(
         ``.ainvoke`` methods (typically the result of
         ``StateGraph.compile()``).
     chain_name : str
-        Name recorded in the aag dashboard for each invocation of this
+        Name recorded in the ProofRail dashboard for each invocation of this
         graph.  Defaults to ``"langgraph_workflow"``.
     metadata : dict, optional
         Extra key/value pairs attached to every chain created by this
@@ -92,7 +92,7 @@ def govern(
     Raises
     ------
     RuntimeError
-        If ``aag.init()`` has not been called before ``govern()`` is
+        If ``proofrail.init()`` has not been called before ``govern()`` is
         used to invoke the graph.
     ImportError
         If ``langgraph`` is not installed in the current environment.
@@ -127,7 +127,7 @@ def govern(
 class GovernedGraph:
     """
     Drop-in replacement for a compiled LangGraph graph that wraps every
-    invocation in an aag governance chain.
+    invocation in a ProofRail governance chain.
 
     Do not instantiate directly — use :func:`govern`.
     """
@@ -155,30 +155,30 @@ class GovernedGraph:
         """
         Async-invoke the governed graph.
 
-        Opens an aag chain, records every node execution, enforces policy
+        Opens a ProofRail chain, records every node execution, enforces policy
         decisions, then closes the chain.  Returns the graph's final output
         unchanged.
 
         Raises
         ------
         RuntimeError
-            If ``aag.init()`` has not been called.
+            If ``proofrail.init()`` has not been called.
         ActionDeniedError
-            If any node's action is denied by the aag policy engine.
+            If any node's action is denied by the ProofRail policy engine.
         """
         # Fail fast with a clear message if the SDK was never initialised.
-        _aag_client.get_config()
+        _proofrail_client.get_config()
 
-        async with Chain(self._chain_name, metadata=self._chain_metadata) as aag_chain:
-            callback = AagLangGraphCallback(aag_chain)
+        async with Chain(self._chain_name, metadata=self._chain_metadata) as proofrail_chain:
+            callback = ProofRailLangGraphCallback(proofrail_chain)
 
             if hasattr(self._graph, "astream_events"):
                 return await self._ainvoke_via_streaming(
-                    aag_chain, callback, state, config, **kwargs
+                    proofrail_chain, callback, state, config, **kwargs
                 )
             else:
                 return await self._ainvoke_via_callbacks(
-                    aag_chain, callback, state, config, **kwargs
+                    proofrail_chain, callback, state, config, **kwargs
                 )
 
     # ------------------------------------------------------------------
@@ -215,8 +215,8 @@ class GovernedGraph:
 
     async def _ainvoke_via_streaming(
         self,
-        aag_chain: Chain,
-        callback: AagLangGraphCallback,
+        proofrail_chain: Chain,
+        callback: ProofRailLangGraphCallback,
         state: Any,
         config: dict | None,
         **kwargs: Any,
@@ -294,8 +294,8 @@ class GovernedGraph:
 
     async def _ainvoke_via_callbacks(
         self,
-        aag_chain: Chain,
-        callback: AagLangGraphCallback,
+        proofrail_chain: Chain,
+        callback: ProofRailLangGraphCallback,
         state: Any,
         config: dict | None,
         **kwargs: Any,
@@ -307,7 +307,7 @@ class GovernedGraph:
         LangGraph routes node execution through LangChain's callback system;
         ``_AsLangChainCallback`` listens for ``on_chain_start`` /
         ``on_chain_end`` events that carry ``metadata["langgraph_node"]`` and
-        delegates them to the :class:`AagLangGraphCallback`.
+        delegates them to the :class:`ProofRailLangGraphCallback`.
 
         Falls back to plain ``ainvoke`` with no node tracking if
         ``langchain_core`` is not available, logging a warning.
@@ -316,7 +316,7 @@ class GovernedGraph:
             lc_callback = callback.as_langchain_callback()
         except ImportError as exc:
             logger.warning(
-                "aag: langchain_core not available (%s). "
+                "proofrail: langchain_core not available (%s). "
                 "Node-level events will not be recorded — only the chain "
                 "open/close will be tracked.  Install langchain-core or use "
                 "a LangGraph version that supports astream_events.",

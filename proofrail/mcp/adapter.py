@@ -1,27 +1,27 @@
 """
-aag.mcp.adapter — Governance adapter for MCP tool servers.
+proofrail.mcp.adapter — Governance adapter for MCP tool servers.
 
-:class:`AagMcpAdapter` intercepts MCP tool calls, records each invocation
-through an aag :class:`~aag.chain.Chain`, and only forwards to the real
-handler when the policy engine allows it.
+:class:`ProofRailMcpAdapter` intercepts MCP tool calls, records each
+invocation through a ProofRail :class:`~proofrail.chain.Chain`, and only
+forwards to the real handler when the policy engine allows it.
 
 The ``mcp`` package itself is only imported when
-:meth:`AagMcpAdapter.install` is called (so importing this module does not
-require the extra to be installed).
+:meth:`ProofRailMcpAdapter.install` is called (so importing this module does
+not require the extra to be installed).
 
 Typical integration pattern
 ---------------------------
 ::
 
-    import aag
-    from aag.mcp import AagMcpAdapter
+    import proofrail
+    from proofrail.mcp import ProofRailMcpAdapter
     from mcp.server import Server
 
-    aag.init(api_key="aag_...")
+    proofrail.init(api_key="prail_...")
     server = Server("my-tools")
 
-    async with aag.Chain("mcp-session") as chain:
-        adapter = AagMcpAdapter(chain=chain, agent_name="my-tools")
+    async with proofrail.Chain("mcp-session") as chain:
+        adapter = ProofRailMcpAdapter(chain=chain, agent_name="my-tools")
         adapter.install(server)            # patches server.call_tool handler
         await server.run(...)
 
@@ -47,13 +47,14 @@ logger = logging.getLogger(__name__)
 ToolHandler = Callable[[str, dict], Awaitable[Any]]
 
 
-class AagMcpAdapter:
+class ProofRailMcpAdapter:
     """
-    Records every MCP tool invocation through an aag chain before execution.
+    Records every MCP tool invocation through a ProofRail chain before
+    execution.
 
     Parameters
     ----------
-    chain : aag.chain.Chain
+    chain : proofrail.chain.Chain
         An **already-entered** chain context (i.e. the chain has been started
         and its ``chain_id`` is available).
     agent_name : str
@@ -65,7 +66,7 @@ class AagMcpAdapter:
 
     def __init__(
         self,
-        chain: Any,  # aag.chain.Chain — typed as Any to avoid circular import
+        chain: Any,  # proofrail.chain.Chain — typed as Any to avoid circular import
         agent_name: str = "mcp-agent",
         parent_agent_name: str | None = None,
     ) -> None:
@@ -84,7 +85,7 @@ class AagMcpAdapter:
         handler: ToolHandler,
     ) -> Any:
         """
-        Record *tool_name* through aag governance, then call *handler*.
+        Record *tool_name* through ProofRail governance, then call *handler*.
 
         Parameters
         ----------
@@ -104,9 +105,9 @@ class AagMcpAdapter:
 
         Raises
         ------
-        aag.ActionDeniedError
+        proofrail.ActionDeniedError
             When the policy engine denies the tool call.
-        aag.ProofRailKillSwitchError
+        proofrail.ProofRailKillSwitchError
             When the organisation kill switch is active.
         """
         await self.chain.record_agent_action(
@@ -117,7 +118,7 @@ class AagMcpAdapter:
             parent_agent_name=self.parent_agent_name,
         )
 
-        logger.debug("aag governance passed for tool '%s' — executing", tool_name)
+        logger.debug("ProofRail governance passed for tool '%s' — executing", tool_name)
         return await handler(tool_name, arguments)
 
     # ------------------------------------------------------------------
@@ -158,7 +159,7 @@ class AagMcpAdapter:
 
         setattr(server, _HANDLER_ATTR, _wrapped)
         logger.info(
-            "aag MCP adapter installed on server %r (agent_name=%r)",
+            "ProofRail MCP adapter installed on server %r (agent_name=%r)",
             server,
             self.agent_name,
         )
@@ -169,7 +170,7 @@ class AagMcpAdapter:
 
     def tool(self, tool_name: str) -> Callable[[ToolHandler], ToolHandler]:
         """
-        Decorator that wraps a bare async tool implementation with aag
+        Decorator that wraps a bare async tool implementation with ProofRail
         governance.  The decorated function receives ``(tool_name, arguments)``
         and returns the tool result.
 

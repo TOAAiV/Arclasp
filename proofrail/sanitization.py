@@ -1,5 +1,5 @@
 """
-aag.sanitization — Input and output sanitization utilities.
+proofrail.sanitization — Input and output sanitization utilities.
 
 Sanitization runs on every action payload before it is sent to the backend,
 ensuring that secrets and excessively large strings are never transmitted.
@@ -7,7 +7,7 @@ ensuring that secrets and excessively large strings are never transmitted.
 
 from __future__ import annotations
 
-from aag.models import ChainConfig
+from proofrail.models import ChainConfig
 
 
 def sanitize_payload(payload: dict, config: ChainConfig) -> dict:

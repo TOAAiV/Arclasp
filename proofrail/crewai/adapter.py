@@ -1,12 +1,12 @@
 """
-aag.crewai.adapter — Governance wrapper for CrewAI Crew objects.
+proofrail.crewai.adapter — Governance wrapper for CrewAI Crew objects.
 
 3-line integration pattern
 --------------------------
-    import aag
-    from aag.crewai import govern
+    import proofrail
+    from proofrail.crewai import govern
 
-    aag.init(api_key="aag_...")
+    proofrail.init(api_key="prail_...")
     governed = govern(crew, chain_name="research-crew")
 
     # Drop-in replacement — same interface as the original crew:
@@ -16,14 +16,14 @@ How it works
 ------------
 1.  ``govern()`` wraps a CrewAI ``Crew`` in a ``GovernedCrew`` instance that
     exposes identical ``.kickoff`` / ``.kickoff_async`` signatures.
-2.  On every invocation, an aag ``Chain`` context manager is opened so the
-    full crew run appears as a single governed chain in the dashboard.
+2.  On every invocation, a ProofRail ``Chain`` context manager is opened so
+    the full crew run appears as a single governed chain in the dashboard.
 3.  Instrumentation is applied via one of two strategies, tried in order:
 
     Strategy A — Native callbacks (CrewAI >= 0.28, preferred)
         If ``crew.task_callback`` exists, the existing value is wrapped so
-        that ``AagCrewAICallback.on_task_end_from_output`` fires for every
-        completed task while preserving any existing user-provided hook.
+        that ``ProofRailCrewAICallback.on_task_end_from_output`` fires for
+        every completed task while preserving any existing user-provided hook.
         Additionally, if ``crew.before_task_callback`` exists, it is wrapped
         to fire ``on_task_start``.
 
@@ -64,9 +64,9 @@ import logging
 from concurrent.futures import Future as _CFFuture
 from typing import Any
 
-from aag import client as _aag_client
-from aag.chain import Chain
-from aag.crewai.callbacks import AagCrewAICallback
+from proofrail import client as _proofrail_client
+from proofrail.chain import Chain
+from proofrail.crewai.callbacks import ProofRailCrewAICallback
 
 logger = logging.getLogger(__name__)
 
@@ -81,15 +81,15 @@ def govern(
     metadata: dict | None = None,
 ) -> "GovernedCrew":
     """
-    Wrap a CrewAI ``Crew`` with aag governance.
+    Wrap a CrewAI ``Crew`` with ProofRail governance.
 
     Parameters
     ----------
     crew :
         A CrewAI ``Crew`` instance with a ``.kickoff()`` method.
     chain_name : str
-        Name recorded in the aag dashboard for each invocation.  Defaults
-        to ``"crewai_workflow"``.
+        Name recorded in the ProofRail dashboard for each invocation.
+        Defaults to ``"crewai_workflow"``.
     metadata : dict, optional
         Extra key/value pairs attached to every chain opened by this wrapper
         (e.g. ``{"crew_version": "1.0", "department": "research"}``).
@@ -134,7 +134,7 @@ def govern(
 class GovernedCrew:
     """
     Drop-in replacement for a CrewAI ``Crew`` that wraps every invocation
-    in an aag governance chain.
+    in a ProofRail governance chain.
 
     Do not instantiate directly — use :func:`govern`.
     """
@@ -152,25 +152,25 @@ class GovernedCrew:
         """
         Async-kickoff the governed crew.
 
-        Opens an aag chain, instruments all agents, runs the crew, restores
-        original methods, then closes the aag chain.  Returns the crew's
-        result unchanged.
+        Opens a ProofRail chain, instruments all agents, runs the crew,
+        restores original methods, then closes the chain.  Returns the
+        crew's result unchanged.
 
         Raises
         ------
         RuntimeError
-            If ``aag.init()`` has not been called.
+            If ``proofrail.init()`` has not been called.
         ActionDeniedError
-            If a task execution is denied by the aag policy engine.
+            If a task execution is denied by the ProofRail policy engine.
         """
-        _aag_client.get_config()
+        _proofrail_client.get_config()
 
         # Capture the running loop now — passed into patches so they can
         # schedule coroutines from synchronous worker threads.
         loop = asyncio.get_running_loop()
 
-        async with Chain(self._chain_name, metadata=self._chain_metadata) as aag_chain:
-            callback = AagCrewAICallback(aag_chain)
+        async with Chain(self._chain_name, metadata=self._chain_metadata) as proofrail_chain:
+            callback = ProofRailCrewAICallback(proofrail_chain)
             patch_records = _install_instrumentation(self._crew, callback, loop)
 
             try:
@@ -235,11 +235,12 @@ class GovernedCrew:
 
 def _install_instrumentation(
     crew: Any,
-    callback: AagCrewAICallback,
+    callback: ProofRailCrewAICallback,
     loop: asyncio.AbstractEventLoop,
 ) -> list:
     """
-    Instrument *crew* to fire aag governance events for every task execution.
+    Instrument *crew* to fire ProofRail governance events for every task
+    execution.
 
     Tries Strategy A (native CrewAI callbacks) first.  Falls back to
     Strategy B (per-agent ``execute_task`` monkey-patches) if the native
@@ -257,7 +258,7 @@ def _install_instrumentation(
     has_after = hasattr(crew, "task_callback")
 
     if has_before or has_after:
-        logger.debug("aag: using native CrewAI task callbacks (Strategy A)")
+        logger.debug("proofrail: using native CrewAI task callbacks (Strategy A)")
 
         if has_before:
             original_before = crew.before_task_callback
@@ -285,7 +286,7 @@ def _install_instrumentation(
         # so we can capture pre-task events.
         if has_after and not has_before:
             logger.debug(
-                "aag: no before_task_callback found — also patching "
+                "proofrail: no before_task_callback found — also patching "
                 "execute_task for pre-task events"
             )
             _patch_all_agents(crew, callback, loop, patch_records)
@@ -296,7 +297,7 @@ def _install_instrumentation(
     # Strategy B — monkey-patch Agent.execute_task
     # ------------------------------------------------------------------
     logger.debug(
-        "aag: no native CrewAI callbacks found — monkey-patching "
+        "proofrail: no native CrewAI callbacks found — monkey-patching "
         "execute_task on %d agent(s) (Strategy B)",
         len(getattr(crew, "agents", [])),
     )
@@ -306,7 +307,7 @@ def _install_instrumentation(
 
 def _patch_all_agents(
     crew: Any,
-    callback: AagCrewAICallback,
+    callback: ProofRailCrewAICallback,
     loop: asyncio.AbstractEventLoop,
     patch_records: list,
 ) -> None:
@@ -314,7 +315,7 @@ def _patch_all_agents(
     for agent in getattr(crew, "agents", []):
         if not hasattr(agent, "execute_task"):
             logger.debug(
-                "aag: agent %r has no execute_task — skipping",
+                "proofrail: agent %r has no execute_task — skipping",
                 getattr(agent, "role", agent),
             )
             continue
@@ -324,7 +325,7 @@ def _patch_all_agents(
         agent.execute_task = patched
         patch_records.append(("agent", agent, original_method))
         logger.debug(
-            "aag: patched execute_task on agent %r",
+            "proofrail: patched execute_task on agent %r",
             getattr(agent, "role", agent),
         )
 
@@ -332,12 +333,12 @@ def _patch_all_agents(
 def _make_patched_execute_task(
     original_method: Any,
     agent_ref: Any,
-    callback: AagCrewAICallback,
+    callback: ProofRailCrewAICallback,
     loop: asyncio.AbstractEventLoop,
 ) -> Any:
     """
-    Return a replacement for ``agent.execute_task`` that fires aag governance
-    events before and after the original synchronous method runs.
+    Return a replacement for ``agent.execute_task`` that fires ProofRail
+    governance events before and after the original synchronous method runs.
 
     The wrapper uses ``asyncio.run_coroutine_threadsafe`` so that recording
     coroutines are correctly scheduled on *loop* regardless of whether the
@@ -388,21 +389,21 @@ def _restore_instrumentation(patch_records: list) -> None:
                 _, agent, original = record
                 agent.execute_task = original
                 logger.debug(
-                    "aag: restored execute_task on agent %r",
+                    "proofrail: restored execute_task on agent %r",
                     getattr(agent, "role", agent),
                 )
             elif kind == "crew_before":
                 _, crew, original = record
                 crew.before_task_callback = original
-                logger.debug("aag: restored crew.before_task_callback")
+                logger.debug("proofrail: restored crew.before_task_callback")
             elif kind == "crew_after":
                 _, crew, original = record
                 crew.task_callback = original
-                logger.debug("aag: restored crew.task_callback")
+                logger.debug("proofrail: restored crew.task_callback")
         except Exception as exc:
             # Log but never raise from cleanup — we must not mask the
             # original exception that triggered the finally block.
-            logger.warning("aag: error while restoring patch %r: %s", kind, exc)
+            logger.warning("proofrail: error while restoring patch %r: %s", kind, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +427,7 @@ def _fire(
     def _log_error(f: "_CFFuture[Any]") -> None:
         exc = f.exception()
         if exc is not None:
-            logger.warning("aag: governance recording error: %s", exc)
+            logger.warning("proofrail: governance recording error: %s", exc)
 
     future.add_done_callback(_log_error)
     return future
