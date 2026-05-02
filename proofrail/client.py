@@ -61,11 +61,8 @@ def init(**kwargs) -> ChainConfig:
 
     # Rebuild the HTTP client whenever init() is called so that base_url,
     # timeout, and auth header all stay in sync with the new config.
-    if _http_client is not None:
-        # Schedule the old client for cleanup; we can't await here (sync
-        # function), so we replace it and let GC handle the old one.
-        pass
-
+    # Can't await the old client's aclose() here (sync function), so we
+    # replace it and let GC handle cleanup.
     _http_client = httpx.AsyncClient(
         base_url=_config.backend_url,
         timeout=httpx.Timeout(_config.backend_timeout_seconds),
@@ -112,34 +109,10 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     """
     POST *data* as JSON to *path* on the configured backend.
 
-    On network failure the effective fail_mode determines behaviour:
-
-    * ``"deny"``  — raises :exc:`BackendUnavailableError`.
-    * ``"allow"`` — logs a warning and returns a synthetic allow decision so
-      the chain can continue without the backend.
-
-    Parameters
-    ----------
-    path : str
-        API path relative to ``backend_url``.
-    data : dict
-        Request body (serialised as JSON).
-    action_type : str | None
-        The ``action_type`` of the event being posted (e.g. ``"tool_call"``).
-        When provided, ``ChainConfig.resolve_fail_mode(action_type)`` is used
-        instead of the global ``fail_mode`` so per-class overrides apply.
-
-    Returns
-    -------
-    dict
-        Parsed JSON response body.
-
-    Raises
-    ------
-    BackendUnavailableError
-        When the backend is unreachable and the resolved fail_mode is "deny".
-    httpx.HTTPStatusError
-        On 4xx / 5xx responses that are not connectivity failures.
+    On network failure, the resolved fail_mode determines behaviour:
+    ``"deny"`` raises BackendUnavailableError; ``"allow"`` logs a warning and
+    returns a synthetic allow payload so the chain continues offline.
+    4xx/5xx responses bypass fail_mode and always re-raise.
     """
     config = get_config()
     client = _get_client()
@@ -164,18 +137,7 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
 
 
 async def _get(path: str, action_type: str | None = None) -> dict:
-    """
-    GET *path* on the configured backend.
-
-    Applies the same fail_mode semantics as :func:`_post`.
-
-    Parameters
-    ----------
-    path : str
-        API path relative to ``backend_url``.
-    action_type : str | None
-        Passed to ``resolve_fail_mode`` if the request fails.
-    """
+    """GET *path* on the configured backend. Same fail_mode semantics as _post."""
     config = get_config()
     client = _get_client()
 
@@ -201,15 +163,7 @@ def _handle_backend_failure(
     config: ChainConfig,
     action_type: str | None = None,
 ) -> dict:
-    """
-    Apply the resolved fail_mode to a transport-level backend failure.
-
-    ``action_type`` is forwarded to :meth:`ChainConfig.resolve_fail_mode` so
-    that per-action-class overrides in ``fail_modes`` are honoured.
-
-    * ``"deny"``  → raise :exc:`BackendUnavailableError`
-    * ``"allow"`` → log a warning and return a synthetic allow payload
-    """
+    """Apply the resolved fail_mode to a transport-level backend failure."""
     effective = config.resolve_fail_mode(action_type)
     if effective == "allow":
         logger.warning(

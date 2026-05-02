@@ -23,7 +23,6 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from types import TracebackType
-from typing import Type
 
 from proofrail import client as _client
 from proofrail.exceptions import ActionDeniedError, ChainTimeoutError, ProofRailKillSwitchError
@@ -73,7 +72,7 @@ class Chain:
 
     async def __aexit__(
         self,
-        exc_type: Type[BaseException] | None,
+        exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
@@ -100,7 +99,7 @@ class Chain:
 
     def __exit__(
         self,
-        exc_type: Type[BaseException] | None,
+        exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
@@ -227,14 +226,9 @@ class Chain:
             "metadata": self.metadata,
         }
 
-        try:
-            response = await _client._post("/v1/chains", body)
-            self._chain_id = response["id"]
-            logger.debug("Chain started (id=%s name=%s)", self._chain_id, self.name)
-        except Exception:
-            # _post already applied fail_mode.  If we reach here the error
-            # was re-raised (fail_mode=deny) — propagate it.
-            raise
+        response = await _client._post("/v1/chains", body)
+        self._chain_id = response["id"]
+        logger.debug("Chain started (id=%s name=%s)", self._chain_id, self.name)
 
     async def _complete(self) -> None:
         """Mark the chain as completed on the backend."""
