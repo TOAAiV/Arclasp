@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 # Type alias for a coroutine that executes a single tool call.
 ToolHandler = Callable[[str, dict], Awaitable[Any]]
 
+# Internal attribute name used by the reference mcp SDK to store the registered
+# call_tool handler.  Checked at install() time so the error message is specific.
+_CALL_TOOL_HANDLER_ATTR = "_call_tool_handler"
+
 
 class ProofRailMcpAdapter:
     """
@@ -141,12 +145,10 @@ class ProofRailMcpAdapter:
             An MCP ``Server`` instance whose ``call_tool`` handler should be
             wrapped.
         """
-        _HANDLER_ATTR = "_call_tool_handler"
-
-        original: ToolHandler | None = getattr(server, _HANDLER_ATTR, None)
+        original: ToolHandler | None = getattr(server, _CALL_TOOL_HANDLER_ATTR, None)
         if original is None:
             raise RuntimeError(
-                f"Cannot find '{_HANDLER_ATTR}' on {server!r}.  Either the "
+                f"Cannot find '{_CALL_TOOL_HANDLER_ATTR}' on {server!r}.  Either the "
                 "mcp Server API has changed or no @server.call_tool() handler "
                 "has been registered yet.  Use handle_tool_call() directly "
                 "instead of install()."
@@ -157,7 +159,7 @@ class ProofRailMcpAdapter:
         async def _wrapped(tool_name: str, arguments: dict) -> Any:
             return await adapter.handle_tool_call(tool_name, arguments, original)
 
-        setattr(server, _HANDLER_ATTR, _wrapped)
+        setattr(server, _CALL_TOOL_HANDLER_ATTR, _wrapped)
         logger.info(
             "ProofRail MCP adapter installed on server %r (agent_name=%r)",
             server,

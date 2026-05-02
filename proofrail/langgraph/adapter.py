@@ -97,7 +97,6 @@ def govern(
     ImportError
         If ``langgraph`` is not installed in the current environment.
     """
-    # Validate that langgraph is available
     try:
         import langgraph  # noqa: F401
     except ImportError:
@@ -106,7 +105,6 @@ def govern(
             "    pip install langgraph\n"
         )
 
-    # Validate the graph object looks right
     if not (hasattr(compiled_graph, "invoke") and hasattr(compiled_graph, "ainvoke")):
         raise TypeError(
             f"Expected a compiled LangGraph graph with .invoke and .ainvoke "
@@ -282,9 +280,6 @@ class GovernedGraph:
                 # --- Capture final graph output (root chain end) ---
                 if event_type == "on_chain_end" and run_id == root_run_id:
                     final_output = (event.get("data") or {}).get("output")
-
-        except Exception:
-            raise
 
         return final_output
 

@@ -88,8 +88,6 @@ def govern(
     TypeError
         If the object does not have ``.invoke`` / ``.ainvoke`` methods.
     """
-    # Verify LangChain is actually available before we hand back a wrapper
-    # that would silently do nothing useful.
     if _BaseCallbackHandler is object:
         raise ImportError(
             "Neither langchain_core nor langchain is installed.\n"
@@ -108,7 +106,6 @@ def govern(
             f".ainvoke methods, got {type(agent_executor_or_chain).__name__!r}."
         )
 
-    # Derive a sensible agent label from the wrapped object's class name.
     agent_name = type(agent_executor_or_chain).__name__
 
     return GovernedChain(

@@ -346,13 +346,10 @@ def _make_patched_execute_task(
     """
 
     def patched(*args: Any, **kwargs: Any) -> Any:
-        # The first positional argument is always the task object.
         task = args[0] if args else kwargs.get("task")
 
-        # --- pre-task ---
         _fire(callback.on_task_start(task, agent_ref), loop)
 
-        # --- execute original ---
         error: BaseException | None = None
         result: Any = None
         try:
@@ -360,7 +357,6 @@ def _make_patched_execute_task(
         except BaseException as exc:
             error = exc
 
-        # --- post-task ---
         if error is not None:
             _fire(callback.on_task_error(task, agent_ref, error), loop)
             raise error  # re-raise after recording

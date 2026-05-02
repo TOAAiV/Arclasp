@@ -65,22 +65,12 @@ class ProofRailLangGraphCallback:
     This class is framework-agnostic.  The :class:`_AsLangChainCallback`
     below bridges it to LangChain's ``AsyncCallbackHandler`` interface so it
     can be injected into LangGraph via ``config={"callbacks": [...]}``.
-
-    Methods
-    -------
-    on_node_start(node_name, input_state)
-        Called before a node begins execution.  Records an
-        ``action_type="node_execution"`` event.
-    on_node_end(node_name, output_state, error=None)
-        Called after a node completes (or errors).  Records an
-        ``action_type="node_result"`` or ``"node_error"`` event.
     """
 
     def __init__(self, chain: "Chain") -> None:
         self._chain = chain
 
     async def on_node_start(self, node_name: str, input_state: Any) -> None:
-        """Record the start of a node execution as a ProofRail chain event."""
         logger.debug("LangGraph node starting: %s", node_name)
         await self._chain.record_agent_action(
             agent_name=node_name,

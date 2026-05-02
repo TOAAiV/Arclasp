@@ -92,22 +92,6 @@ class ProofRailCrewAICallback:
     chain : proofrail.chain.Chain
         The active ProofRail chain context (obtained from inside an
         ``async with Chain(...) as chain:`` block in the adapter).
-
-    Methods
-    -------
-    on_task_start(task, agent)
-        Called before a task is executed.  Records
-        ``action_type="task_execution"``.
-    on_task_end(task, agent, output)
-        Called after a task completes successfully.  Records
-        ``action_type="task_result"``.
-    on_task_end_from_output(task_output)
-        Variant of ``on_task_end`` that accepts a native CrewAI
-        ``TaskOutput`` object — used when the native ``task_callback``
-        hook is available.
-    on_task_error(task, agent, error)
-        Called when a task raises an exception.  Records
-        ``action_type="task_error"``.
     """
 
     def __init__(self, chain: "Chain") -> None:
@@ -118,16 +102,7 @@ class ProofRailCrewAICallback:
     # ------------------------------------------------------------------
 
     async def on_task_start(self, task: Any, agent: Any) -> None:
-        """
-        Record the start of a CrewAI task execution as a ProofRail chain event.
-
-        Parameters
-        ----------
-        task :
-            The CrewAI ``Task`` object being executed.
-        agent :
-            The CrewAI ``Agent`` executing the task.
-        """
+        """Record the start of a CrewAI task execution as a ProofRail chain event."""
         description = _task_description(task)
         agent_name = _agent_role(agent)
         action_name = description[:_ACTION_NAME_MAX]
@@ -149,19 +124,7 @@ class ProofRailCrewAICallback:
     # ------------------------------------------------------------------
 
     async def on_task_end(self, task: Any, agent: Any, output: Any) -> None:
-        """
-        Record the successful completion of a CrewAI task.
-
-        Parameters
-        ----------
-        task :
-            The CrewAI ``Task`` object that was executed.
-        agent :
-            The CrewAI ``Agent`` that executed the task.
-        output :
-            The raw return value from ``execute_task`` — typically a string
-            containing the agent's response.
-        """
+        """Record successful completion of a CrewAI task."""
         description = _task_description(task)
         agent_name = _agent_role(agent)
         action_name = f"{description[:_ACTION_NAME_MAX - 7]}:result"
@@ -213,18 +176,7 @@ class ProofRailCrewAICallback:
     async def on_task_error(
         self, task: Any, agent: Any, error: BaseException
     ) -> None:
-        """
-        Record a task that raised an exception.
-
-        Parameters
-        ----------
-        task :
-            The CrewAI ``Task`` that failed.
-        agent :
-            The CrewAI ``Agent`` that was executing it.
-        error :
-            The exception that was raised.
-        """
+        """Record a task that raised an exception."""
         description = _task_description(task)
         agent_name = _agent_role(agent)
         action_name = f"{description[:_ACTION_NAME_MAX - 6]}:error"
