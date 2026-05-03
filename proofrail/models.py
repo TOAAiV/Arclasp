@@ -89,6 +89,7 @@ class ChainConfig(BaseModel):
 
     # --- Local optimisations ---
     enable_local_fast_path: bool = True
+    cumulative_financial_threshold_usd: float = 10000.0
 
     # ------------------------------------------------------------------
     # Helpers

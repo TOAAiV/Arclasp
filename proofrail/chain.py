@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from types import TracebackType
 
 from proofrail import client as _client
+from proofrail import fast_path as _fast_path
 from proofrail.exceptions import (
     ActionDeniedError,
     ChainTimeoutError,
@@ -86,6 +87,7 @@ class Chain:
         self._sequence_number: int = 1
         self._offline: bool = False  # True when backend unreachable + fail_mode=allow
         self._offline_buffer: list[dict] = []
+        self._cumulative_metrics: dict = {}  # in-process snapshot for fast-path checks
 
     # ------------------------------------------------------------------
     # Properties
@@ -211,6 +213,25 @@ class Chain:
                 decision_reason="Offline — fail_mode=allow",
                 decision_source="offline_stub",
             )
+
+        # --- Fast-path evaluation (non-production + low-risk actions) ---
+        fast_decision = _fast_path.evaluate_fast_path(
+            action_type=action_type,
+            action_name=action_name,
+            payload=sanitized,
+            agent_name=agent_name,
+            cumulative_metrics=self._cumulative_metrics,
+            config=config,
+        )
+        if fast_decision is not None:
+            # Buffer the event and drain asynchronously — agent is not blocked.
+            _buffer_event(self._offline_buffer, event_body, config.offline_buffer_max_events)
+            asyncio.create_task(_drain_buffer_to_backend(self))
+            self._sequence_number += 1
+            logger.debug(
+                "Fast-path allow for '%s' (chain=%s)", action_name, self._chain_id
+            )
+            return PolicyDecision.model_validate(fast_decision)
 
         try:
             response = await _client._post(
@@ -410,3 +431,41 @@ def _build_action_denied(
         docs_url=decision.docs_url or default_docs_url,
         decision_source=decision.decision_source,
     )
+
+
+# ---------------------------------------------------------------------------
+# Fast-path async drain helper
+# ---------------------------------------------------------------------------
+
+async def _drain_buffer_to_backend(chain: Chain) -> None:
+    """
+    Send buffered events to the backend asynchronously (fire-and-forget).
+
+    Called via ``asyncio.create_task`` after a fast-path decision so that
+    events are logged without blocking the agent.  Failures are logged at
+    DEBUG level and the event remains in the buffer — it is not retried
+    automatically, but will be visible in the offline buffer for future use.
+
+    Never raises — swallows all exceptions.
+    """
+    if not chain._offline_buffer or chain._chain_id is None or chain._offline:
+        return
+
+    # Drain events one by one; stop at the first failure so we don't
+    # interleave partial sends with later events.
+    while chain._offline_buffer:
+        event_body = chain._offline_buffer[0]
+        try:
+            await _client._post(
+                f"/v1/chains/{chain._chain_id}/events",
+                event_body,
+                action_type=event_body.get("action_type"),
+            )
+            chain._offline_buffer.pop(0)
+        except Exception as exc:
+            logger.debug(
+                "Fast-path async log failed (chain=%s): %s — event stays in buffer",
+                chain._chain_id,
+                exc,
+            )
+            break
