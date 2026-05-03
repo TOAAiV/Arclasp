@@ -48,6 +48,7 @@ import logging
 from typing import Any
 
 from proofrail import client as _proofrail_client
+from proofrail._utils import _merge_config
 from proofrail.chain import Chain
 from proofrail.langgraph.callbacks import (
     ProofRailLangGraphCallback,
@@ -235,51 +236,50 @@ class GovernedGraph:
         active_nodes: dict[str, str] = {}   # run_id → node_name
         final_output: Any = None
 
-        try:
-            stream = self._graph.astream_events(
-                state, config=config, version="v2", **kwargs
-            )
-            async for event in stream:
-                event_type: str = event.get("event", "")
-                run_id: str = str(event.get("run_id", ""))
-                metadata: dict = event.get("metadata") or {}
-                node_name: str = metadata.get("langgraph_node", "")
+        stream = self._graph.astream_events(
+            state, config=config, version="v2", **kwargs
+        )
+        async for event in stream:
+            event_type: str = event.get("event", "")
+            run_id: str = str(event.get("run_id", ""))
+            metadata: dict = event.get("metadata") or {}
+            node_name: str = metadata.get("langgraph_node", "")
 
-                # Track the root run (first event seen)
-                if root_run_id is None:
-                    root_run_id = run_id
+            # Track the root run (first event seen)
+            if root_run_id is None:
+                root_run_id = run_id
 
-                # --- Node start ---
-                if (
-                    event_type == "on_chain_start"
-                    and node_name
-                    and node_name not in _INTERNAL_NODES
-                ):
-                    active_nodes[run_id] = node_name
-                    input_state = (event.get("data") or {}).get("input")
-                    await callback.on_node_start(node_name, input_state)
+            # --- Node start ---
+            if (
+                event_type == "on_chain_start"
+                and node_name
+                and node_name not in _INTERNAL_NODES
+            ):
+                active_nodes[run_id] = node_name
+                input_state = (event.get("data") or {}).get("input")
+                await callback.on_node_start(node_name, input_state)
 
-                # --- Node end ---
-                elif (
-                    event_type == "on_chain_end"
-                    and run_id in active_nodes
-                ):
-                    finished_node = active_nodes.pop(run_id)
-                    output_state = (event.get("data") or {}).get("output")
-                    await callback.on_node_end(finished_node, output_state)
+            # --- Node end ---
+            elif (
+                event_type == "on_chain_end"
+                and run_id in active_nodes
+            ):
+                finished_node = active_nodes.pop(run_id)
+                output_state = (event.get("data") or {}).get("output")
+                await callback.on_node_end(finished_node, output_state)
 
-                # --- Node error ---
-                elif (
-                    event_type == "on_chain_error"
-                    and run_id in active_nodes
-                ):
-                    finished_node = active_nodes.pop(run_id)
-                    error = (event.get("data") or {}).get("error")
-                    await callback.on_node_end(finished_node, None, error=error)
+            # --- Node error ---
+            elif (
+                event_type == "on_chain_error"
+                and run_id in active_nodes
+            ):
+                finished_node = active_nodes.pop(run_id)
+                error = (event.get("data") or {}).get("error")
+                await callback.on_node_end(finished_node, None, error=error)
 
-                # --- Capture final graph output (root chain end) ---
-                if event_type == "on_chain_end" and run_id == root_run_id:
-                    final_output = (event.get("data") or {}).get("output")
+            # --- Capture final graph output (root chain end) ---
+            if event_type == "on_chain_end" and run_id == root_run_id:
+                final_output = (event.get("data") or {}).get("output")
 
         return final_output
 
@@ -336,22 +336,4 @@ class GovernedGraph:
         )
 
 
-# ---------------------------------------------------------------------------
-# Config merge helper
-# ---------------------------------------------------------------------------
-
-def _merge_config(base: dict | None, extras: dict) -> dict:
-    """
-    Return a new config dict that merges *extras* into *base*.
-
-    The ``"callbacks"`` key is handled specially: if both dicts contain it,
-    the lists are concatenated rather than overwritten.
-    """
-    result: dict = dict(base or {})
-    for key, value in extras.items():
-        if key == "callbacks" and "callbacks" in result:
-            existing = list(result["callbacks"])
-            result["callbacks"] = existing + list(value)
-        else:
-            result[key] = value
-    return result
+# _merge_config is imported from proofrail._utils (shared with langchain adapter)

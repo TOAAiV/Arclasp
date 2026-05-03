@@ -44,6 +44,7 @@ import logging
 from typing import Any
 
 from proofrail import client as _proofrail_client
+from proofrail._utils import _merge_config
 from proofrail.chain import Chain
 from proofrail.langchain.callbacks import ProofRailLangChainCallback, _BaseCallbackHandler
 
@@ -242,23 +243,4 @@ class GovernedChain:
         )
 
 
-# ---------------------------------------------------------------------------
-# Config merge helper (identical logic to langgraph adapter)
-# ---------------------------------------------------------------------------
-
-def _merge_config(base: dict | None, extras: dict) -> dict:
-    """
-    Return a new config dict that merges *extras* into *base*.
-
-    The ``"callbacks"`` key is handled specially: existing and new callback
-    lists are concatenated rather than overwritten, so user-provided
-    callbacks coexist with the ProofRail governance callback.
-    """
-    result: dict = dict(base or {})
-    for key, value in extras.items():
-        if key == "callbacks" and "callbacks" in result:
-            existing = list(result["callbacks"])
-            result["callbacks"] = existing + list(value)
-        else:
-            result[key] = value
-    return result
+# _merge_config is imported from proofrail._utils (shared with langgraph adapter)

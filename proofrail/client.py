@@ -23,6 +23,24 @@ _http_client: httpx.AsyncClient | None = None
 
 
 # ---------------------------------------------------------------------------
+# Internal signal
+# ---------------------------------------------------------------------------
+
+class _OfflineSignal(Exception):
+    """
+    Raised by _handle_backend_failure when the backend is unreachable and the
+    resolved fail_mode is "allow".  chain.py catches this in _start() and in
+    record_agent_action() to transition the chain to offline mode rather than
+    returning a synthetic dict that is missing fields callers expect (e.g.
+    the "id" key on a chain-create response).
+    """
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -110,8 +128,8 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     POST *data* as JSON to *path* on the configured backend.
 
     On network failure, the resolved fail_mode determines behaviour:
-    ``"deny"`` raises BackendUnavailableError; ``"allow"`` logs a warning and
-    returns a synthetic allow payload so the chain continues offline.
+    ``"deny"`` raises BackendUnavailableError; ``"allow"`` raises
+    _OfflineSignal so chain.py can transition to offline mode cleanly.
     4xx/5xx responses bypass fail_mode and always re-raise.
     """
     config = get_config()
@@ -124,11 +142,11 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
 
     except httpx.TimeoutException:
         msg = f"Backend request timed out after {config.backend_timeout_seconds}s (POST {path})"
-        return _handle_backend_failure(msg, config, action_type)
+        _handle_backend_failure(msg, config, action_type)
 
     except httpx.ConnectError:
         msg = f"Could not connect to ProofRail backend at {config.backend_url} (POST {path})"
-        return _handle_backend_failure(msg, config, action_type)
+        _handle_backend_failure(msg, config, action_type)
 
     except httpx.HTTPStatusError:
         # 4xx / 5xx — re-raise; these are application errors, not transport
@@ -148,11 +166,11 @@ async def _get(path: str, action_type: str | None = None) -> dict:
 
     except httpx.TimeoutException:
         msg = f"Backend request timed out after {config.backend_timeout_seconds}s (GET {path})"
-        return _handle_backend_failure(msg, config, action_type)
+        _handle_backend_failure(msg, config, action_type)
 
     except httpx.ConnectError:
         msg = f"Could not connect to ProofRail backend at {config.backend_url} (GET {path})"
-        return _handle_backend_failure(msg, config, action_type)
+        _handle_backend_failure(msg, config, action_type)
 
     except httpx.HTTPStatusError:
         raise
@@ -162,19 +180,22 @@ def _handle_backend_failure(
     message: str,
     config: ChainConfig,
     action_type: str | None = None,
-) -> dict:
-    """Apply the resolved fail_mode to a transport-level backend failure."""
+) -> None:
+    """
+    Apply the resolved fail_mode to a transport-level backend failure.
+
+    ``"allow"`` raises _OfflineSignal so the caller (chain.py) can transition
+    to offline mode without receiving a synthetic dict that is missing fields
+    (e.g. "id" on a chain-create response).
+    ``"deny"`` raises BackendUnavailableError.
+    """
     effective = config.resolve_fail_mode(action_type)
     if effective == "allow":
         logger.warning(
-            "%s — fail_mode=allow (action_type=%s), continuing without backend",
+            "%s — fail_mode=allow (action_type=%s), transitioning to offline mode",
             message,
             action_type or "unspecified",
         )
-        return {
-            "policy_decision": "allow",
-            "decision_reason": "Backend unavailable — fail open (fail_mode=allow)",
-            "decision_source": "offline_stub",
-        }
+        raise _OfflineSignal(message)
 
     raise BackendUnavailableError(message=message, fail_mode=effective)

@@ -21,11 +21,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timezone
 from types import TracebackType
 
 from proofrail import client as _client
-from proofrail.exceptions import ActionDeniedError, ChainTimeoutError, ProofRailKillSwitchError
+from proofrail.exceptions import (
+    ActionDeniedError,
+    ChainTimeoutError,
+    ProofRailKillSwitchError,
+    _POLICY_REMEDIATION,
+)
+from proofrail.models import PolicyDecision
 from proofrail.sanitization import sanitize_payload
 
 logger = logging.getLogger(__name__)
@@ -34,6 +41,32 @@ logger = logging.getLogger(__name__)
 # organization_id from the API key; this field is validated but ignored.
 _ORG_ID_PLACEHOLDER = "00000000-0000-0000-0000-000000000001"
 
+
+# ---------------------------------------------------------------------------
+# Offline buffer helper
+# ---------------------------------------------------------------------------
+
+def _buffer_event(buffer: list, event_body: dict, max_events: int) -> bool:
+    """
+    Append *event_body* to *buffer* up to *max_events* capacity.
+
+    Returns True if the event was buffered, False if the buffer is full.
+
+    This is a standalone helper (not a Chain method) so the Phase-4 async
+    fast-path event sender can call it directly without a Chain reference.
+    """
+    if len(buffer) >= max_events:
+        logger.warning(
+            "Offline buffer is full (%d events) — dropping event", max_events
+        )
+        return False
+    buffer.append(event_body)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Chain
+# ---------------------------------------------------------------------------
 
 class Chain:
     """
@@ -52,6 +85,7 @@ class Chain:
         self._chain_id: str | None = None
         self._sequence_number: int = 1
         self._offline: bool = False  # True when backend unreachable + fail_mode=allow
+        self._offline_buffer: list[dict] = []
 
     # ------------------------------------------------------------------
     # Properties
@@ -117,7 +151,7 @@ class Chain:
         action_name: str,
         payload: dict | None = None,
         parent_agent_name: str | None = None,
-    ) -> dict:
+    ) -> PolicyDecision:
         """
         Record an agent action on this chain and evaluate it against policy.
 
@@ -136,8 +170,8 @@ class Chain:
 
         Returns
         -------
-        dict
-            The raw policy decision response from the backend.
+        PolicyDecision
+            The typed policy decision from the backend (or offline stub).
 
         Raises
         ------
@@ -164,52 +198,66 @@ class Chain:
         }
 
         if self._offline:
-            # Backend unavailable and fail_mode=allow — skip remote call.
-            logger.debug(
-                "Offline mode: skipping event submission for action '%s'", action_name
-            )
+            # Backend unavailable and fail_mode=allow — buffer the event locally.
+            _buffer_event(self._offline_buffer, event_body, config.offline_buffer_max_events)
             self._sequence_number += 1
-            return {
-                "policy_decision": "allow",
-                "decision_reason": "Offline — fail_mode=allow",
-                "decision_source": "offline_stub",
-            }
+            logger.debug(
+                "Offline mode: buffered event for action '%s' (buffered=%d)",
+                action_name,
+                len(self._offline_buffer),
+            )
+            return PolicyDecision(
+                policy_decision="allow",
+                decision_reason="Offline — fail_mode=allow",
+                decision_source="offline_stub",
+            )
 
-        response = await _client._post(
-            f"/v1/chains/{self._chain_id}/events", event_body,
-            action_type=action_type,
-        )
+        try:
+            response = await _client._post(
+                f"/v1/chains/{self._chain_id}/events", event_body,
+                action_type=action_type,
+            )
+        except _client._OfflineSignal:
+            # Backend went offline mid-chain — transition to offline and buffer.
+            self._offline = True
+            _buffer_event(self._offline_buffer, event_body, config.offline_buffer_max_events)
+            self._sequence_number += 1
+            logger.warning(
+                "Backend went offline mid-chain (id=%s) — switching to offline mode",
+                self._chain_id,
+            )
+            return PolicyDecision(
+                policy_decision="allow",
+                decision_reason="Offline — fail_mode=allow",
+                decision_source="offline_stub",
+            )
 
-        decision = response.get("policy_decision", "allow")
-        reason = response.get("decision_reason", "")
-        source = response.get("decision_source", "backend_evaluation")
+        decision_obj = PolicyDecision.model_validate(response)
 
         logger.debug(
             "Event recorded (chain=%s seq=%d decision=%s)",
             self._chain_id,
             self._sequence_number,
-            decision,
+            decision_obj.policy_decision,
         )
 
         self._sequence_number += 1
 
-        if decision == "deny":
+        if decision_obj.policy_decision == "deny":
             # Kill-switch denials carry a distinct flag so callers can
             # differentiate them from ordinary policy violations.
-            if response.get("kill_switch_active"):
+            if decision_obj.kill_switch_active:
                 raise ProofRailKillSwitchError(
-                    message=reason or "All agent actions are denied: organisation kill switch is active",
-                    reason=response.get("pause_reason"),
+                    message=decision_obj.decision_reason
+                    or "All agent actions are denied: organisation kill switch is active",
+                    reason=decision_obj.pause_reason,
                 )
-            raise ActionDeniedError(
-                message=reason or "Action denied by policy",
-                decision_source=source,
-            )
+            raise _build_action_denied(decision_obj, self._chain_id, self._sequence_number)
 
-        if decision == "require_approval":
+        if decision_obj.policy_decision == "require_approval":
             await self._poll_for_approval()
 
-        return response
+        return decision_obj
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -226,14 +274,36 @@ class Chain:
             "metadata": self.metadata,
         }
 
-        response = await _client._post("/v1/chains", body)
-        self._chain_id = response["id"]
-        logger.debug("Chain started (id=%s name=%s)", self._chain_id, self.name)
+        try:
+            response = await _client._post("/v1/chains", body)
+            self._chain_id = response["id"]
+        except _client._OfflineSignal:
+            # Backend unreachable and fail_mode=allow — generate a local UUID
+            # so the chain can continue offline.  Events are buffered until
+            # connectivity is restored (replay is a future-phase feature).
+            self._chain_id = str(uuid.uuid4())
+            self._offline = True
+            logger.warning(
+                "Backend unreachable at chain start — running offline (id=%s name=%s)",
+                self._chain_id,
+                self.name,
+            )
+
+        logger.debug(
+            "Chain started (id=%s name=%s offline=%s)",
+            self._chain_id, self.name, self._offline,
+        )
 
     async def _complete(self) -> None:
         """Mark the chain as completed on the backend."""
         if self._chain_id is None:
             return  # Never started (offline or error on entry) — nothing to close.
+
+        if self._offline:
+            logger.debug(
+                "Offline mode: skipping chain completion for chain %s", self._chain_id
+            )
+            return
 
         try:
             await _client._post(f"/v1/chains/{self._chain_id}/complete", {})
@@ -287,7 +357,8 @@ class Chain:
             if approval_status in ("denied", "timed_out"):
                 raise ActionDeniedError(
                     message=f"Approval {approval_status} for chain {self._chain_id}",
-                    chain_context=self._chain_id,
+                    chain_context={"chain_id": self._chain_id},
+                    decision_source="backend_evaluation",
                 )
 
             # "pending" or None — keep polling
@@ -301,3 +372,41 @@ class Chain:
             chain_id=self._chain_id,
             timeout_seconds=timeout_seconds,
         )
+
+
+# ---------------------------------------------------------------------------
+# Error construction helper
+# ---------------------------------------------------------------------------
+
+def _build_action_denied(
+    decision: PolicyDecision,
+    chain_id: str | None,
+    sequence_number: int,
+) -> ActionDeniedError:
+    """
+    Construct a fully-populated ActionDeniedError from a PolicyDecision.
+
+    Falls back to the SDK's built-in remediation lookup when the backend does
+    not supply remediation / docs_url fields.
+    """
+    policy_name = decision.policy_name
+    default_remediation: str | None = None
+    default_docs_url: str | None = None
+    if policy_name and policy_name in _POLICY_REMEDIATION:
+        default_remediation, default_docs_url = _POLICY_REMEDIATION[policy_name]
+
+    message = (
+        f"Action denied by policy '{policy_name}'."
+        if policy_name
+        else (decision.decision_reason or "Action denied by policy")
+    )
+
+    return ActionDeniedError(
+        message=message,
+        policy_name=policy_name,
+        condition=decision.decision_reason or None,
+        chain_context={"chain_id": chain_id, "sequence": sequence_number} if chain_id else None,
+        remediation=decision.remediation or default_remediation,
+        docs_url=decision.docs_url or default_docs_url,
+        decision_source=decision.decision_source,
+    )

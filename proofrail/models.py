@@ -21,11 +21,33 @@ class AgentAction(BaseModel):
 
 
 class PolicyDecision(BaseModel):
-    """The governance decision returned by the backend for an agent action."""
+    """
+    The governance decision returned by the backend for an agent action.
 
-    decision: str   # allow | allow_with_flag | require_approval | deny
-    reason: str
-    source: str     # backend_evaluation | local_fast_path | offline_stub
+    Field names match the backend wire format.  Instantiate via
+    ``PolicyDecision.model_validate(response_dict)`` at the point where a
+    backend response dict is first consumed.
+    """
+
+    # Core decision — one of: allow | allow_with_flag | require_approval | deny
+    policy_decision: str
+
+    # Human-readable reason for the decision (empty string when not provided)
+    decision_reason: str = ""
+
+    # Where the decision was made: backend_evaluation | local_fast_path | offline_stub
+    decision_source: str = "backend_evaluation"
+
+    # Present when a specific named policy triggered the decision
+    policy_name: str | None = None
+
+    # Kill-switch fields — set when the organisation kill switch halted the action
+    kill_switch_active: bool = False
+    pause_reason: str | None = None
+
+    # Optional remediation guidance returned by the backend
+    remediation: str | None = None
+    docs_url: str | None = None
 
 
 class ChainConfig(BaseModel):
