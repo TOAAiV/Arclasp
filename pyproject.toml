@@ -6,6 +6,8 @@ build-backend = "hatchling.build"
 name = "proofrail"
 version = "0.1.0"
 description = "AI Agent Governance Layer SDK"
+readme = "README.md"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27.0",
@@ -14,8 +16,29 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+langchain = [
+    "langchain-core>=0.1.0",
+]
+langgraph = [
+    "langgraph>=0.1.0",
+    "langchain-core>=0.1.0",
+]
+crewai = [
+    "crewai>=0.28.0",
+]
 mcp = [
     "mcp>=1.0.0",
+]
+all = [
+    "langchain-core>=0.1.0",
+    "langgraph>=0.1.0",
+    "crewai>=0.28.0",
+    "mcp>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: end-to-end tests that require a running local backend (deselect with '-m not e2e')",
 ]
 
 [tool.hatch.build.targets.wheel]
