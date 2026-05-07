@@ -173,16 +173,38 @@ class Chain:
         Returns
         -------
         PolicyDecision
-            The typed policy decision from the backend (or offline stub).
+            The resolved policy decision.  Three possible outcomes:
+
+            * ``policy_decision="allow"`` — action permitted by policy.
+            * ``policy_decision="allow", decision_source="human_approval"`` —
+              action was initially gated for human review and a reviewer approved
+              it.  ``decision_reason`` will contain the approver's notes when
+              provided.
+            * ``policy_decision="allow", decision_source="offline_stub"`` —
+              backend was unreachable and ``fail_mode="allow"`` is configured.
 
         Raises
         ------
         ActionDeniedError
-            When the policy decision is ``"deny"`` or an approval is denied /
-            times out.
+            When the policy decision is ``"deny"`` or a human approval is
+            denied / times out.
         ChainTimeoutError
             When an ``"approve"`` gate is not resolved within the configured
             timeout window.
+
+        Examples
+        --------
+        >>> async with Chain("checkout") as chain:
+        ...     decision = await chain.record_agent_action(
+        ...         agent_name="payment-agent",
+        ...         action_type="tool_call",
+        ...         action_name="charge_card",
+        ...         payload={"amount_usd": 6000},
+        ...     )
+        ...     # decision.policy_decision is always "allow" here —
+        ...     # if a human approval gate was required, it has already
+        ...     # been resolved before this line is reached.
+        ...     print(decision.decision_source)
         """
         if self._chain_id is None and not self._offline:
             raise RuntimeError("Chain has not been started. Use it as a context manager.")
@@ -276,7 +298,21 @@ class Chain:
             raise _build_action_denied(decision_obj, self._chain_id, self._sequence_number)
 
         if decision_obj.policy_decision == "require_approval":
-            await self._poll_for_approval()
+            approver_notes = await self._poll_for_approval()  # raises if denied or timed out
+            return PolicyDecision(
+                policy_decision="allow",
+                decision_reason=(
+                    f"Approved by human reviewer: {approver_notes}"
+                    if approver_notes
+                    else "Approved by human reviewer"
+                ),
+                decision_source="human_approval",
+                policy_name=decision_obj.policy_name,
+                kill_switch_active=decision_obj.kill_switch_active,
+                pause_reason=decision_obj.pause_reason,
+                remediation=decision_obj.remediation,
+                docs_url=decision_obj.docs_url,
+            )
 
         return decision_obj
 
@@ -334,10 +370,16 @@ class Chain:
             # exception that is already propagating from the with-block body.
             logger.warning("Failed to mark chain %s as completed: %s", self._chain_id, exc)
 
-    async def _poll_for_approval(self) -> None:
+    async def _poll_for_approval(self) -> str | None:
         """
         Poll GET /v1/chains/{chain_id}/approval-status every 5 seconds until
         the approval is resolved or the timeout expires.
+
+        Returns
+        -------
+        str | None
+            The approver's notes/reason if the action was approved, or ``None``
+            if the approver did not leave a note.
 
         Raises
         ------
@@ -370,16 +412,33 @@ class Chain:
                 continue
 
             approval_status = status_response.get("approval_status")
+            approver_notes: str | None = None
+            approvals_list = status_response.get("approvals", [])
+            if approvals_list:
+                approver_notes = approvals_list[0].get("reason") or None
 
             if approval_status == "approved":
                 logger.info("Approval granted for chain %s", self._chain_id)
-                return
+                return approver_notes
 
             if approval_status in ("denied", "timed_out"):
+                policy_name = (
+                    "human_approval_denied" if approval_status == "denied" else "approval_timeout"
+                )
+                default_rem, default_docs = _POLICY_REMEDIATION.get(policy_name, (None, None))
+                condition = (
+                    approver_notes
+                    if approval_status == "denied"
+                    else "Approval was not resolved within the configured timeout window."
+                )
                 raise ActionDeniedError(
                     message=f"Approval {approval_status} for chain {self._chain_id}",
+                    policy_name=policy_name,
+                    condition=condition,
                     chain_context={"chain_id": self._chain_id},
-                    decision_source="backend_evaluation",
+                    decision_source="human_approval",
+                    remediation=default_rem,
+                    docs_url=default_docs,
                 )
 
             # "pending" or None — keep polling

@@ -40,6 +40,12 @@ _POLICY_REMEDIATION: dict[str, tuple[str, str]] = {
         "Increase `default_approval_timeout_hours` in init(), or pre-approve the action.",
         "https://docs.proofrail.ai/policies/approvals",
     ),
+    "human_approval_denied": (
+        "The action was denied by a human approver. Review the denial reason "
+        "(in the 'condition' field) and adjust the action or talk to your approver. "
+        "Repeated denials of similar actions may indicate the policy needs tuning.",
+        "https://docs.proofrail.ai/policies/approvals/denials",
+    ),
 }
 
 
