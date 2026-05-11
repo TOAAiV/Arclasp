@@ -5,6 +5,7 @@ proofrail.models — Shared Pydantic models and data types.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -119,3 +120,89 @@ class ChainConfig(BaseModel):
         if action_type and action_type in self.fail_modes:
             return self.fail_modes[action_type]
         return self.fail_mode
+
+
+# ---------------------------------------------------------------------------
+# SDK read-endpoint response mirror types
+#
+# These mirror the backend's response schemas.  Defined here (not imported
+# from the backend package) so the SDK remains independently installable.
+# ---------------------------------------------------------------------------
+
+class ChainDetail(BaseModel):
+    """
+    Full chain detail returned by the GET /v1/chains/{chain_id} endpoint.
+    Accessed via ``client.get_chain()`` or ``chain.detail()``.
+    """
+    id: str
+    organization_id: str
+    external_chain_id: str | None = None
+    status: str
+    started_at: datetime
+    completed_at: datetime | None = None
+    agents_involved: list = Field(default_factory=list)
+    cumulative_metrics: dict = Field(default_factory=dict)
+    environment: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChainEventDetail(BaseModel):
+    """Single event record from GET /v1/chains/{chain_id}/events."""
+    id: str
+    sequence_number: int
+    agent_name: str
+    parent_agent_name: str | None = None
+    action_type: str
+    action_name: str
+    action_payload: dict = Field(default_factory=dict)
+    action_result: dict | None = None
+    risk_classification: dict = Field(default_factory=dict)
+    policy_decision: str
+    decision_reason: str | None = None
+    decision_source: str
+    evaluation_mode: str | None = None
+    executed_at: datetime | None = None
+    created_at: datetime
+
+
+class ChainEventsResponse(BaseModel):
+    """Paginated event list from GET /v1/chains/{chain_id}/events."""
+    events: list[ChainEventDetail]
+    total: int
+    limit: int
+    offset: int
+
+
+class ChainReceiptResponse(BaseModel):
+    """
+    Audit receipt from GET /v1/chains/{chain_id}/receipt.
+    Accessed via ``client.get_chain_receipt()`` or ``chain.receipt()``.
+    """
+    receipt_number: str
+    summary: str | None = None
+    structured_data: dict = Field(default_factory=dict)
+    signature: str | None = None
+    previous_receipt_hash: str | None = None
+    created_at: datetime
+
+
+class ChainSummary(BaseModel):
+    """Lightweight chain entry in the list returned by GET /v1/chains."""
+    id: str
+    external_chain_id: str | None = None
+    status: str
+    started_at: datetime
+    completed_at: datetime | None = None
+    environment: str
+    agents_involved: list = Field(default_factory=list)
+    event_count: int = 0
+
+
+class ChainListResponse(BaseModel):
+    """Paginated chain list from GET /v1/chains."""
+    chains: list[ChainSummary]
+    total: int
+    limit: int
+    offset: int

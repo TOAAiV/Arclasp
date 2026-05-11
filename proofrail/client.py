@@ -10,7 +10,13 @@ import logging
 import httpx
 
 from proofrail.exceptions import BackendUnavailableError
-from proofrail.models import ChainConfig
+from proofrail.models import (
+    ChainConfig,
+    ChainDetail,
+    ChainEventsResponse,
+    ChainListResponse,
+    ChainReceiptResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +180,124 @@ async def _get(path: str, action_type: str | None = None) -> dict:
 
     except httpx.HTTPStatusError:
         raise
+
+
+# ---------------------------------------------------------------------------
+# Public read API — chain detail, events, receipt, list
+# ---------------------------------------------------------------------------
+
+async def get_chain(chain_id: str) -> ChainDetail:
+    """
+    Fetch full detail for a single chain.
+
+    Parameters
+    ----------
+    chain_id : str
+        The backend-assigned chain UUID string.
+
+    Returns
+    -------
+    ChainDetail
+        Full chain detail including status, metrics, and metadata.
+
+    Raises
+    ------
+    httpx.HTTPStatusError
+        On 404 (chain not found) or 403 (forbidden).
+    """
+    data = await _get(f"/v1/chains/{chain_id}")
+    return ChainDetail.model_validate(data)
+
+
+async def get_chain_events(
+    chain_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    sequence_after: int | None = None,
+) -> ChainEventsResponse:
+    """
+    Fetch a page of events for a chain.
+
+    Parameters
+    ----------
+    chain_id : str
+        The backend-assigned chain UUID string.
+    limit : int
+        Max events per page (1–500).  Default 100.
+    offset : int
+        Pagination offset.  Default 0.
+    sequence_after : int, optional
+        Cursor — return only events with sequence_number > this value.
+
+    Returns
+    -------
+    ChainEventsResponse
+        ``events`` list plus ``total``, ``limit``, ``offset``.
+    """
+    path = f"/v1/chains/{chain_id}/events?limit={limit}&offset={offset}"
+    if sequence_after is not None:
+        path += f"&sequence_after={sequence_after}"
+    data = await _get(path)
+    return ChainEventsResponse.model_validate(data)
+
+
+async def get_chain_receipt(chain_id: str) -> ChainReceiptResponse:
+    """
+    Fetch the audit receipt for a completed chain.
+
+    Parameters
+    ----------
+    chain_id : str
+        The backend-assigned chain UUID string.
+
+    Returns
+    -------
+    ChainReceiptResponse
+        Receipt fields including ``receipt_number``, ``signature``, and
+        ``previous_receipt_hash`` for hash-chain verification.
+
+    Raises
+    ------
+    httpx.HTTPStatusError
+        On 404 if the chain has no receipt yet (check ``chain.status``),
+        or 403 if the caller's org does not own this chain.
+    """
+    data = await _get(f"/v1/chains/{chain_id}/receipt")
+    return ChainReceiptResponse.model_validate(data)
+
+
+async def list_chains(
+    limit: int = 50,
+    offset: int = 0,
+    status: str | None = None,
+    environment: str | None = None,
+) -> ChainListResponse:
+    """
+    Fetch a paginated list of chains for the caller's organisation.
+
+    Parameters
+    ----------
+    limit : int
+        Max chains per page (1–200).  Default 50.
+    offset : int
+        Pagination offset.  Default 0.
+    status : str, optional
+        Filter by chain status, e.g. ``"completed"``, ``"active"``.
+    environment : str, optional
+        Filter by environment, e.g. ``"production"``, ``"development"``.
+
+    Returns
+    -------
+    ChainListResponse
+        ``chains`` list of :class:`ChainSummary` plus ``total``, ``limit``, ``offset``.
+    """
+    path = f"/v1/chains?limit={limit}&offset={offset}"
+    if status is not None:
+        path += f"&status={status}"
+    if environment is not None:
+        path += f"&environment={environment}"
+    data = await _get(path)
+    return ChainListResponse.model_validate(data)
 
 
 def _handle_backend_failure(

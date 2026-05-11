@@ -25,6 +25,8 @@ import uuid
 from datetime import datetime, timezone
 from types import TracebackType
 
+import httpx
+
 from proofrail import client as _client
 from proofrail import fast_path as _fast_path
 from proofrail.exceptions import (
@@ -33,7 +35,12 @@ from proofrail.exceptions import (
     ProofRailKillSwitchError,
     _POLICY_REMEDIATION,
 )
-from proofrail.models import PolicyDecision
+from proofrail.models import (
+    ChainDetail,
+    ChainEventsResponse,
+    ChainReceiptResponse,
+    PolicyDecision,
+)
 from proofrail.sanitization import sanitize_payload
 
 logger = logging.getLogger(__name__)
@@ -315,6 +322,95 @@ class Chain:
             )
 
         return decision_obj
+
+    # ------------------------------------------------------------------
+    # Read helpers — fetch chain state from the backend
+    # ------------------------------------------------------------------
+
+    async def detail(self) -> ChainDetail:
+        """
+        Fetch full detail for this chain from the backend.
+
+        Returns
+        -------
+        ChainDetail
+            Full chain record including status, agents_involved, metrics, etc.
+
+        Raises
+        ------
+        RuntimeError
+            If the chain has not been started yet.
+        httpx.HTTPStatusError
+            On unexpected backend errors.
+        """
+        if self._chain_id is None:
+            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+        return await _client.get_chain(self._chain_id)
+
+    async def events(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        sequence_after: int | None = None,
+    ) -> ChainEventsResponse:
+        """
+        Fetch a paginated list of events recorded on this chain.
+
+        Parameters
+        ----------
+        limit : int
+            Max events per page (1–500).  Default 100.
+        offset : int
+            Pagination offset.  Default 0.
+        sequence_after : int, optional
+            Cursor — return only events with sequence_number > this value.
+
+        Returns
+        -------
+        ChainEventsResponse
+            ``events`` list plus ``total``, ``limit``, ``offset``.
+
+        Raises
+        ------
+        RuntimeError
+            If the chain has not been started yet.
+        """
+        if self._chain_id is None:
+            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+        return await _client.get_chain_events(
+            self._chain_id,
+            limit=limit,
+            offset=offset,
+            sequence_after=sequence_after,
+        )
+
+    async def receipt(self) -> ChainReceiptResponse | None:
+        """
+        Fetch the audit receipt for this chain, if one has been generated.
+
+        Receipts are generated automatically when a chain is completed.  If the
+        chain is still active, this returns ``None`` rather than raising.
+
+        Returns
+        -------
+        ChainReceiptResponse
+            The audit receipt, or ``None`` if none exists yet.
+
+        Raises
+        ------
+        RuntimeError
+            If the chain has not been started yet.
+        httpx.HTTPStatusError
+            On unexpected backend errors (not 404).
+        """
+        if self._chain_id is None:
+            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+        try:
+            return await _client.get_chain_receipt(self._chain_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
 
     # ------------------------------------------------------------------
     # Private helpers
