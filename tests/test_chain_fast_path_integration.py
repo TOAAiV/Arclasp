@@ -240,6 +240,52 @@ async def test_fast_path_event_buffered_for_async_drain():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
+async def test_concurrent_fast_path_no_duplicate_sends():
+    """
+    50 fast-path events fired in a tight loop must arrive at the backend
+    exactly once each — no duplicates, no drops (C-1 regression test).
+
+    Before the single-flight fix, each fast-path event spawned a new drain
+    task; concurrent tasks raced on _offline_buffer[0] causing duplicates and
+    dropped events.
+    """
+    sent_action_names: list[str] = []
+
+    async def mock_post(path, body, action_type=None):
+        if path == "/v1/chains":
+            return _chain_start_response("chain-race-001")
+        if "/events" in path:
+            sent_action_names.append(body.get("action_name", ""))
+            return _allow_response()
+        return {}  # /complete
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        async with Chain("race-test") as chain:
+            for i in range(50):
+                result = await chain.record_agent_action(
+                    agent_name="agent",
+                    action_type="tool_call",
+                    action_name=f"action_{i}",
+                    payload={},
+                )
+                assert result.policy_decision == "allow"
+
+            # Let the drain task(s) run to completion before chain exit.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+    # After chain exit _complete awaits the drain — all 50 must be present.
+    assert len(sent_action_names) == 50, (
+        f"Expected 50 events, got {len(sent_action_names)}. "
+        f"Duplicates: {[n for n in sent_action_names if sent_action_names.count(n) > 1]}"
+    )
+    assert set(sent_action_names) == {f"action_{i}" for i in range(50)}, (
+        f"Missing: {set(f'action_{i}' for i in range(50)) - set(sent_action_names)}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_async_drain_sends_buffered_events():
     """The _drain_buffer_to_backend task empties the buffer after fast-path."""
     event_paths = []

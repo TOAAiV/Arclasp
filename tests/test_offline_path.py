@@ -179,11 +179,15 @@ class TestBufferEventHelper:
         assert result is True
         assert buf == [event]
 
-    def test_returns_false_when_full(self):
-        buf = [{"x": i} for i in range(3)]
-        result = _buffer_event(buf, {"new": "event"}, max_events=3)
-        assert result is False
-        assert len(buf) == 3  # not appended
+    def test_drops_oldest_when_full(self):
+        """When full, oldest event is evicted so the new event is always accepted."""
+        buf = [{"action_name": f"action_{i}"} for i in range(3)]
+        oldest = buf[0].copy()
+        result = _buffer_event(buf, {"action_name": "new_event"}, max_events=3)
+        assert result is True          # always accepted now
+        assert len(buf) == 3           # still at capacity
+        assert oldest not in buf       # oldest was evicted
+        assert buf[-1] == {"action_name": "new_event"}  # new event appended
 
     def test_callable_without_chain(self):
         """Verify the helper is a standalone function importable for Phase 4 use."""

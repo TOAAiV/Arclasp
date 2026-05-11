@@ -56,18 +56,26 @@ _ORG_ID_PLACEHOLDER = "00000000-0000-0000-0000-000000000001"
 
 def _buffer_event(buffer: list, event_body: dict, max_events: int) -> bool:
     """
-    Append *event_body* to *buffer* up to *max_events* capacity.
+    Append *event_body* to *buffer*, evicting the oldest entry when full.
 
-    Returns True if the event was buffered, False if the buffer is full.
+    When the buffer is at capacity, the oldest (index 0) event is dropped and
+    a warning is logged before the new event is appended.  Per spec section 12,
+    oldest events are dropped first so the audit trail stays as current as
+    possible under pressure.
+
+    Always returns True (the event is always accepted).  The bool return is
+    kept for backwards compatibility.
 
     This is a standalone helper (not a Chain method) so the Phase-4 async
     fast-path event sender can call it directly without a Chain reference.
     """
     if len(buffer) >= max_events:
+        dropped = buffer.pop(0)
         logger.warning(
-            "Offline buffer is full (%d events) — dropping event", max_events
+            "Offline buffer full (%d events) — dropped oldest event (action=%s)",
+            max_events,
+            dropped.get("action_name", "unknown"),
         )
-        return False
     buffer.append(event_body)
     return True
 
@@ -95,6 +103,8 @@ class Chain:
         self._offline: bool = False  # True when backend unreachable + fail_mode=allow
         self._offline_buffer: list[dict] = []
         self._cumulative_metrics: dict = {}  # in-process snapshot for fast-path checks
+        # Single-flight drain task — at most one drain coroutine runs at a time.
+        self._drain_task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------
     # Properties
@@ -254,8 +264,12 @@ class Chain:
         )
         if fast_decision is not None:
             # Buffer the event and drain asynchronously — agent is not blocked.
+            # Single-flight: only spawn a new drain task when no task is running.
+            # This prevents concurrent drain tasks from reading the same buffer
+            # entry and sending duplicate events (audit finding C-1).
             _buffer_event(self._offline_buffer, event_body, config.offline_buffer_max_events)
-            asyncio.create_task(_drain_buffer_to_backend(self))
+            if self._drain_task is None or self._drain_task.done():
+                self._drain_task = asyncio.create_task(_drain_buffer_to_backend(self))
             self._sequence_number += 1
             logger.debug(
                 "Fast-path allow for '%s' (chain=%s)", action_name, self._chain_id
@@ -457,6 +471,20 @@ class Chain:
                 "Offline mode: skipping chain completion for chain %s", self._chain_id
             )
             return
+
+        # Flush any pending fast-path drain before marking the chain complete.
+        # Without this, fast-path events buffered near the end of the chain
+        # can be lost if the event loop shuts down before the drain task runs
+        # (audit finding I-6).
+        if self._drain_task is not None and not self._drain_task.done():
+            try:
+                await asyncio.wait_for(self._drain_task, timeout=10.0)
+            except (asyncio.TimeoutError, Exception) as exc:
+                logger.warning(
+                    "Drain task did not finish before chain %s completed: %s",
+                    self._chain_id,
+                    exc,
+                )
 
         try:
             await _client._post(f"/v1/chains/{self._chain_id}/complete", {})
