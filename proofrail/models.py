@@ -192,13 +192,33 @@ class ChainReceiptResponse(BaseModel):
     """
     Audit receipt from GET /v1/chains/{chain_id}/receipt.
     Accessed via ``client.get_chain_receipt()`` or ``chain.receipt()``.
+
+    ``id`` is the receipt's backend UUID.  The current chain-receipt endpoint
+    does not expose it; the field is ``None`` until the backend includes it.
+    When present it can be passed to ``client.verify_receipt(receipt_id)`` to
+    cryptographically confirm the receipt is untampered.
     """
+    id: str | None = None          # backend UUID; included when available
     receipt_number: str
     summary: str | None = None
     structured_data: dict = Field(default_factory=dict)
     signature: str | None = None
     previous_receipt_hash: str | None = None
     created_at: datetime
+
+
+class ReceiptVerifyResponse(BaseModel):
+    """
+    Response from the public GET /v1/receipts/{receipt_id}/verify endpoint.
+
+    ``valid`` is the authoritative answer: True means the receipt's
+    structured_data matches the server-side HMAC; False means tampering was
+    detected.  ``receipt_number`` and ``chain_id`` are included for display.
+    """
+    valid: bool
+    receipt_number: str
+    chain_id: str
+    generated_at: str
 
 
 class ChainSummary(BaseModel):

@@ -28,6 +28,7 @@ from proofrail.models import (
     ChainListResponse,
     ChainReceiptResponse,
     ChainSummary,
+    ReceiptVerifyResponse,
 )
 
 # ---------------------------------------------------------------------------
@@ -334,3 +335,73 @@ async def test_chain_receipt_raises_if_not_started(init_sdk):
     chain = Chain("not-started")
     with pytest.raises(RuntimeError, match="context manager"):
         await chain.receipt()
+
+
+# ---------------------------------------------------------------------------
+# client.verify_receipt — C-3
+# ---------------------------------------------------------------------------
+
+_VERIFY_VALID_PAYLOAD = {
+    "valid": True,
+    "receipt_number": "RCP-ABC123",
+    "chain_id": "00000000-0000-0000-0000-000000000001",
+    "generated_at": _NOW,
+}
+
+_VERIFY_TAMPERED_PAYLOAD = {
+    "valid": False,
+    "receipt_number": "RCP-ABC123",
+    "chain_id": "00000000-0000-0000-0000-000000000001",
+    "generated_at": _NOW,
+}
+
+
+@pytest.mark.asyncio
+async def test_verify_receipt_valid(init_sdk):
+    """verify_receipt returns ReceiptVerifyResponse with valid=True on clean receipt."""
+    receipt_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    with _mock_get(_VERIFY_VALID_PAYLOAD) as mock:
+        result = await _client.verify_receipt(receipt_uuid)
+        mock.assert_called_once_with(f"/v1/receipts/{receipt_uuid}/verify")
+
+    assert isinstance(result, ReceiptVerifyResponse)
+    assert result.valid is True
+    assert result.receipt_number == "RCP-ABC123"
+
+
+@pytest.mark.asyncio
+async def test_verify_receipt_tampered(init_sdk):
+    """verify_receipt returns valid=False when backend detects tampering."""
+    with _mock_get(_VERIFY_TAMPERED_PAYLOAD):
+        result = await _client.verify_receipt("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    assert isinstance(result, ReceiptVerifyResponse)
+    assert result.valid is False
+
+
+@pytest.mark.asyncio
+async def test_chain_verify_receipt_happy_path(init_sdk):
+    """chain.verify_receipt(receipt_id) delegates to client.verify_receipt."""
+    chain = Chain("test-chain")
+    chain._chain_id = "fake-chain-id"
+    receipt_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    mock_response = ReceiptVerifyResponse(
+        valid=True,
+        receipt_number="RCP-XYZ",
+        chain_id="fake-chain-id",
+        generated_at=_NOW,
+    )
+    with patch.object(_client, "verify_receipt", new=AsyncMock(return_value=mock_response)) as mock:
+        result = await chain.verify_receipt(receipt_uuid)
+        mock.assert_called_once_with(receipt_uuid)
+
+    assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_chain_verify_receipt_raises_if_not_started(init_sdk):
+    """chain.verify_receipt() raises RuntimeError when chain has not been started."""
+    chain = Chain("not-started")
+    with pytest.raises(RuntimeError, match="context manager"):
+        await chain.verify_receipt("some-uuid")

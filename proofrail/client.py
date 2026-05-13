@@ -16,6 +16,7 @@ from proofrail.models import (
     ChainEventsResponse,
     ChainListResponse,
     ChainReceiptResponse,
+    ReceiptVerifyResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -264,6 +265,36 @@ async def get_chain_receipt(chain_id: str) -> ChainReceiptResponse:
     """
     data = await _get(f"/v1/chains/{chain_id}/receipt")
     return ChainReceiptResponse.model_validate(data)
+
+
+async def verify_receipt(receipt_id: str) -> ReceiptVerifyResponse:
+    """
+    Verify a receipt's signature against the backend's signing key.
+
+    Calls the public (no auth required) ``GET /v1/receipts/{id}/verify``
+    endpoint.  HMAC validation is performed server-side; the signing secret is
+    never shared with the SDK.
+
+    Parameters
+    ----------
+    receipt_id : str
+        The receipt's backend UUID.  Obtain it from the receipts list endpoint
+        (``GET /v1/receipts``) or from ``ChainReceiptResponse.id`` when the
+        backend chain-receipt endpoint exposes it.
+
+    Returns
+    -------
+    ReceiptVerifyResponse
+        ``valid=True`` means the receipt's structured_data matches the
+        server-side HMAC.  ``valid=False`` means tampering was detected.
+
+    Raises
+    ------
+    httpx.HTTPStatusError
+        On 404 (receipt not found) or other HTTP errors.
+    """
+    data = await _get(f"/v1/receipts/{receipt_id}/verify")
+    return ReceiptVerifyResponse.model_validate(data)
 
 
 async def list_chains(
