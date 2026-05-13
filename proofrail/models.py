@@ -9,6 +9,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from proofrail._constants import (
+    DEFAULT_SENSITIVE_FIELD_PATTERNS,
+    DEFAULT_SENSITIVE_VALUE_PATTERNS,
+)
+
 
 class AgentAction(BaseModel):
     """Represents a single action taken by an agent within a chain."""
@@ -83,8 +88,16 @@ class ChainConfig(BaseModel):
     offline_buffer_max_events: int = 100
 
     # --- Sanitization ---
+    # Field-name patterns — any key matching (case-insensitive substring) is redacted.
+    # Defaults are the complete v2 spec section 12 set.  Extend without replacing:
+    #   proofrail.init(sensitive_field_patterns=[*DEFAULT_SENSITIVE_FIELD_PATTERNS, "my_secret"])
     sensitive_field_patterns: list[str] = Field(
-        default_factory=lambda: ["api_key", "password", "secret", "token"]
+        default_factory=lambda: list(DEFAULT_SENSITIVE_FIELD_PATTERNS)
+    )
+    # Value-prefix patterns — any string value starting with one of these is
+    # redacted regardless of its key name (catches embedded API keys).
+    sensitive_value_patterns: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_SENSITIVE_VALUE_PATTERNS)
     )
     max_payload_string_length: int = 1000
 

@@ -57,16 +57,17 @@ from __future__ import annotations
 
 import logging
 
+from proofrail._constants import DEFAULT_SENSITIVE_FIELD_PATTERNS
+
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Sensitive field patterns — verbatim from backend policy_engine.py
+# Sensitive field patterns — derived from the shared constant (v2 spec § 12)
+# Sourced from _constants.py so sanitization.py and policies.py stay in sync.
 # ---------------------------------------------------------------------------
 
-_SENSITIVE_PATTERNS: frozenset[str] = frozenset(
-    ["api_key", "password", "secret", "token", "ssn", "credit_card"]
-)
+_SENSITIVE_PATTERNS: frozenset[str] = frozenset(DEFAULT_SENSITIVE_FIELD_PATTERNS)
 
 
 # ---------------------------------------------------------------------------
