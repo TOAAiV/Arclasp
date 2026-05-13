@@ -115,6 +115,7 @@ def init_sdk():
     proofrail.init(
         api_key="prail_testkey123",
         backend_url="http://test-backend",
+        environment="development",
         fail_mode="deny",
     )
     yield
@@ -431,6 +432,7 @@ async def test_reinit_closes_old_http_client():
     proofrail.init(
         api_key="prail_newkey456",
         backend_url="http://test-backend-2",
+        environment="development",
     )
 
     # Allow the event loop to run pending tasks (aclose was fire-and-forget).
@@ -438,3 +440,57 @@ async def test_reinit_closes_old_http_client():
 
     old_client.aclose.assert_called_once()
     assert _client._http_client is not old_client
+
+
+# ---------------------------------------------------------------------------
+# HTTP-in-production warning (I-7)
+# ---------------------------------------------------------------------------
+
+import warnings as _warnings_mod
+
+
+def test_init_warns_on_http_in_production():
+    """
+    proofrail.init() must emit a UserWarning when environment='production'
+    and backend_url starts with 'http://'.
+    """
+    with _warnings_mod.catch_warnings(record=True) as caught:
+        _warnings_mod.simplefilter("always")
+        proofrail.init(
+            api_key="prail_test_warn",
+            backend_url="http://insecure-backend",
+            environment="production",
+        )
+
+    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+    assert len(user_warnings) == 1
+    assert "plaintext HTTP" in str(user_warnings[0].message)
+    assert "production" in str(user_warnings[0].message)
+
+
+def test_init_no_warn_on_https_in_production():
+    """No warning when backend_url uses https:// in production."""
+    with _warnings_mod.catch_warnings(record=True) as caught:
+        _warnings_mod.simplefilter("always")
+        proofrail.init(
+            api_key="prail_test_no_warn",
+            backend_url="https://secure-backend",
+            environment="production",
+        )
+
+    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+    assert len(user_warnings) == 0
+
+
+def test_init_no_warn_on_http_in_development():
+    """No warning when backend_url uses http:// but environment is not 'production'."""
+    with _warnings_mod.catch_warnings(record=True) as caught:
+        _warnings_mod.simplefilter("always")
+        proofrail.init(
+            api_key="prail_test_dev",
+            backend_url="http://localhost:8000",
+            environment="development",
+        )
+
+    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+    assert len(user_warnings) == 0

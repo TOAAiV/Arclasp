@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import warnings
 from urllib.parse import urlencode
 
 import httpx
@@ -108,6 +109,20 @@ def init(**kwargs) -> ChainConfig:
             "Content-Type": "application/json",
         },
     )
+
+    # Warn loudly when plaintext HTTP is used against a production environment.
+    # Governance audit data sent over HTTP is vulnerable to interception.
+    if (
+        _config.environment == "production"
+        and _config.backend_url.startswith("http://")
+    ):
+        warnings.warn(
+            f"ProofRail SDK: backend_url uses plaintext HTTP ({_config.backend_url!r}) "
+            "in environment='production'. All audit data will be transmitted unencrypted. "
+            "Switch to an https:// URL for production deployments.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     logger.debug("ProofRail SDK initialized (environment=%s)", _config.environment)
     return _config
