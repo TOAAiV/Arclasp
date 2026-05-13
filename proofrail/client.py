@@ -6,6 +6,7 @@ low-level HTTP transport to the ProofRail backend.
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlencode
 
 import httpx
 
@@ -235,9 +236,10 @@ async def get_chain_events(
     ChainEventsResponse
         ``events`` list plus ``total``, ``limit``, ``offset``.
     """
-    path = f"/v1/chains/{chain_id}/events?limit={limit}&offset={offset}"
+    params: dict = {"limit": limit, "offset": offset}
     if sequence_after is not None:
-        path += f"&sequence_after={sequence_after}"
+        params["sequence_after"] = sequence_after
+    path = f"/v1/chains/{chain_id}/events?{urlencode(params)}"
     data = await _get(path)
     return ChainEventsResponse.model_validate(data)
 
@@ -322,11 +324,12 @@ async def list_chains(
     ChainListResponse
         ``chains`` list of :class:`ChainSummary` plus ``total``, ``limit``, ``offset``.
     """
-    path = f"/v1/chains?limit={limit}&offset={offset}"
+    params: dict = {"limit": limit, "offset": offset}
     if status is not None:
-        path += f"&status={status}"
+        params["status"] = status
     if environment is not None:
-        path += f"&environment={environment}"
+        params["environment"] = environment
+    path = f"/v1/chains?{urlencode(params)}"
     data = await _get(path)
     return ChainListResponse.model_validate(data)
 
