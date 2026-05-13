@@ -105,6 +105,21 @@ def govern(
         If ``crewai`` is not installed.
     TypeError
         If the object does not have a ``.kickoff`` method.
+
+    Known limitation — post-execution governance only
+    --------------------------------------------------
+    ProofRail records CrewAI task events *after* each task completes (Strategy A
+    uses ``task_callback``/``after_task_callback``; Strategy B wraps
+    ``Agent.execute_task`` and records the result on exit).  This means a
+    ``deny`` decision cannot prevent a task from executing — it surfaces as an
+    ``ActionDeniedError`` that halts the *next* stage of the workflow, not the
+    task itself.
+
+    Pre-execution governance (intercepting before ``execute_task`` is called
+    and blocking on a policy decision before execution starts) requires either
+    a synchronous policy-decision API or native CrewAI middleware support that
+    does not yet exist in the public CrewAI SDK.  See BACKLOG.md item B-2 for
+    the investigation note.
     """
     try:
         import crewai  # noqa: F401
