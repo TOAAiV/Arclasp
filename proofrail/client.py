@@ -5,6 +5,7 @@ low-level HTTP transport to the ProofRail backend.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from urllib.parse import urlencode
 
@@ -85,10 +86,20 @@ def init(**kwargs) -> ChainConfig:
 
     _config = ChainConfig(**kwargs)
 
-    # Rebuild the HTTP client whenever init() is called so that base_url,
-    # timeout, and auth header all stay in sync with the new config.
-    # Can't await the old client's aclose() here (sync function), so we
-    # replace it and let GC handle cleanup.
+    # Close the old HTTP client before replacing it so we don't leak open
+    # TCP connections and file descriptors on re-init.
+    _old_client = _http_client
+    if _old_client is not None:
+        try:
+            loop = asyncio.get_running_loop()
+            # Inside an async context — schedule close as a fire-and-forget task.
+            loop.create_task(_old_client.aclose())
+        except RuntimeError:
+            # No running event loop — close synchronously via a temporary loop.
+            asyncio.run(_old_client.aclose())
+
+    # Rebuild the HTTP client so that base_url, timeout, and auth header all
+    # stay in sync with the new config.
     _http_client = httpx.AsyncClient(
         base_url=_config.backend_url,
         timeout=httpx.Timeout(_config.backend_timeout_seconds),

@@ -405,3 +405,36 @@ async def test_chain_verify_receipt_raises_if_not_started(init_sdk):
     chain = Chain("not-started")
     with pytest.raises(RuntimeError, match="context manager"):
         await chain.verify_receipt("some-uuid")
+
+
+# ---------------------------------------------------------------------------
+# client.init() re-init closes old HTTP client (I-5)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_reinit_closes_old_http_client():
+    """
+    Calling proofrail.init() a second time must close the old httpx.AsyncClient
+    so that TCP connections and file descriptors are released.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    # First init — already done by the autouse fixture (init_sdk).
+    old_client = _client._http_client
+    assert old_client is not None
+
+    # Patch aclose on the *existing* client instance so we can verify it is called.
+    old_client.aclose = AsyncMock()
+
+    # Second init with a different api_key — should schedule close of old_client.
+    proofrail.init(
+        api_key="prail_newkey456",
+        backend_url="http://test-backend-2",
+    )
+
+    # Allow the event loop to run pending tasks (aclose was fire-and-forget).
+    await asyncio.sleep(0)
+
+    old_client.aclose.assert_called_once()
+    assert _client._http_client is not old_client
