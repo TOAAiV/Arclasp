@@ -167,7 +167,7 @@ class _AsLangChainCallback:
         # Dynamically create a concrete subclass that holds our proofrail_callback
         # reference and overrides the relevant handler methods.
         cls = type(
-            "_ConcreteProofRailCallback",
+            "_ProofRailNodeEventHandler",
             (base,),
             {
                 "__init__": lambda self_inner, cb: setattr(self_inner, "_proofrail", cb),

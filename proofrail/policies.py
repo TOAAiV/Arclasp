@@ -393,9 +393,9 @@ def evaluate_policy(
     risk_score: int = risk_classification.get("risk_score", 0)
     cumulative_usd: float = cumulative_metrics.get("financial_exposure_usd", 0.0)
 
-    # ======================================================================
-    # HARD DENIES
-    # ======================================================================
+    # ---------------------------------------------------------------------------
+    # Hard denies
+    # ---------------------------------------------------------------------------
 
     if "delete" in aname and org_config.get("environment") == "production":
         return _decision("deny", "Production delete blocked")
@@ -413,9 +413,9 @@ def evaluate_policy(
     if "iam" in aname or "permission" in aname:
         return _decision("deny", "IAM/permission modification blocked")
 
-    # ======================================================================
-    # APPROVAL TRIGGERS
-    # ======================================================================
+    # ---------------------------------------------------------------------------
+    # Approval triggers
+    # ---------------------------------------------------------------------------
 
     single_amount: float = _extract_numeric(payload, ["amount", "value"]) or 0.0
     financial_threshold: float = float(
@@ -456,9 +456,9 @@ def evaluate_policy(
             f"High-risk agent '{agent_name}' action requires approval",
         )
 
-    # ======================================================================
-    # LOG FLAGS
-    # ======================================================================
+    # ---------------------------------------------------------------------------
+    # Audit flags
+    # ---------------------------------------------------------------------------
 
     if "write" in categories:
         return _decision("allow_with_flag", "Write operation flagged for audit")
@@ -469,9 +469,9 @@ def evaluate_policy(
             f"Medium risk score ({risk_score}/100) flagged for review",
         )
 
-    # ======================================================================
-    # DEFAULT ALLOW
-    # ======================================================================
+    # ---------------------------------------------------------------------------
+    # Default allow
+    # ---------------------------------------------------------------------------
 
     return _decision("allow", "Action permitted by policy")
 
