@@ -160,7 +160,7 @@ class BackendUnavailableError(Exception):
     def __init__(self, message: str, fail_mode: str = "deny") -> None:
         self.message = message
         self.fail_mode = fail_mode
-        super().__init__(f"BackendUnavailableError: {message} (fail_mode={fail_mode})")
+        super().__init__(f"{message} (fail_mode={fail_mode})")
 
 
 class ChainTimeoutError(Exception):
@@ -173,7 +173,7 @@ class ChainTimeoutError(Exception):
         self.chain_id = chain_id
         self.timeout_seconds = timeout_seconds
         super().__init__(
-            f"ChainTimeoutError: chain '{chain_id}' timed out after {timeout_seconds}s"
+            f"chain '{chain_id}' timed out after {timeout_seconds}s"
         )
 
 

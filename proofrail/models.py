@@ -62,32 +62,25 @@ class ChainConfig(BaseModel):
     and stored as a module-level singleton.
     """
 
-    # --- Required ---
     api_key: str
 
-    # --- Environment ---
     environment: str = "production"
     backend_url: str = "http://localhost:8000"
 
-    # --- Policy thresholds ---
     financial_approval_threshold_usd: float = 5000.0
     external_domains_allowlist: list[str] = Field(default_factory=list)
     high_risk_agents: list[str] = Field(default_factory=list)
     default_approval_timeout_hours: int = 24
     fallback_approvers: list[str] = Field(default_factory=list)
 
-    # --- Failure behaviour ---
     fail_mode: str = "deny"           # "deny" | "allow" — global default
     # Per-action-class overrides.  Keys are action_type strings (e.g.
     # "tool_call", "llm_inference"); values are "deny" or "allow".
     # When an action_type is present here it takes precedence over fail_mode.
     fail_modes: dict[str, str] = Field(default_factory=dict)
     backend_timeout_seconds: int = 5
-
-    # --- Offline / buffering ---
     offline_buffer_max_events: int = 100
 
-    # --- Sanitization ---
     # Field-name patterns — any key matching (case-insensitive substring) is redacted.
     # Defaults are the complete v2 spec section 12 set.  Extend without replacing:
     #   proofrail.init(sensitive_field_patterns=[*DEFAULT_SENSITIVE_FIELD_PATTERNS, "my_secret"])
@@ -101,7 +94,6 @@ class ChainConfig(BaseModel):
     )
     max_payload_string_length: int = 1000
 
-    # --- Local optimisations ---
     enable_local_fast_path: bool = True
     cumulative_financial_threshold_usd: float = 10000.0
 

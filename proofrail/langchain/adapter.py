@@ -1,8 +1,8 @@
 """
 proofrail.langchain.adapter — Governance wrapper for LangChain chains and agents.
 
-3-line integration pattern
---------------------------
+Quick start
+-----------
     import proofrail
     from proofrail.langchain import govern
 

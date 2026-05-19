@@ -597,7 +597,7 @@ def process_action_local(
         chain_context=chain_context,
     )
 
-    logger.info(
+    logger.debug(
         "Risk classified for agent=%s action=%s: score=%d categories=%s",
         agent_name,
         action_name,
@@ -632,7 +632,7 @@ def process_action_local(
     true_decision: str = raw_decision["decision"]
     true_reason: str = raw_decision["reason"]
 
-    logger.info(
+    logger.debug(
         "Policy decision for agent=%s action=%s: %s — %s [mode=%s]",
         agent_name,
         action_name,

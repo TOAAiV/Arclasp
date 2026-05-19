@@ -1,8 +1,8 @@
 """
 proofrail.crewai.adapter — Governance wrapper for CrewAI Crew objects.
 
-3-line integration pattern
---------------------------
+Quick start
+-----------
     import proofrail
     from proofrail.crewai import govern
 

@@ -1,8 +1,8 @@
 """
 proofrail.langgraph.adapter — Governance wrapper for compiled LangGraph graphs.
 
-3-line integration pattern
---------------------------
+Quick start
+-----------
     import proofrail
     from proofrail.langgraph import govern
 
@@ -334,6 +334,3 @@ class GovernedGraph:
             f"GovernedGraph(chain_name={self._chain_name!r}, "
             f"graph={self._graph!r})"
         )
-
-
-# _merge_config is imported from proofrail._utils (shared with langchain adapter)
