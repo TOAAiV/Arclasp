@@ -64,8 +64,7 @@ def _buffer_event(buffer: list, event_body: dict, max_events: int) -> bool:
     oldest events are dropped first so the audit trail stays as current as
     possible under pressure.
 
-    Always returns True (the event is always accepted).  The bool return is
-    kept for backwards compatibility.
+    Always returns True (the event is always accepted).
 
     This is a standalone helper (not a Chain method) so the Phase-4 async
     fast-path event sender can call it directly without a Chain reference.

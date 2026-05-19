@@ -3,8 +3,8 @@ proofrail.fast_path — Low-latency local policy bypass for obviously-safe actio
 
 For agent actions that are clearly within policy (low risk score, no sensitive
 categories, far from any approval threshold), the SDK can decide locally without
-incurring a backend round-trip.  This reduces latency from 50-200ms to under
-5ms for roughly 70-80% of typical agent workloads.
+incurring a backend round-trip.  This is designed to handle the majority of
+low-risk actions locally, avoiding a network call entirely for those cases.
 
 How it works
 ------------

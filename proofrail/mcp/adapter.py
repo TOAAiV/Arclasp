@@ -154,10 +154,8 @@ class ProofRailMcpAdapter:
                 "instead of install()."
             )
 
-        adapter = self  # capture for closure
-
         async def _wrapped(tool_name: str, arguments: dict) -> Any:
-            return await adapter.handle_tool_call(tool_name, arguments, original)
+            return await self.handle_tool_call(tool_name, arguments, original)
 
         setattr(server, _CALL_TOOL_HANDLER_ATTR, _wrapped)
         logger.info(

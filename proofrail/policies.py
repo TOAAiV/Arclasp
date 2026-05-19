@@ -102,12 +102,7 @@ def _add_category(categories: list[str], category: str) -> None:
 
 
 def _decision(decision: str, reason: str) -> dict:
-    """Return a canonical policy-decision dict.
-
-    ``source`` is ``"backend_evaluation"`` — identical to the backend — so
-    that parity tests comparing :func:`evaluate_policy` output directly pass
-    without special-casing the source field.
-    """
+    """Return a canonical policy-decision dict with source="backend_evaluation"."""
     return {
         "decision": decision,
         "reason": reason,
@@ -505,17 +500,10 @@ def process_action_local(
     Mirrors ``backend.app.services.policy_engine.process_action``, replacing
     every DB-bound operation with a caller-supplied input:
 
-    +-----------------------------------+----------------------------+
-    | Backend DB operation              | SDK parameter              |
-    +===================================+============================+
-    | ``check_kill_switch(db, org_id)`` | ``kill_switch_active``     |
-    +-----------------------------------+----------------------------+
-    | ``check_monthly_budget(db, ...)`` | ``monthly_budget_exceeded``|
-    +-----------------------------------+----------------------------+
-    | ``check_active_exception(db, ...)`` | ``active_exception_id``  |
-    +-----------------------------------+----------------------------+
-    | ``update_chain_metrics(db, ...)`` | (done internally, in-mem) |
-    +-----------------------------------+----------------------------+
+    - ``check_kill_switch``       → ``kill_switch_active``
+    - ``check_monthly_budget``    → ``monthly_budget_exceeded``
+    - ``check_active_exception``  → ``active_exception_id``
+    - ``update_chain_metrics``    → done in-memory internally
 
     The caller is responsible for supplying accurate values and for persisting
     ``updated_cumulative_metrics`` from the returned dict if needed.

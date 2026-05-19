@@ -241,6 +241,3 @@ class GovernedChain:
             f"agent_name={self._agent_name!r}, "
             f"chain={self._chain!r})"
         )
-
-
-# _merge_config is imported from proofrail._utils (shared with langgraph adapter)

@@ -194,10 +194,9 @@ class GovernedCrew:
                 else:
                     # Older CrewAI only has a sync kickoff — run it in a
                     # thread pool so we don't block the event loop.
-                    _inputs = inputs  # capture for lambda
                     result = await loop.run_in_executor(
                         None,
-                        lambda: self._crew.kickoff(_inputs),
+                        lambda: self._crew.kickoff(inputs),
                     )
             finally:
                 _restore_instrumentation(patch_records)
