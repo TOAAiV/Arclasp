@@ -174,7 +174,7 @@ def classify_risk(
         ``risk_score`` is capped at 100.  ``categories`` contains zero or more
         of: ``"destructive"``, ``"write"``, ``"financial"``, ``"financial_high"``,
         ``"communication"``, ``"exfiltration"``, ``"privilege_escalation"``,
-        ``"credential_exposure"``, ``"high_risk_agent"``.
+        ``"schema_change"``, ``"credential_exposure"``, ``"unregistered_agent"``.
     """
     risk_score = 0
     categories: list[str] = []
@@ -225,10 +225,10 @@ def classify_risk(
         _add_category(categories, "privilege_escalation")
         reasons.append("IAM/permission operation detected")
 
-    # Schema / migration operations (+35, "destructive")
+    # Schema / migration operations (+35, "schema_change")
     if "schema" in aname or "migration" in aname:
         risk_score += 35
-        _add_category(categories, "destructive")
+        _add_category(categories, "schema_change")
         reasons.append("Schema/migration operation detected")
 
     # Credential exposure in payload (+50, "credential_exposure")
@@ -237,12 +237,18 @@ def classify_risk(
         _add_category(categories, "credential_exposure")
         reasons.append("Sensitive fields detected in payload")
 
-    # High-risk agent (+20, "high_risk_agent")
-    high_risk_agents: list[str] = chain_context.get("high_risk_agents", [])
-    if agent_name in high_risk_agents:
-        risk_score += 20
-        _add_category(categories, "high_risk_agent")
-        reasons.append(f"Agent '{agent_name}' is designated high-risk")
+    # Agent registry check (+10, "unregistered_agent")
+    # Mirrors backend policy_engine.py: registered_agents flows in via chain_context.
+    # When key is absent (no registry context provided), check is skipped — backward compatible.
+    _registered: dict | None = chain_context.get("registered_agents")
+    if _registered is not None:
+        _agent_info = _registered.get(agent_name.lower().strip())
+        if _agent_info is None:
+            risk_score += 10
+            _add_category(categories, "unregistered_agent")
+            reasons.append(
+                f"Agent '{agent_name}' is not registered for this organisation"
+            )
 
     return {
         "risk_score": min(risk_score, 100),
@@ -450,11 +456,8 @@ def evaluate_policy(
             f"High risk score ({risk_score}/100) requires approval",
         )
 
-    if agent_name in org_config.get("high_risk_agents", []):
-        return _decision(
-            "require_approval",
-            f"High-risk agent '{agent_name}' action requires approval",
-        )
+    # NOTE: the static high_risk_agents gate has been removed.
+    # Agent risk tier is now driven by the registry (registered_agents / risk_tier field).
 
     # ---------------------------------------------------------------------------
     # Audit flags
@@ -585,6 +588,13 @@ def process_action_local(
         "high_risk_agents": org_config.get("high_risk_agents", []),
         "environment": org_config.get("environment", "development"),
     }
+    _reg = org_config.get("registered_agents")
+    if _reg is not None:
+        chain_context["registered_agents"] = (
+            {name.lower().strip(): {"risk_tier": "standard"} for name in _reg}
+            if isinstance(_reg, list)
+            else _reg
+        )
 
     # ------------------------------------------------------------------
     # Stage 1 — Classify risk

@@ -93,7 +93,12 @@ def is_fast_path_eligible(
         return False, "production environment always uses backend"
 
     # Criterion 3 — risk score and category gate
-    chain_context = {"high_risk_agents": config.high_risk_agents}
+    chain_context: dict = {"high_risk_agents": config.high_risk_agents}
+    if config.registered_agents is not None:
+        chain_context["registered_agents"] = {
+            name.lower().strip(): {"risk_tier": "standard"}
+            for name in config.registered_agents
+        }
     risk = classify_risk(action_type, action_name, payload, agent_name, chain_context)
     risk_score: int = risk["risk_score"]
     categories: list[str] = risk["categories"]
@@ -167,6 +172,7 @@ def evaluate_fast_path(
         "financial_approval_threshold_usd": config.financial_approval_threshold_usd,
         "cumulative_threshold_usd": config.cumulative_financial_threshold_usd,
         "high_risk_agents": config.high_risk_agents,
+        "registered_agents": config.registered_agents,
     }
 
     local_result = process_action_local(

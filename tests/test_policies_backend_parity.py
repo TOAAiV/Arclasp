@@ -90,7 +90,11 @@ def _call_backend_evaluate(action_type, action_name, payload, agent_name,
 def _assert_classify_parity(action_type, action_name, payload, agent_name,
                               chain_context=None):
     """Assert SDK classify_risk == backend classify_risk for given inputs."""
-    ctx = chain_context or {}
+    ctx = dict(chain_context or {})
+    # Provide registered_agents so both sides agree on registration status.
+    # Tests that want "all unregistered" behaviour pass registered_agents={} explicitly.
+    if "registered_agents" not in ctx:
+        ctx["registered_agents"] = {agent_name.lower(): {"risk_tier": "standard"}}
     sdk_result = _sdk_classify_risk(action_type, action_name, payload, agent_name, ctx)
     backend_result = _call_backend_classify(action_type, action_name, payload, agent_name, ctx)
 
@@ -176,9 +180,12 @@ class TestClassifyRiskParity:
         _assert_classify_parity("tool_call", "run_schema_migration", {}, "agent")
 
     def test_high_risk_agent(self):
+        # Backend classify_risk no longer scores high_risk_agents — that gate
+        # lives in evaluate_policy only. Both sides produce unregistered_agent
+        # when the agent is absent from registered_agents.
         _assert_classify_parity(
             "tool_call", "get_data", {}, "risky-bot",
-            chain_context={"high_risk_agents": ["risky-bot"]},
+            chain_context={"high_risk_agents": ["risky-bot"], "registered_agents": {}},
         )
 
     def test_url_in_payload_exfiltration(self):

@@ -83,6 +83,11 @@ class ChainConfig(BaseModel):
     financial_approval_threshold_usd: float = 5000.0
     external_domains_allowlist: list[str] = Field(default_factory=list)
     high_risk_agents: list[str] = Field(default_factory=list)
+    # Optional list of agent names considered registered in this org.
+    # If provided, classify_risk applies +10 / "unregistered_agent" to any
+    # agent NOT in this list. None = skip the check (default, backward-compatible).
+    # Real-time registry sync from backend deferred to v2.1.
+    registered_agents: list[str] | None = None
     default_approval_timeout_hours: int = 24
     fallback_approvers: list[str] = Field(default_factory=list)
 

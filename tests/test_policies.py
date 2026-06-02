@@ -84,20 +84,6 @@ class TestClassifyRisk:
         assert "credential_exposure" in r["categories"]
         assert r["risk_score"] >= 50
 
-    def test_high_risk_agent_category(self):
-        r = classify_risk(
-            "tool_call", "get_data", {}, "danger-agent",
-            {"high_risk_agents": ["danger-agent"]}
-        )
-        assert "high_risk_agent" in r["categories"]
-
-    def test_agent_not_in_high_risk_list_no_category(self):
-        r = classify_risk(
-            "tool_call", "get_data", {}, "normal-agent",
-            {"high_risk_agents": ["other-agent"]}
-        )
-        assert "high_risk_agent" not in r["categories"]
-
     def test_all_categories_score_caps_at_100(self):
         # delete (+40) + financial_high (+50) + credential (+50) = 140 → capped at 100
         r = classify_risk(
@@ -261,14 +247,6 @@ class TestEvaluatePolicy:
         risk = {"categories": [], "risk_score": 75}
         result = evaluate_policy(
             "tool_call", "action", {}, "agent", risk, {}, {}
-        )
-        assert result["decision"] == "require_approval"
-
-    def test_approval_high_risk_agent(self):
-        risk = {"categories": [], "risk_score": 0}
-        result = evaluate_policy(
-            "tool_call", "action", {}, "risky-agent", risk, {},
-            {"high_risk_agents": ["risky-agent"]},
         )
         assert result["decision"] == "require_approval"
 
