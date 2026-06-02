@@ -20,6 +20,7 @@ from proofrail.client import init
 from proofrail.exceptions import (
     ActionDeniedError,
     BackendUnavailableError,
+    ChainAutoPausedError,
     ChainTimeoutError,
     PolicyViolationError,
     ProofRailKillSwitchError,
@@ -32,6 +33,7 @@ __all__ = [
     "Chain",
     "ActionDeniedError",
     "BackendUnavailableError",
+    "ChainAutoPausedError",
     "ChainTimeoutError",
     "PolicyViolationError",
     "ProofRailKillSwitchError",

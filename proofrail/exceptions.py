@@ -211,3 +211,55 @@ class ProofRailKillSwitchError(Exception):
         if self.reason:
             lines.append(f"  Reason       : {self.reason}")
         return "\n".join(lines)
+
+
+class ChainAutoPausedError(ProofRailPolicyError):
+    """
+    Raised when the backend reports ``auto_paused=True`` on a chain event
+    response.  This means the chain has been halted by the backend's runaway-
+    action limiter — no further events can be recorded until an operator
+    resumes or explicitly terminates the chain.
+
+    Catching this exception lets callers stop processing gracefully and surface
+    a clear error rather than receiving cascading ``409 CONFLICT`` responses
+    from every subsequent ``record_agent_action`` call.
+
+    Attributes
+    ----------
+    chain_id : str | None
+        The chain that was auto-paused.  Use this to construct the resume URL:
+        ``POST /v1/chains/{chain_id}/resume``.
+    reason : str | None
+        The decision reason returned by the backend for the triggering event,
+        if the backend included one.
+    """
+
+    def __init__(
+        self,
+        message: str = (
+            "Chain has been auto-paused by the backend due to a runaway-limit trigger. "
+            "No further events can be recorded until the chain is resumed."
+        ),
+        chain_id: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        self.chain_id = chain_id
+        self.reason = reason
+        resume_hint = (
+            f"POST /v1/chains/{chain_id}/resume to resume the chain, "
+            "or contact your org admin to investigate the runaway trigger."
+            if chain_id
+            else (
+                "POST /v1/chains/{chain_id}/resume to resume the chain, "
+                "or contact your org admin to investigate the runaway trigger."
+            )
+        )
+        super().__init__(
+            message=message,
+            policy_name="auto_pause",
+            condition=reason,
+            chain_context={"chain_id": chain_id} if chain_id else None,
+            remediation=resume_hint,
+            docs_url="https://docs.proofrail.ai/policies/runaway-limits",
+            decision_source="backend_evaluation",
+        )

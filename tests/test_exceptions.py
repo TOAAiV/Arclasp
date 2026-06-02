@@ -6,6 +6,7 @@ import pytest
 
 from proofrail.exceptions import (
     ActionDeniedError,
+    ChainAutoPausedError,
     PolicyViolationError,
     ProofRailPolicyError,
 )
@@ -100,3 +101,69 @@ class TestStr:
     def test_str_prefix_matches_class_name(self):
         assert str(ActionDeniedError(message="x")).startswith("ActionDeniedError:")
         assert str(PolicyViolationError(message="x")).startswith("PolicyViolationError:")
+
+
+class TestChainAutoPausedError:
+    """ChainAutoPausedError — new exception for CD-04 auto_paused contract fix."""
+
+    def test_is_policy_error(self):
+        err = ChainAutoPausedError()
+        assert isinstance(err, ProofRailPolicyError)
+
+    def test_catchable_via_base(self):
+        caught = []
+        try:
+            raise ChainAutoPausedError(chain_id="abc-123")
+        except ProofRailPolicyError as e:
+            caught.append(type(e))
+        assert caught == [ChainAutoPausedError]
+
+    def test_default_message(self):
+        err = ChainAutoPausedError()
+        assert "auto-paused" in err.message.lower()
+        assert err.chain_id is None
+        assert err.reason is None
+
+    def test_chain_id_stored(self):
+        err = ChainAutoPausedError(chain_id="chain-999")
+        assert err.chain_id == "chain-999"
+        assert err.chain_context == {"chain_id": "chain-999"}
+
+    def test_reason_stored_as_condition(self):
+        err = ChainAutoPausedError(chain_id="c1", reason="too many actions")
+        assert err.reason == "too many actions"
+        assert err.condition == "too many actions"
+
+    def test_policy_name_is_auto_pause(self):
+        err = ChainAutoPausedError()
+        assert err.policy_name == "auto_pause"
+
+    def test_docs_url_matches_sdk_convention(self):
+        err = ChainAutoPausedError()
+        assert err.docs_url == "https://docs.proofrail.ai/policies/runaway-limits"
+
+    def test_remediation_includes_resume_hint(self):
+        err = ChainAutoPausedError(chain_id="chain-xyz")
+        assert "resume" in err.remediation.lower()
+        assert "chain-xyz" in err.remediation
+
+    def test_remediation_without_chain_id(self):
+        err = ChainAutoPausedError()
+        assert err.remediation is not None
+        assert "resume" in err.remediation.lower()
+
+    def test_custom_message(self):
+        err = ChainAutoPausedError(message="custom pause message", chain_id="c2")
+        assert err.message == "custom pause message"
+
+    def test_str_contains_policy_name(self):
+        err = ChainAutoPausedError(chain_id="c3")
+        assert "auto_pause" in str(err)
+
+    def test_str_contains_chain_context(self):
+        err = ChainAutoPausedError(chain_id="c3")
+        assert "c3" in str(err)
+
+    def test_decision_source_is_backend(self):
+        err = ChainAutoPausedError()
+        assert err.decision_source == "backend_evaluation"
