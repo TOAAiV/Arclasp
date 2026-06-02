@@ -154,6 +154,93 @@ def _get_client() -> httpx.AsyncClient:
 
 
 # ---------------------------------------------------------------------------
+# Retry helpers
+# ---------------------------------------------------------------------------
+
+def _get_retry_after_ms(response: httpx.Response, default_ms: int) -> int:
+    """
+    Extract the Retry-After header value in milliseconds.
+
+    Accepts integer seconds (``Retry-After: 2``) or floating-point seconds.
+    Returns *default_ms* when the header is absent or unparseable.
+    """
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return int(float(retry_after) * 1000)
+        except (ValueError, TypeError):
+            pass
+    return default_ms
+
+
+async def _retry_with_backoff(
+    coro_factory,
+    max_retries: int,
+    backoff_base_ms: int,
+) -> httpx.Response:
+    """
+    Execute ``coro_factory()`` with exponential-backoff retries for transient
+    errors.
+
+    Retry policy
+    ------------
+    * **Retryable:** ``httpx.TimeoutException``, ``httpx.ConnectError``,
+      5xx responses (500/502/503/504), 429 with optional Retry-After.
+    * **Non-retryable (immediate return):** 2xx success or 4xx client error.
+
+    After all retries are exhausted on a network exception, re-raises the
+    last exception so the caller can call ``_handle_backend_failure``.
+
+    After all retries are exhausted on a 5xx/429 response, returns the last
+    response so the caller can call ``_handle_backend_failure``.
+
+    Each retry attempt is logged at INFO level so developers can observe retry
+    behaviour in their logs.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            response: httpx.Response = await coro_factory()
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            if attempt < max_retries:
+                backoff_ms = backoff_base_ms * (2 ** attempt)
+                logger.info(
+                    "ProofRail SDK retry attempt %d/%d after %dms: %s",
+                    attempt + 1, max_retries, backoff_ms, exc,
+                )
+                await asyncio.sleep(backoff_ms / 1000.0)
+                continue
+            raise  # exhausted — let caller call _handle_backend_failure
+
+        if response.status_code in (500, 502, 503, 504):
+            if attempt < max_retries:
+                backoff_ms = backoff_base_ms * (2 ** attempt)
+                logger.info(
+                    "ProofRail SDK retry attempt %d/%d after %dms: HTTP %d",
+                    attempt + 1, max_retries, backoff_ms, response.status_code,
+                )
+                await asyncio.sleep(backoff_ms / 1000.0)
+                continue
+            # Exhausted retries on 5xx — return for caller to handle via fail_mode.
+
+        elif response.status_code == 429:
+            if attempt < max_retries:
+                backoff_ms = _get_retry_after_ms(
+                    response, backoff_base_ms * (2 ** attempt)
+                )
+                logger.info(
+                    "ProofRail SDK retry attempt %d/%d after %dms: HTTP 429",
+                    attempt + 1, max_retries, backoff_ms,
+                )
+                await asyncio.sleep(backoff_ms / 1000.0)
+                continue
+            # Exhausted retries on 429 — return for caller to handle via fail_mode.
+
+        return response
+
+    raise RuntimeError("unreachable")  # loop always returns or raises above
+
+
+# ---------------------------------------------------------------------------
 # Low-level HTTP helpers
 # ---------------------------------------------------------------------------
 
@@ -161,53 +248,80 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     """
     POST *data* as JSON to *path* on the configured backend.
 
-    On network failure, the resolved fail_mode determines behaviour:
-    ``"deny"`` raises BackendUnavailableError; ``"allow"`` raises
-    _OfflineSignal so chain.py can transition to offline mode cleanly.
-    4xx/5xx responses bypass fail_mode and always re-raise.
+    Retries up to ``config.max_retries`` times (exponential backoff, base
+    ``config.retry_backoff_base_ms`` ms) on transient errors: network
+    timeouts, connection failures, 5xx responses, and 429 rate limits.
+
+    After all retries are exhausted:
+    * Network/5xx/429 → ``fail_mode`` determines behaviour: ``"deny"`` raises
+      BackendUnavailableError; ``"allow"`` raises _OfflineSignal so chain.py
+      can transition to offline mode cleanly.
+
+    4xx responses are non-retryable and always re-raise ``HTTPStatusError``
+    immediately — these are deterministic client errors where retry won't help.
     """
     config = get_config()
     client = _get_client()
 
     try:
-        response = await client.post(path, json=data)
-        response.raise_for_status()
-        return response.json()
+        response = await _retry_with_backoff(
+            lambda: client.post(path, json=data),
+            config.max_retries,
+            config.retry_backoff_base_ms,
+        )
+    except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        _handle_backend_failure(
+            f"Backend request failed after {config.max_retries + 1} attempts "
+            f"(POST {path}): {exc}",
+            config,
+            action_type,
+        )
 
-    except httpx.TimeoutException:
-        msg = f"Backend request timed out after {config.backend_timeout_seconds}s (POST {path})"
-        _handle_backend_failure(msg, config, action_type)
+    if response.status_code in (500, 502, 503, 504, 429):
+        _handle_backend_failure(
+            f"Backend returned HTTP {response.status_code} after "
+            f"{config.max_retries + 1} attempts (POST {path})",
+            config,
+            action_type,
+        )
 
-    except httpx.ConnectError:
-        msg = f"Could not connect to ProofRail backend at {config.backend_url} (POST {path})"
-        _handle_backend_failure(msg, config, action_type)
-
-    except httpx.HTTPStatusError:
-        # 4xx / 5xx — re-raise; these are application errors, not transport
-        # failures, so fail_mode does not apply.
-        raise
+    response.raise_for_status()  # 4xx → HTTPStatusError; non-retryable, no fail_mode
+    return response.json()
 
 
 async def _get(path: str, action_type: str | None = None) -> dict:
-    """GET *path* on the configured backend. Same fail_mode semantics as _post."""
+    """
+    GET *path* on the configured backend.
+
+    Same retry and fail_mode semantics as ``_post``.
+    """
     config = get_config()
     client = _get_client()
 
     try:
-        response = await client.get(path)
-        response.raise_for_status()
-        return response.json()
+        response = await _retry_with_backoff(
+            lambda: client.get(path),
+            config.max_retries,
+            config.retry_backoff_base_ms,
+        )
+    except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        _handle_backend_failure(
+            f"Backend request failed after {config.max_retries + 1} attempts "
+            f"(GET {path}): {exc}",
+            config,
+            action_type,
+        )
 
-    except httpx.TimeoutException:
-        msg = f"Backend request timed out after {config.backend_timeout_seconds}s (GET {path})"
-        _handle_backend_failure(msg, config, action_type)
+    if response.status_code in (500, 502, 503, 504, 429):
+        _handle_backend_failure(
+            f"Backend returned HTTP {response.status_code} after "
+            f"{config.max_retries + 1} attempts (GET {path})",
+            config,
+            action_type,
+        )
 
-    except httpx.ConnectError:
-        msg = f"Could not connect to ProofRail backend at {config.backend_url} (GET {path})"
-        _handle_backend_failure(msg, config, action_type)
-
-    except httpx.HTTPStatusError:
-        raise
+    response.raise_for_status()  # 4xx → HTTPStatusError; non-retryable
+    return response.json()
 
 
 # ---------------------------------------------------------------------------

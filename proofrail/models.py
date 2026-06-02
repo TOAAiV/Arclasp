@@ -55,6 +55,19 @@ class PolicyDecision(BaseModel):
     remediation: str | None = None
     docs_url: str | None = None
 
+    # Shadow-mode fields — populated when the org is running in shadow mode.
+    # evaluation_mode: "enforce" | "shadow" | "disabled" | None (pre-feature events)
+    # shadow_decision: the would-have-been decision when evaluation_mode == "shadow"
+    evaluation_mode: str | None = None
+    shadow_decision: str | None = None
+
+    # Cost tracking — populated for events that include LLM token data; None otherwise.
+    estimated_cost_usd: float | None = None
+
+    # Auto-pause flag — True when this event caused the backend to halt the chain
+    # due to a runaway-limit trigger.  The SDK raises ChainAutoPausedError when True.
+    auto_paused: bool = False
+
 
 class ChainConfig(BaseModel):
     """
@@ -80,6 +93,15 @@ class ChainConfig(BaseModel):
     fail_modes: dict[str, str] = Field(default_factory=dict)
     backend_timeout_seconds: int = 5
     offline_buffer_max_events: int = 100
+
+    # HTTP retry configuration.
+    # max_retries: total number of retry attempts after the initial call fails.
+    #   3 retries → up to 4 total attempts (1 initial + 3 retries).
+    # retry_backoff_base_ms: base delay for exponential backoff.
+    #   attempt 1 = base ms, attempt 2 = 2× base, attempt 3 = 4× base.
+    #   Defaults give a 100 ms / 500 ms / 2 s cadence at base=100.
+    max_retries: int = 3
+    retry_backoff_base_ms: int = 100
 
     # Field-name patterns — any key matching (case-insensitive substring) is redacted.
     # Defaults are the complete v2 spec section 12 set.  Extend without replacing:

@@ -31,6 +31,7 @@ from proofrail import client as _client
 from proofrail import fast_path as _fast_path
 from proofrail.exceptions import (
     ActionDeniedError,
+    ChainAutoPausedError,
     ChainTimeoutError,
     ProofRailKillSwitchError,
     _POLICY_REMEDIATION,
@@ -290,6 +291,11 @@ class Chain:
                 "Backend went offline mid-chain (id=%s) — switching to offline mode",
                 self._chain_id,
             )
+            # Start offline drain task (single-flight).  The drain task will
+            # attempt to flush buffered events immediately, then retry every
+            # 30 s until the buffer is empty or the chain exits.
+            if self._drain_task is None or self._drain_task.done():
+                self._drain_task = asyncio.create_task(_drain_offline_buffer(self))
             return PolicyDecision(
                 policy_decision="allow",
                 decision_reason="Offline — fail_mode=allow",
@@ -306,6 +312,31 @@ class Chain:
         )
 
         self._sequence_number += 1
+
+        # Auto-pause: backend halted this chain due to a runaway-limit trigger.
+        # Raise immediately so callers get a clear error rather than cascading
+        # 409 responses on every subsequent record_agent_action call.
+        if decision_obj.auto_paused:
+            raise ChainAutoPausedError(
+                message=(
+                    f"Chain {self._chain_id} has been auto-paused by the backend. "
+                    "No further events can be recorded until the chain is resumed."
+                ),
+                chain_id=self._chain_id,
+                reason=decision_obj.decision_reason or None,
+            )
+
+        # Shadow-mode visibility: log when the backend is evaluating in shadow
+        # mode so developers can observe would-have-been decisions without
+        # needing to inspect every PolicyDecision object manually.
+        if decision_obj.evaluation_mode == "shadow" and decision_obj.shadow_decision:
+            logger.info(
+                "ProofRail shadow mode: action '%s' would have been '%s' under "
+                "enforce mode; returning allow per shadow mode (chain=%s)",
+                decision_obj.policy_decision,
+                decision_obj.shadow_decision,
+                self._chain_id,
+            )
 
         if decision_obj.policy_decision == "deny":
             # Kill-switch denials carry a distinct flag so callers can
@@ -506,6 +537,9 @@ class Chain:
             return  # Never started (offline or error on entry) — nothing to close.
 
         if self._offline:
+            # Cancel any pending offline drain task to avoid dangling references.
+            if self._drain_task is not None and not self._drain_task.done():
+                self._drain_task.cancel()
             logger.debug(
                 "Offline mode: skipping chain completion for chain %s", self._chain_id
             )
@@ -689,5 +723,71 @@ async def _drain_buffer_to_backend(chain: Chain) -> None:
                 "Fast-path async log failed (chain=%s): %s — event stays in buffer",
                 chain._chain_id,
                 exc,
+            )
+            break
+
+
+# ---------------------------------------------------------------------------
+# Offline-mode buffer drain helper
+# ---------------------------------------------------------------------------
+
+async def _drain_offline_buffer(chain: Chain) -> None:
+    """
+    Drain the offline buffer to the backend, retrying every 30 s until
+    the buffer is empty or the chain is closed.
+
+    The first drain attempt is made **immediately** (no initial sleep) so that
+    a brief transient error (e.g. a 2-second blip) recovers without a 30-second
+    delay.  Subsequent attempts sleep 30 s between tries.
+
+    Recovery: when all buffered events are successfully sent, ``chain._offline``
+    is set to ``False`` and the task exits.  Future ``record_agent_action``
+    calls will resume normal synchronous backend contact.
+
+    Not started for chains that went offline at ``_start()`` — those have a
+    locally-generated UUID that doesn't exist on the backend; draining them
+    would require first re-creating the chain (replay, out of scope for BUG-01).
+
+    Never raises — swallows all exceptions.
+    """
+    first_attempt = True
+
+    while chain._offline and chain._offline_buffer and chain._chain_id is not None:
+        if not first_attempt:
+            await asyncio.sleep(30)
+
+        first_attempt = False
+
+        if not chain._offline_buffer or chain._chain_id is None:
+            break
+
+        # Attempt to drain the full buffer in one pass.
+        sent_count = 0
+        while chain._offline_buffer:
+            event_body = chain._offline_buffer[0]
+            try:
+                await _client._post(
+                    f"/v1/chains/{chain._chain_id}/events",
+                    event_body,
+                    action_type=event_body.get("action_type"),
+                )
+                chain._offline_buffer.pop(0)
+                sent_count += 1
+            except Exception as exc:
+                logger.debug(
+                    "Offline drain: send failed (chain=%s): %s — retrying in 30s",
+                    chain._chain_id,
+                    exc,
+                )
+                break
+
+        if not chain._offline_buffer:
+            # Buffer fully drained — backend is back, mark chain as recovered.
+            chain._offline = False
+            logger.info(
+                "ProofRail SDK: backend recovered, offline buffer drained "
+                "(chain=%s sent=%d)",
+                chain._chain_id,
+                sent_count,
             )
             break
