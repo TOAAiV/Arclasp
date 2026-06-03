@@ -50,6 +50,12 @@ from typing import Any
 from proofrail import client as _proofrail_client
 from proofrail._utils import _merge_config
 from proofrail.chain import Chain
+from proofrail.exceptions import (
+    ActionDeniedError,
+    ChainAutoPausedError,
+    ChainTimeoutError,
+    ProofRailKillSwitchError,
+)
 from proofrail.langgraph.callbacks import (
     ProofRailLangGraphCallback,
     _INTERNAL_NODES,
@@ -239,47 +245,79 @@ class GovernedGraph:
         stream = self._graph.astream_events(
             state, config=config, version="v2", **kwargs
         )
-        async for event in stream:
-            event_type: str = event.get("event", "")
-            run_id: str = str(event.get("run_id", ""))
-            metadata: dict = event.get("metadata") or {}
-            node_name: str = metadata.get("langgraph_node", "")
+        _policy_exc: BaseException | None = None
+        # Catch policy exceptions INSIDE the loop body and break so that
+        # `async for` invokes stream.aclose() through its normal break path.
+        # Any HTTPStatusError(409) raised by LangGraph's cleanup during that
+        # aclose() call is caught and discarded by the outer except below,
+        # preserving the original policy exception for the caller.
+        try:
+            async for event in stream:
+                event_type: str = event.get("event", "")
+                run_id: str = str(event.get("run_id", ""))
+                metadata: dict = event.get("metadata") or {}
+                node_name: str = metadata.get("langgraph_node", "")
 
-            # Track the root run (first event seen)
-            if root_run_id is None:
-                root_run_id = run_id
+                # Track the root run (first event seen)
+                if root_run_id is None:
+                    root_run_id = run_id
 
-            # --- Node start ---
-            if (
-                event_type == "on_chain_start"
-                and node_name
-                and node_name not in _INTERNAL_NODES
-            ):
-                active_nodes[run_id] = node_name
-                input_state = (event.get("data") or {}).get("input")
-                await callback.on_node_start(node_name, input_state)
+                try:
+                    # --- Node start ---
+                    if (
+                        event_type == "on_chain_start"
+                        and node_name
+                        and node_name not in _INTERNAL_NODES
+                    ):
+                        active_nodes[run_id] = node_name
+                        input_state = (event.get("data") or {}).get("input")
+                        await callback.on_node_start(node_name, input_state)
 
-            # --- Node end ---
-            elif (
-                event_type == "on_chain_end"
-                and run_id in active_nodes
-            ):
-                finished_node = active_nodes.pop(run_id)
-                output_state = (event.get("data") or {}).get("output")
-                await callback.on_node_end(finished_node, output_state)
+                    # --- Node end ---
+                    elif (
+                        event_type == "on_chain_end"
+                        and run_id in active_nodes
+                    ):
+                        finished_node = active_nodes.pop(run_id)
+                        output_state = (event.get("data") or {}).get("output")
+                        await callback.on_node_end(finished_node, output_state)
 
-            # --- Node error ---
-            elif (
-                event_type == "on_chain_error"
-                and run_id in active_nodes
-            ):
-                finished_node = active_nodes.pop(run_id)
-                error = (event.get("data") or {}).get("error")
-                await callback.on_node_end(finished_node, None, error=error)
+                    # --- Node error ---
+                    elif (
+                        event_type == "on_chain_error"
+                        and run_id in active_nodes
+                    ):
+                        finished_node = active_nodes.pop(run_id)
+                        error = (event.get("data") or {}).get("error")
+                        await callback.on_node_end(finished_node, None, error=error)
 
-            # --- Capture final graph output (root chain end) ---
-            if event_type == "on_chain_end" and run_id == root_run_id:
-                final_output = (event.get("data") or {}).get("output")
+                except (
+                    ChainTimeoutError,
+                    ActionDeniedError,
+                    ChainAutoPausedError,
+                    ProofRailKillSwitchError,
+                ) as exc:
+                    _policy_exc = exc
+                    break  # triggers aclose(); cleanup exc caught by outer except
+
+                # --- Capture final graph output (root chain end) ---
+                if event_type == "on_chain_end" and run_id == root_run_id:
+                    final_output = (event.get("data") or {}).get("output")
+
+        except Exception as _cleanup_exc:
+            if _policy_exc is not None:
+                # aclose() raised during break cleanup — discard so it doesn't
+                # replace the original policy exception.
+                logger.debug(
+                    "Strategy A: stream cleanup raised %s after %s — discarding cleanup error",
+                    type(_cleanup_exc).__name__,
+                    type(_policy_exc).__name__,
+                )
+            else:
+                raise
+
+        if _policy_exc is not None:
+            raise _policy_exc
 
         return final_output
 

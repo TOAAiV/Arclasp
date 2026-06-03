@@ -16,18 +16,20 @@ import uuid
 from unittest.mock import patch, MagicMock
 from typing import AsyncIterator, Any
 
+import httpx
 import pytest
 
 import proofrail
 from proofrail.langgraph.adapter import govern
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
+from proofrail.exceptions import ActionDeniedError, BackendUnavailableError, ChainTimeoutError
 
 from .conftest import (
-    make_mock_post,
-    assert_event_recorded,
-    assert_chain_completed,
-    count_event_calls,
+    ALLOW_RESP,
     CHAIN_ID,
+    assert_chain_completed,
+    assert_event_recorded,
+    count_event_calls,
+    make_mock_post,
 )
 
 
@@ -265,6 +267,120 @@ async def test_fast_path_engages_langgraph():
     # (chain start + complete only, or chain start + complete + drain events ≤ total nodes*2)
     # The key assertion: workflow completed without a backend error.
     assert result is not None
+
+
+# ===========================================================================
+# BUG-LG-01 — aclose() race: original policy exception must survive cleanup
+# ===========================================================================
+
+class _StreamWithRace:
+    """
+    Custom async iterator that simulates the LangGraph 1.2.4 aclose() race.
+
+    When aclose() is called (triggered by the `break` in the adapter's inner
+    try/except), it raises HTTPStatusError(409) — exactly as the real bug does
+    when LangGraph's background task posts a duplicate event to a chain that is
+    now in pending_approval.
+    """
+
+    def __init__(self, events: list[dict]) -> None:
+        self._events = iter(events)
+        self._closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> dict:
+        if self._closed:
+            raise StopAsyncIteration
+        try:
+            return next(self._events)
+        except StopIteration:
+            raise StopAsyncIteration
+
+    async def aclose(self) -> None:
+        if not self._closed:
+            self._closed = True
+            # Simulate: duplicate event from LangGraph's background task hits
+            # the backend while chain is in pending_approval → 409 Conflict.
+            raise httpx.HTTPStatusError(
+                "Client error '409 Conflict' for url "
+                "'http://localhost:9999/v1/chains/test-chain-int-001/events'",
+                request=httpx.Request(
+                    "POST",
+                    "http://localhost:9999/v1/chains/test-chain-int-001/events",
+                ),
+                response=httpx.Response(409),
+            )
+
+
+class _GraphWithAcloseRace:
+    """LangGraph graph stub whose astream_events returns a stream with the race."""
+
+    def invoke(self, state, config=None, **kw):
+        return {}
+
+    async def ainvoke(self, state, config=None, **kw):
+        return {}
+
+    def astream_events(self, state, config=None, version="v2", **kw):
+        # Sync function (not async) so the adapter receives the stream object
+        # directly without needing to await — same as real LangGraph's pattern.
+        root_id = str(uuid.uuid4())
+        nid = str(uuid.uuid4())
+        events = [
+            {"event": "on_chain_start", "run_id": root_id, "metadata": {},
+             "data": {"input": state}},
+            {"event": "on_chain_start", "run_id": nid,
+             "metadata": {"langgraph_node": "payment_node"}, "data": {"input": state}},
+            # This on_chain_end triggers require_approval → ChainTimeoutError
+            {"event": "on_chain_end", "run_id": nid,
+             "metadata": {"langgraph_node": "payment_node"},
+             "data": {"output": {"amount": 7500}}},
+        ]
+        return _StreamWithRace(events)
+
+
+@pytest.mark.asyncio
+async def test_bug_lg_01_aclose_race_preserves_policy_exception():
+    """
+    BUG-LG-01: When require_approval fires during astream_events iteration,
+    the adapter breaks out of the loop, which triggers stream.aclose().
+    LangGraph 1.2.4 raises HTTPStatusError(409) during aclose() (duplicate
+    event race).  The fix must discard this cleanup exception and re-raise
+    the original ChainTimeoutError so the caller receives the correct signal.
+    """
+    proofrail.init(
+        api_key="prail_test",
+        backend_url="http://localhost:9999",
+        environment="development",
+        enable_local_fast_path=False,
+        fail_mode="allow",
+        default_approval_timeout_hours=0,   # instant ChainTimeoutError on require_approval
+    )
+
+    require_approval_resp = {
+        "policy_decision": "require_approval",
+        "decision_reason": "Financial threshold exceeded",
+        "decision_source": "backend_evaluation",
+    }
+
+    async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+        if path == "/v1/chains":
+            return {"id": CHAIN_ID}
+        if path.endswith("/complete"):
+            return {}
+        action_name = (body or {}).get("action_name", "")
+        if action_name == "payment_node:result":
+            return require_approval_resp
+        return ALLOW_RESP
+
+    governed = govern(_GraphWithAcloseRace(), chain_name="bug-lg-01")
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        # The fix: ChainTimeoutError must propagate, not HTTPStatusError(409)
+        with pytest.raises(ChainTimeoutError):
+            await governed.ainvoke({"amount": 7500})
 
 
 # ===========================================================================
