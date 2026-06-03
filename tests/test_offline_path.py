@@ -168,6 +168,104 @@ class TestOfflineDeny:
 
 
 # ---------------------------------------------------------------------------
+# Tests: fail_modes["default"] and fail_modes["chain_create"] keys (MI-13 fix)
+# ---------------------------------------------------------------------------
+
+class TestFailModesChainStart:
+    """
+    Verify that Chain._start() respects fail_modes["chain_create"] and
+    fail_modes["default"] when the backend is unreachable.
+
+    Before the MI-13 fix, _start() passed no action_type so resolve_fail_mode
+    always returned the global fail_mode regardless of fail_modes config.
+    """
+
+    @pytest.mark.asyncio
+    async def test_default_key_makes_chain_start_offline(self):
+        """fail_modes={"default": "allow"} with global deny → chain goes offline."""
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            fail_mode="deny",
+            fail_modes={"default": "allow"},
+        )
+        with patch("proofrail.client._get_client") as mock_get_client:
+            mock_client = mock_get_client.return_value
+            mock_client.post = _connect_error
+
+            async with Chain("test") as chain:
+                assert chain._offline is True
+                result = await chain.record_agent_action(
+                    agent_name="agent", action_type="tool_call", action_name="noop"
+                )
+        assert result.policy_decision == "allow"
+        assert result.decision_source == "offline_stub"
+
+    @pytest.mark.asyncio
+    async def test_chain_create_key_makes_chain_start_offline(self):
+        """fail_modes={"chain_create": "allow"} with global deny → chain goes offline."""
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            fail_mode="deny",
+            fail_modes={"chain_create": "allow"},
+        )
+        with patch("proofrail.client._get_client") as mock_get_client:
+            mock_client = mock_get_client.return_value
+            mock_client.post = _connect_error
+
+            async with Chain("test") as chain:
+                assert chain._offline is True
+                result = await chain.record_agent_action(
+                    agent_name="agent", action_type="tool_call", action_name="noop"
+                )
+        assert result.policy_decision == "allow"
+        assert result.decision_source == "offline_stub"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_only_does_not_affect_chain_start(self):
+        """
+        fail_modes={"tool_call": "allow"} without default/chain_create → chain start
+        still raises BackendUnavailableError. Customers who only configure per-action
+        overrides for events do not accidentally make chain creation fail-open.
+        """
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            fail_mode="deny",
+            fail_modes={"tool_call": "allow"},
+        )
+        with patch("proofrail.client._get_client") as mock_get_client:
+            mock_client = mock_get_client.return_value
+            mock_client.post = _connect_error
+
+            with pytest.raises(BackendUnavailableError) as exc_info:
+                async with Chain("test"):
+                    pass
+
+        assert exc_info.value.fail_mode == "deny"
+
+    @pytest.mark.asyncio
+    async def test_empty_fail_modes_preserves_global_deny(self):
+        """fail_modes={} with global deny → chain start raises BackendUnavailableError."""
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            fail_mode="deny",
+            fail_modes={},
+        )
+        with patch("proofrail.client._get_client") as mock_get_client:
+            mock_client = mock_get_client.return_value
+            mock_client.post = _connect_error
+
+            with pytest.raises(BackendUnavailableError) as exc_info:
+                async with Chain("test"):
+                    pass
+
+        assert exc_info.value.fail_mode == "deny"
+
+
+# ---------------------------------------------------------------------------
 # Tests: _buffer_event helper (callable independently)
 # ---------------------------------------------------------------------------
 

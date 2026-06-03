@@ -93,8 +93,14 @@ class ChainConfig(BaseModel):
 
     fail_mode: str = "deny"           # "deny" | "allow" — global default
     # Per-action-class overrides.  Keys are action_type strings (e.g.
-    # "tool_call", "llm_inference"); values are "deny" or "allow".
-    # When an action_type is present here it takes precedence over fail_mode.
+    # "tool_call", "llm_inference", "chain_create"); values are "deny" or "allow".
+    # Two reserved keys are also recognised:
+    #   "chain_create" — applies when the chain itself is being created
+    #                    (Chain._start() → POST /v1/chains).
+    #   "default"      — catch-all override applied when no specific key matches;
+    #                    takes precedence over the global fail_mode.
+    # When an action_type is present here it takes precedence over "default"
+    # and fail_mode.
     fail_modes: dict[str, str] = Field(default_factory=dict)
     backend_timeout_seconds: int = 5
     offline_buffer_max_events: int = 100
@@ -135,14 +141,16 @@ class ChainConfig(BaseModel):
         Lookup order:
 
         1. ``fail_modes[action_type]`` — per-class override (if key exists).
-        2. ``fail_mode``              — global default.
+        2. ``fail_modes["default"]``   — catch-all override (if present).
+        3. ``fail_mode``               — global default.
 
         Parameters
         ----------
         action_type : str | None
             The ``action_type`` of the event being recorded (e.g.
-            ``"tool_call"``, ``"llm_inference"``).  Pass ``None`` to get the
-            global default without any per-class lookup.
+            ``"tool_call"``, ``"llm_inference"``, ``"chain_create"``).
+            Pass ``None`` to skip the specific lookup and fall through to
+            ``fail_modes["default"]`` or the global ``fail_mode``.
 
         Returns
         -------
@@ -151,6 +159,8 @@ class ChainConfig(BaseModel):
         """
         if action_type and action_type in self.fail_modes:
             return self.fail_modes[action_type]
+        if "default" in self.fail_modes:
+            return self.fail_modes["default"]
         return self.fail_mode
 
 

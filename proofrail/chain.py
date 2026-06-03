@@ -512,7 +512,7 @@ class Chain:
         }
 
         try:
-            response = await _client._post("/v1/chains", body)
+            response = await _client._post("/v1/chains", body, action_type="chain_create")
             self._chain_id = response["id"]
         except _client._OfflineSignal:
             # Backend unreachable and fail_mode=allow — generate a local UUID
