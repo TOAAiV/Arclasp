@@ -467,6 +467,95 @@ async def test_bug_lg_02_strategy_b_propagates_policy_exception():
 
 
 # ===========================================================================
+# BUG-LG-02 (high-fidelity) — BaseException escapes real langchain-core
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
+    """
+    Higher-fidelity regression for BUG-LG-02.
+
+    test_bug_lg_02_strategy_b_propagates_policy_exception uses a hand-written
+    try/except Exception: pass wrapper to simulate LangGraph's callback manager.
+    This test invokes langchain-core's REAL _ahandle_event_for_handler with our
+    actual _AsLangChainCallback._handler (which inherits real AsyncCallbackHandler).
+
+    Verifies that _StrategyBPolicyBreak(BaseException) escapes langchain-core's
+    ``except Exception`` clause intact — if langchain-core ever adds
+    ``except BaseException``, this test regresses before customers are affected.
+    """
+    import sys
+    import uuid as _uuid
+
+    from proofrail.langgraph.callbacks import ProofRailLangGraphCallback, _StrategyBPolicyBreak
+
+    # Temporarily remove conftest stubs so _build_langchain_base() picks up the
+    # real langchain-core 1.4.0 installed in the environment.
+    saved_lc = {k: sys.modules.pop(k)
+                for k in list(sys.modules.keys())
+                if k.startswith("langchain_core")}
+
+    try:
+        from langchain_core.callbacks.manager import _ahandle_event_for_handler
+
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=False,
+            fail_mode="allow",
+            default_approval_timeout_hours=0,
+        )
+
+        require_approval_resp = {
+            "policy_decision": "require_approval",
+            "decision_reason": "Real langchain-core test node blocked",
+            "decision_source": "backend_evaluation",
+        }
+
+        async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+            if path == "/v1/chains":
+                return {"id": CHAIN_ID}
+            if path.endswith("/complete"):
+                return {}
+            action_name = (body or {}).get("action_name", "")
+            if action_name == "real_lc_node":
+                return require_approval_resp
+            return ALLOW_RESP
+
+        with patch("proofrail.client._post", side_effect=mock_post):
+            async with proofrail.Chain(name="real-lc-test") as chain:
+                pr_callback = ProofRailLangGraphCallback(chain)
+                # _build_langchain_base() now imports real AsyncCallbackHandler
+                # because stubs are removed from sys.modules
+                lc_callback = pr_callback.as_langchain_callback()
+
+                run_id = _uuid.uuid4()
+
+                # Pass the inner handler: it is a concrete subclass of real
+                # AsyncCallbackHandler, created dynamically at as_langchain_callback() time.
+                with pytest.raises(_StrategyBPolicyBreak) as exc_info:
+                    await _ahandle_event_for_handler(
+                        lc_callback._handler,
+                        "on_chain_start",
+                        None,                           # ignore_condition_name
+                        {"name": "real_lc_node"},       # serialized (positional *arg)
+                        {"input": "test"},              # inputs   (positional *arg)
+                        run_id=run_id,
+                        parent_run_id=None,
+                        metadata={"langgraph_node": "real_lc_node"},
+                    )
+
+                assert isinstance(exc_info.value.original, ChainTimeoutError)
+
+    finally:
+        for k in list(sys.modules.keys()):
+            if k.startswith("langchain_core"):
+                del sys.modules[k]
+        sys.modules.update(saved_lc)
+
+
+# ===========================================================================
 # Extra — Strategy B fallback (no astream_events)
 # ===========================================================================
 
