@@ -384,6 +384,89 @@ async def test_bug_lg_01_aclose_race_preserves_policy_exception():
 
 
 # ===========================================================================
+# BUG-LG-02 — Strategy B must propagate policy exceptions via BaseException pivot
+# ===========================================================================
+
+class _StubGraphBWithSwallow:
+    """
+    Forces Strategy B (no astream_events). Wraps each callback invocation in
+    ``try/except Exception: pass`` to directly simulate LangGraph 1.x's
+    callback manager swallowing behaviour.
+
+    Pre-fix: ChainTimeoutError (inherits Exception) is caught and discarded;
+    ainvoke() returns normally — the bug.
+    Post-fix: _StrategyBPolicyBreak (inherits BaseException) escapes the
+    except-Exception guard and propagates to the adapter for unwrapping.
+    """
+
+    def __init__(self, node_name: str = "deny_node") -> None:
+        self._node_name = node_name
+        self.invoke = MagicMock(return_value={"result": "done"})
+
+    async def ainvoke(self, state: Any, config: Any = None, **kw: Any) -> Any:
+        callbacks = (config or {}).get("callbacks", [])
+        run_id = uuid.uuid4()
+        for cb in callbacks:
+            if hasattr(cb, "on_chain_start"):
+                try:
+                    await cb.on_chain_start(
+                        {"name": self._node_name}, state,
+                        run_id=run_id,
+                        metadata={"langgraph_node": self._node_name},
+                    )
+                except Exception:
+                    pass  # simulates LangGraph 1.x callback manager swallowing
+                # _StrategyBPolicyBreak(BaseException) propagates here if fix applied
+        return {"result": "should_not_reach_caller"}
+
+
+@pytest.mark.asyncio
+async def test_bug_lg_02_strategy_b_propagates_policy_exception():
+    """
+    BUG-LG-02: LangGraph 1.x's callback manager catches Exception from
+    AsyncCallbackHandler methods, silently swallowing policy decisions.
+    The fix raises _StrategyBPolicyBreak(BaseException) inside the callback,
+    which escapes the except-Exception guard.  The adapter catches it and
+    re-raises the original policy exception so the caller receives the correct
+    signal.
+
+    _StubGraphBWithSwallow encodes the exact bug: callbacks are wrapped in
+    try/except Exception: pass.  Without the fix the caller sees no error.
+    With the fix ChainTimeoutError propagates intact.
+    """
+    proofrail.init(
+        api_key="prail_test",
+        backend_url="http://localhost:9999",
+        environment="development",
+        enable_local_fast_path=False,
+        fail_mode="allow",
+        default_approval_timeout_hours=0,   # instant ChainTimeoutError on require_approval
+    )
+
+    require_approval_resp = {
+        "policy_decision": "require_approval",
+        "decision_reason": "High-risk node blocked for approval",
+        "decision_source": "backend_evaluation",
+    }
+
+    async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+        if path == "/v1/chains":
+            return {"id": CHAIN_ID}
+        if path.endswith("/complete"):
+            return {}
+        action_name = (body or {}).get("action_name", "")
+        if action_name == "deny_node":
+            return require_approval_resp
+        return ALLOW_RESP
+
+    governed = govern(_StubGraphBWithSwallow(), chain_name="bug-lg-02")
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        with pytest.raises(ChainTimeoutError):
+            await governed.ainvoke({"input": "test"})
+
+
+# ===========================================================================
 # Extra — Strategy B fallback (no astream_events)
 # ===========================================================================
 

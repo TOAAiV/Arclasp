@@ -59,6 +59,7 @@ from proofrail.exceptions import (
 from proofrail.langgraph.callbacks import (
     ProofRailLangGraphCallback,
     _INTERNAL_NODES,
+    _StrategyBPolicyBreak,
     _state_to_dict,
 )
 
@@ -358,7 +359,10 @@ class GovernedGraph:
             return await self._graph.ainvoke(state, config=config, **kwargs)
 
         merged = _merge_config(config, {"callbacks": [lc_callback]})
-        return await self._graph.ainvoke(state, config=merged, **kwargs)
+        try:
+            return await self._graph.ainvoke(state, config=merged, **kwargs)
+        except _StrategyBPolicyBreak as wrapper:
+            raise wrapper.original from None
 
     # ------------------------------------------------------------------
     # Pass-through attributes (allow governed_graph.get_graph() etc.)

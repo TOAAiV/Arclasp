@@ -15,6 +15,13 @@ import logging
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from proofrail.exceptions import (
+    ActionDeniedError,
+    ChainAutoPausedError,
+    ChainTimeoutError,
+    ProofRailKillSwitchError,
+)
+
 if TYPE_CHECKING:
     from proofrail.chain import Chain
 
@@ -25,6 +32,22 @@ logger = logging.getLogger(__name__)
 _INTERNAL_NODES: frozenset[str] = frozenset(
     {"__start__", "__end__", "_start", "_end", ""}
 )
+
+
+class _StrategyBPolicyBreak(BaseException):
+    """
+    Internal control-flow signal that bypasses LangGraph 1.x's callback manager
+    ``except Exception`` clause.  Raised inside ``_AsLangChainCallback`` when a
+    policy decision fires; caught and unwrapped in the adapter so the original
+    policy exception reaches the SDK caller.
+
+    Inherits BaseException (NOT Exception) — comparable to CancelledError.
+    Not exported; do not reference outside this package.
+    """
+
+    def __init__(self, original: BaseException) -> None:
+        self.original = original
+        super().__init__(f"Strategy B policy break: {type(original).__name__}")
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +225,10 @@ def _make_on_chain_start():
         if not hasattr(self, "_node_runs"):
             self._node_runs = {}
         self._node_runs[run_id] = node_name
-        await self._proofrail.on_node_start(node_name, inputs)
+        try:
+            await self._proofrail.on_node_start(node_name, inputs)
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     return on_chain_start
 
@@ -218,7 +244,10 @@ def _make_on_chain_end():
         node_name = getattr(self, "_node_runs", {}).pop(run_id, None)
         if not node_name:
             return
-        await self._proofrail.on_node_end(node_name, outputs, error=None)
+        try:
+            await self._proofrail.on_node_end(node_name, outputs, error=None)
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     return on_chain_end
 
@@ -234,6 +263,9 @@ def _make_on_chain_error():
         node_name = getattr(self, "_node_runs", {}).pop(run_id, None)
         if not node_name:
             return
-        await self._proofrail.on_node_end(node_name, None, error=error)
+        try:
+            await self._proofrail.on_node_end(node_name, None, error=error)
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     return on_chain_error
