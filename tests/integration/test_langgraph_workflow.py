@@ -556,6 +556,155 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
 
 
 # ===========================================================================
+# Finding 4 — parent_agent_name population
+# ===========================================================================
+
+class _StubGraphAParent:
+    """
+    Strategy A stub that emits a parent node followed by a child node.
+    The child's on_chain_start event carries parent_ids=[parent_run_id],
+    matching the real LangGraph v2 event format.
+    """
+
+    def invoke(self, state, config=None, **kw):
+        return {}
+
+    async def ainvoke(self, state, config=None, **kw):
+        return {}
+
+    async def astream_events(self, state, config=None, version="v2", **kw):
+        root_id = str(uuid.uuid4())
+        parent_id = str(uuid.uuid4())
+        child_id = str(uuid.uuid4())
+
+        yield {"event": "on_chain_start", "run_id": root_id,
+               "parent_ids": [], "metadata": {}, "data": {"input": state}}
+
+        # Parent node — parent_ids contains only the root (not in active_nodes)
+        yield {"event": "on_chain_start", "run_id": parent_id,
+               "parent_ids": [root_id], "metadata": {"langgraph_node": "parent_node"},
+               "data": {"input": state}}
+        yield {"event": "on_chain_end", "run_id": parent_id,
+               "parent_ids": [root_id], "metadata": {"langgraph_node": "parent_node"},
+               "data": {"output": {"parent_out": "ok"}}}
+
+        # Child node — parent_ids[0] is the parent node's run_id
+        yield {"event": "on_chain_start", "run_id": child_id,
+               "parent_ids": [parent_id, root_id],
+               "metadata": {"langgraph_node": "child_node"},
+               "data": {"input": state}}
+        yield {"event": "on_chain_end", "run_id": child_id,
+               "parent_ids": [parent_id, root_id],
+               "metadata": {"langgraph_node": "child_node"},
+               "data": {"output": {"child_out": "ok"}}}
+
+        yield {"event": "on_chain_end", "run_id": root_id,
+               "parent_ids": [], "metadata": {}, "data": {"output": {"result": "done"}}}
+
+
+class _StubGraphBParent:
+    """
+    Strategy B stub (no astream_events) that fires on_chain_start for a parent
+    node and then a child node with parent_run_id pointing at the parent.
+    """
+
+    def invoke(self, state, config=None, **kw):
+        return {}
+
+    async def ainvoke(self, state, config=None, **kw):
+        callbacks = (config or {}).get("callbacks", [])
+        parent_run_id = uuid.uuid4()
+        child_run_id = uuid.uuid4()
+
+        for cb in callbacks:
+            if hasattr(cb, "on_chain_start"):
+                await cb.on_chain_start(
+                    {"name": "parent_node"}, state,
+                    run_id=parent_run_id,
+                    parent_run_id=None,
+                    metadata={"langgraph_node": "parent_node"},
+                )
+        for cb in callbacks:
+            if hasattr(cb, "on_chain_end"):
+                await cb.on_chain_end({"parent_out": "ok"}, run_id=parent_run_id)
+
+        for cb in callbacks:
+            if hasattr(cb, "on_chain_start"):
+                await cb.on_chain_start(
+                    {"name": "child_node"}, state,
+                    run_id=child_run_id,
+                    parent_run_id=parent_run_id,
+                    metadata={"langgraph_node": "child_node"},
+                )
+        for cb in callbacks:
+            if hasattr(cb, "on_chain_end"):
+                await cb.on_chain_end({"child_out": "ok"}, run_id=child_run_id)
+
+        return {"result": "b_parent_done"}
+
+
+@pytest.mark.asyncio
+async def test_strategy_a_populates_parent_agent_name():
+    """
+    Finding 4 (Strategy A): child node's on_chain_start event carries
+    parent_ids=[parent_run_id]. The adapter must resolve parent_run_id to
+    "parent_node" via active_nodes and pass parent_agent_name to
+    record_agent_action. Top-level nodes must have parent_agent_name=None.
+    """
+    governed = govern(_StubGraphAParent(), chain_name="lg-parent-a")
+    mock_post, calls = make_mock_post()
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        await governed.ainvoke({"input": "test"})
+
+    event_calls = [c for c in calls if "events" in c["path"]]
+    bodies = {c["body"]["action_name"]: c["body"] for c in event_calls}
+
+    # parent_node start: no parent agent (its parent is the root run, not in active_nodes)
+    assert bodies["parent_node"].get("parent_agent_name") is None, (
+        f"parent_node should have parent_agent_name=None, got: {bodies['parent_node']}"
+    )
+    # child_node start: parent resolves to "parent_node"
+    assert bodies["child_node"].get("parent_agent_name") == "parent_node", (
+        f"child_node should have parent_agent_name='parent_node', got: {bodies['child_node']}"
+    )
+    # child_node result (on_node_end) also carries parent_agent_name
+    assert bodies["child_node:result"].get("parent_agent_name") == "parent_node", (
+        f"child_node:result should have parent_agent_name='parent_node', got: {bodies['child_node:result']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_strategy_b_populates_parent_agent_name():
+    """
+    Finding 4 (Strategy B): child on_chain_start receives parent_run_id pointing
+    at the already-registered parent node. The callback must resolve it to
+    "parent_node" and thread parent_agent_name through to record_agent_action.
+    """
+    governed = govern(_StubGraphBParent(), chain_name="lg-parent-b")
+    mock_post, calls = make_mock_post()
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        await governed.ainvoke({"input": "test"})
+
+    event_calls = [c for c in calls if "events" in c["path"]]
+    bodies = {c["body"]["action_name"]: c["body"] for c in event_calls}
+
+    # parent_node: no parent_run_id supplied → parent_agent_name must be None
+    assert bodies["parent_node"].get("parent_agent_name") is None, (
+        f"parent_node should have parent_agent_name=None, got: {bodies['parent_node']}"
+    )
+    # child_node: parent_run_id resolves to "parent_node"
+    assert bodies["child_node"].get("parent_agent_name") == "parent_node", (
+        f"child_node should have parent_agent_name='parent_node', got: {bodies['child_node']}"
+    )
+    # child_node:result also carries parent_agent_name
+    assert bodies["child_node:result"].get("parent_agent_name") == "parent_node", (
+        f"child_node:result should have parent_agent_name='parent_node', got: {bodies['child_node:result']}"
+    )
+
+
+# ===========================================================================
 # Extra — Strategy B fallback (no astream_events)
 # ===========================================================================
 

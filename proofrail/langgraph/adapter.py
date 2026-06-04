@@ -240,7 +240,9 @@ class GovernedGraph:
           run_id with no parent)         → capture final graph output
         """
         root_run_id: str | None = None
-        active_nodes: dict[str, str] = {}   # run_id → node_name
+        active_nodes: dict[str, str] = {}          # run_id → node_name (active; popped on end)
+        all_nodes: dict[str, str] = {}             # run_id → node_name (never evicted; parent lookup)
+        active_node_parents: dict[str, str | None] = {}  # run_id → parent_agent_name
         final_output: Any = None
 
         stream = self._graph.astream_events(
@@ -270,9 +272,17 @@ class GovernedGraph:
                         and node_name
                         and node_name not in _INTERNAL_NODES
                     ):
+                        parent_agent_name: str | None = None
+                        for pid in (event.get("parent_ids") or []):
+                            parent = all_nodes.get(str(pid))
+                            if parent:
+                                parent_agent_name = parent
+                                break
                         active_nodes[run_id] = node_name
+                        all_nodes[run_id] = node_name
+                        active_node_parents[run_id] = parent_agent_name
                         input_state = (event.get("data") or {}).get("input")
-                        await callback.on_node_start(node_name, input_state)
+                        await callback.on_node_start(node_name, input_state, parent_agent_name=parent_agent_name)
 
                     # --- Node end ---
                     elif (
@@ -280,8 +290,9 @@ class GovernedGraph:
                         and run_id in active_nodes
                     ):
                         finished_node = active_nodes.pop(run_id)
+                        par = active_node_parents.pop(run_id, None)
                         output_state = (event.get("data") or {}).get("output")
-                        await callback.on_node_end(finished_node, output_state)
+                        await callback.on_node_end(finished_node, output_state, parent_agent_name=par)
 
                     # --- Node error ---
                     elif (
@@ -289,8 +300,9 @@ class GovernedGraph:
                         and run_id in active_nodes
                     ):
                         finished_node = active_nodes.pop(run_id)
+                        par = active_node_parents.pop(run_id, None)
                         error = (event.get("data") or {}).get("error")
-                        await callback.on_node_end(finished_node, None, error=error)
+                        await callback.on_node_end(finished_node, None, error=error, parent_agent_name=par)
 
                 except (
                     ChainTimeoutError,

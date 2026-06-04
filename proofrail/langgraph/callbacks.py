@@ -93,13 +93,14 @@ class ProofRailLangGraphCallback:
     def __init__(self, chain: "Chain") -> None:
         self._chain = chain
 
-    async def on_node_start(self, node_name: str, input_state: Any) -> None:
+    async def on_node_start(self, node_name: str, input_state: Any, *, parent_agent_name: str | None = None) -> None:
         logger.debug("LangGraph node starting: %s", node_name)
         await self._chain.record_agent_action(
             agent_name=node_name,
             action_type="node_execution",
             action_name=node_name,
             payload=_state_to_dict(input_state),
+            parent_agent_name=parent_agent_name,
         )
 
     async def on_node_end(
@@ -107,6 +108,8 @@ class ProofRailLangGraphCallback:
         node_name: str,
         output_state: Any,
         error: BaseException | None = None,
+        *,
+        parent_agent_name: str | None = None,
     ) -> None:
         """
         Record the completion (or failure) of a node execution.
@@ -125,6 +128,7 @@ class ProofRailLangGraphCallback:
                     "error_type": type(error).__name__,
                     "error_message": str(error)[:500],
                 },
+                parent_agent_name=parent_agent_name,
             )
         else:
             logger.debug("LangGraph node completed: %s", node_name)
@@ -133,6 +137,7 @@ class ProofRailLangGraphCallback:
                 action_type="node_result",
                 action_name=f"{node_name}:result",
                 payload=_state_to_dict(output_state),
+                parent_agent_name=parent_agent_name,
             )
 
     # ------------------------------------------------------------------
@@ -224,9 +229,21 @@ def _make_on_chain_start():
         # Track run_id → node_name so on_chain_end can look it up
         if not hasattr(self, "_node_runs"):
             self._node_runs = {}
+        # _all_nodes is never evicted — used for parent resolution after a node ends
+        if not hasattr(self, "_all_nodes"):
+            self._all_nodes = {}
+        parent_agent_name: str | None = None
+        if parent_run_id is not None:
+            parent_node = self._all_nodes.get(parent_run_id)
+            if parent_node and parent_node not in _INTERNAL_NODES:
+                parent_agent_name = parent_node
         self._node_runs[run_id] = node_name
+        self._all_nodes[run_id] = node_name
+        if not hasattr(self, "_node_parents"):
+            self._node_parents = {}
+        self._node_parents[run_id] = parent_agent_name
         try:
-            await self._proofrail.on_node_start(node_name, inputs)
+            await self._proofrail.on_node_start(node_name, inputs, parent_agent_name=parent_agent_name)
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -244,8 +261,9 @@ def _make_on_chain_end():
         node_name = getattr(self, "_node_runs", {}).pop(run_id, None)
         if not node_name:
             return
+        parent_agent_name = getattr(self, "_node_parents", {}).pop(run_id, None)
         try:
-            await self._proofrail.on_node_end(node_name, outputs, error=None)
+            await self._proofrail.on_node_end(node_name, outputs, error=None, parent_agent_name=parent_agent_name)
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -263,8 +281,9 @@ def _make_on_chain_error():
         node_name = getattr(self, "_node_runs", {}).pop(run_id, None)
         if not node_name:
             return
+        parent_agent_name = getattr(self, "_node_parents", {}).pop(run_id, None)
         try:
-            await self._proofrail.on_node_end(node_name, None, error=error)
+            await self._proofrail.on_node_end(node_name, None, error=error, parent_agent_name=parent_agent_name)
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
