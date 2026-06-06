@@ -8,13 +8,10 @@ execute_task) and confirms that:
   - the original method is restored after the run (cleanup guarantee).
 
 NOTE on CrewAI Scenario 3 (deny):
-  CrewAI's governance is fire-and-forget via asyncio.run_coroutine_threadsafe.
-  A "deny" decision is logged as a warning but does NOT propagate back into
-  the synchronous crew execution (adapter design limitation documented in
-  crewai/adapter.py).  Scenario 3 therefore asserts that:
-    - The deny event WAS recorded on the backend.
-    - The crew completed (denial did not halt execution).
-  This intentionally differs from the LangGraph / LangChain behavior.
+  _fire() now blocks synchronously via fut.result() from the worker thread,
+  so a backend deny raises ActionDeniedError and halts the crew immediately.
+  This matches LangGraph / LangChain behaviour.  Stubs dispatch through
+  asyncio.to_thread so _fire() is always called from a worker thread.
 
 Framework stubs are injected via sys.modules in conftest.py — crewai is
 NOT installed.
@@ -31,14 +28,13 @@ import pytest
 
 import proofrail
 from proofrail.crewai.adapter import govern
-from proofrail.exceptions import BackendUnavailableError
+from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
 
 from .conftest import (
     make_mock_post,
     assert_event_recorded,
     assert_chain_completed,
     count_event_calls,
-    running_event_loop_in_thread,  # noqa: F401 — imported for pytest fixture discovery
 )
 
 
@@ -87,17 +83,28 @@ class _StubCrewA:
         self.task_callback        = None
 
     async def kickoff_async(self, inputs: Any = None, **kw: Any) -> list:
+        # Dispatch each task into a worker thread, mirroring real CrewAI 1.x
+        # (Crew.kickoff_async = asyncio.to_thread(kickoff)).  This ensures
+        # _fire() is always called from a worker thread so fut.result() never
+        # deadlocks the event loop.
         results = []
         for task, agent in zip(self.tasks, self.agents):
-            if callable(self.before_task_callback):
-                self.before_task_callback(task, agent)
-            out = _MockTaskOutput(
-                f"Result for {task.description}", agent.role,
-                description=task.description,   # mirrors TaskOutput.description in 1.x
-            )
+            before_cb = self.before_task_callback
+            after_cb  = self.task_callback
+
+            def _run(task=task, agent=agent, bcb=before_cb, acb=after_cb):
+                if callable(bcb):
+                    bcb(task, agent)
+                out = _MockTaskOutput(
+                    f"Result for {task.description}", agent.role,
+                    description=task.description,
+                )
+                if callable(acb):
+                    acb(out)
+                return out
+
+            out = await asyncio.to_thread(_run)
             results.append(out)
-            if callable(self.task_callback):
-                self.task_callback(out)
         return results
 
     def kickoff(self, inputs: Any = None, **kw: Any) -> Any:
@@ -117,10 +124,15 @@ class _StubCrewB:
         # NO before_task_callback / task_callback attributes
 
     async def kickoff_async(self, inputs: Any = None, **kw: Any) -> list:
+        # Worker-thread dispatch mirrors real CrewAI 1.x so _fire() can block
+        # safely without deadlocking the event loop.
         results = []
         for task, agent in zip(self.tasks, self.agents):
-            # execute_task will be monkey-patched by the adapter
-            result = agent.execute_task(task)
+            def _run(task=task, agent=agent):
+                # execute_task will be monkey-patched by the adapter
+                return agent.execute_task(task)
+
+            result = await asyncio.to_thread(_run)
             results.append(result)
         return results
 
@@ -152,18 +164,26 @@ class _StubCrewMixed:
         self.task_callback = None   # has task_callback, but NO before_task_callback
 
     async def kickoff_async(self, inputs: Any = None, **kw: Any) -> list:
+        # Worker-thread dispatch mirrors real CrewAI 1.x so _fire() can block
+        # safely without deadlocking the event loop.
         results = []
         for task, agent in zip(self.tasks, self.agents):
-            # execute_task is patched by Strategy B → fires on_task_start only
-            raw = agent.execute_task(task)
-            out = _MockTaskOutput(
-                raw, agent.role,
-                description=task.description,   # mirrors TaskOutput.description in 1.x
-            )
+            after_cb = self.task_callback
+
+            def _run(task=task, agent=agent, acb=after_cb):
+                # execute_task is patched by Strategy B → fires on_task_start only
+                raw = agent.execute_task(task)
+                out = _MockTaskOutput(
+                    raw, agent.role,
+                    description=task.description,
+                )
+                # task_callback is wrapped by Strategy A → fires on_task_end_from_output
+                if callable(acb):
+                    acb(out)
+                return out
+
+            out = await asyncio.to_thread(_run)
             results.append(out)
-            # task_callback is wrapped by Strategy A → fires on_task_end_from_output
-            if callable(self.task_callback):
-                self.task_callback(out)
         return results
 
     def kickoff(self, inputs: Any = None, **kw: Any) -> Any:
@@ -232,16 +252,24 @@ async def test_backend_denies_action_crewai():
     mock_post, calls = make_mock_post(deny_on="Delete old records")
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        # No ActionDeniedError surfaces — fire-and-forget design
-        result = await governed.kickoff_async(inputs={"topic": "test"})
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        # ActionDeniedError now propagates — synchronous _fire() fix
+        with pytest.raises(ActionDeniedError):
+            await governed.kickoff_async(inputs={"topic": "test"})
 
-    # Crew completed both tasks
-    assert len(result) == 2
-    assert_chain_completed(calls)
-    # The deny event WAS sent to the backend
+    # Task 1 was allowed through — both start and end events were sent
+    assert_event_recorded(calls, action_name="Research the market", action_type="task_execution")
+    # Task 2's before-event was sent; the backend denied it, raising ActionDeniedError
     assert_event_recorded(calls, action_name="Delete old records", action_type="task_execution")
+    # Task 2 was halted before completion — no task_result event for it
+    task_2_results = [
+        c for c in calls
+        if "events" in c["path"]
+        and c["body"].get("action_name", "").startswith("Delete old records")
+        and c["body"].get("action_type") == "task_result"
+    ]
+    assert len(task_2_results) == 0, (
+        f"Expected no task_result for denied task, got: {[c['body'] for c in task_2_results]}"
+    )
 
 
 # ===========================================================================
@@ -317,12 +345,13 @@ async def test_fast_path_engages_crewai():
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_strategy_b_fallback_crewai(running_event_loop_in_thread):
+async def test_strategy_b_fallback_crewai():
     """
     Force Strategy B by using a crew with no before_task_callback / task_callback.
-    The adapter monkey-patches agent.execute_task, records governance events via
-    asyncio.run_coroutine_threadsafe onto running_event_loop_in_thread, then
-    restores the original method in the finally block.
+    The adapter monkey-patches agent.execute_task.  _StubCrewB dispatches into a
+    worker thread via asyncio.to_thread so _fire() blocks the worker thread while
+    the governance coroutine runs synchronously on the main event loop.
+    The original method is restored in the finally block.
     """
     crew = _StubCrewB()
     original_execute = crew.agents[0].execute_task
@@ -331,12 +360,13 @@ async def test_strategy_b_fallback_crewai(running_event_loop_in_thread):
     mock_post, calls = make_mock_post()
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        # kickoff_async runs in the test's event loop; it calls execute_task
-        # synchronously.  The patched version fires governance coroutines on
-        # running_event_loop_in_thread via run_coroutine_threadsafe.
+        # _StubCrewB dispatches via asyncio.to_thread; the patched execute_task
+        # fires governance coroutines synchronously on the main event loop via
+        # run_coroutine_threadsafe + fut.result().
         result = await governed.kickoff_async(inputs={"topic": "data"})
 
-        # Wait for the background-loop coroutines to complete
+        # Events are recorded synchronously; sleep is no longer required but
+        # kept for compatibility with any remaining fire-and-forget paths.
         await asyncio.sleep(0.1)
 
     assert result == ["Result: Analyse the data"]
@@ -511,3 +541,152 @@ async def test_parent_agent_name_strategy_a_mixed():
             f"parent_agent_name: expected {exp_parent!r}, "
             f"got {body.get('parent_agent_name')!r}"
         )
+
+
+# ===========================================================================
+# Regression — Phase 3 fix: deny propagates through Strategy B execute_task
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_deny_propagates_through_strategy_b_execute_task():
+    """
+    Regression for fire-and-forget fix (Phase 3).
+
+    In the mixed Strategy A+B path (CrewAI 1.x default), Strategy B's patched
+    execute_task fires on_task_start.  _fire() now blocks via fut.result() so
+    ActionDeniedError propagates back through the worker thread and halts the
+    crew immediately.
+
+    Before the fix: deny was swallowed; crew always completed.
+    After the fix:  deny raises ActionDeniedError from kickoff_async.
+    """
+    tasks = [_MockTask("Analyse the data")]
+    crew = _StubCrewMixed(tasks=tasks)
+    governed = govern(crew, chain_name="crew-deny-b-regression")
+    mock_post, calls = make_mock_post(deny_on="Analyse the data")
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        with pytest.raises(ActionDeniedError):
+            await governed.kickoff_async(inputs={"topic": "test"})
+
+    # The task_execution event was sent (and was the one denied)
+    assert_event_recorded(calls, action_name="Analyse the data", action_type="task_execution")
+    # No task_result — task was denied before completion
+    task_results = [
+        c for c in calls
+        if "events" in c["path"]
+        and c["body"].get("action_type") == "task_result"
+    ]
+    assert len(task_results) == 0, (
+        f"Expected no task_result after deny, got: {[c['body'] for c in task_results]}"
+    )
+
+
+# ===========================================================================
+# Regression — BUG-CR-02: object.__setattr__ bypasses Pydantic v2 validation
+# ===========================================================================
+
+def test_bug_cr02_object_setattr_bypasses_pydantic():
+    """
+    Regression for BUG-CR-02 (simulated).
+
+    crewai.Agent inherits pydantic.BaseModel.  In Pydantic v2, direct attribute
+    assignment raises ValueError when the attribute is not a declared model field.
+    execute_task is a method (not a field), so patching it requires
+    object.__setattr__ to bypass Pydantic's __setattr__ validation.
+
+    This test uses a minimal Pydantic v2 model to verify the mechanism without
+    requiring the real crewai package.
+    """
+    from pydantic import BaseModel
+
+    class PydanticAgent(BaseModel):
+        role: str
+
+        def execute_task(self, task: Any) -> str:
+            return f"original: {task}"
+
+    agent = PydanticAgent(role="tester")
+
+    # Direct assignment raises on Pydantic v2 BaseModel — confirming the bug
+    with pytest.raises((ValueError, TypeError)):
+        agent.execute_task = lambda task: "patched"  # type: ignore[method-assign]
+
+    # object.__setattr__ bypasses Pydantic's validation — this is the fix
+    patched_fn = lambda task: "patched"
+    object.__setattr__(agent, "execute_task", patched_fn)
+    assert agent.execute_task("x") == "patched"
+
+    # Restore also works via object.__setattr__ — this is _restore_instrumentation()'s path
+    original_bound = PydanticAgent.execute_task.__get__(agent)
+    object.__setattr__(agent, "execute_task", original_bound)
+    assert agent.execute_task("x") == "original: x"
+
+
+# ---------------------------------------------------------------------------
+# Helper: detect whether real crewai (not the conftest stub) is importable
+# ---------------------------------------------------------------------------
+
+def _is_real_crewai_installed() -> bool:
+    """True when the real crewai package is installed in this Python environment."""
+    import importlib.util
+    try:
+        spec = importlib.util.find_spec("crewai")
+    except ValueError:
+        # Stub module injected by conftest has __spec__ = None; find_spec raises
+        # ValueError in that case.  Real crewai is not installed here.
+        return False
+    # The stub module is a ModuleType with no origin; real crewai has one.
+    return spec is not None and spec.origin is not None
+
+
+_REAL_CREWAI_AVAILABLE = _is_real_crewai_installed()
+
+
+@pytest.mark.skipif(not _REAL_CREWAI_AVAILABLE, reason="real crewai package not installed")
+def test_bug_cr02_against_real_crewai_agent():
+    """
+    Regression for BUG-CR-02 (high-fidelity — real crewai.Agent).
+
+    Verifies that object.__setattr__ correctly patches the execute_task method
+    on a real crewai.Agent (a Pydantic v2 BaseModel subclass), and that
+    _restore_instrumentation() can restore the original method.
+
+    Skipped when crewai is not installed in the current Python environment
+    (SDK test environment uses a sys.modules stub instead).
+    """
+    import sys
+    import importlib
+
+    # Temporarily remove the stub so we can import the real package.
+    _stub = sys.modules.pop("crewai", None)
+    try:
+        real_crewai = importlib.import_module("crewai")
+        _Agent = getattr(real_crewai, "Agent", None)
+        if _Agent is None:
+            pytest.skip("crewai.Agent not found in real package")
+    except ImportError:
+        pytest.skip("crewai not importable in this environment")
+    finally:
+        # Always restore the stub so other tests are unaffected.
+        if _stub is not None:
+            sys.modules["crewai"] = _stub
+
+    # _Agent is now the real crewai.Agent class (captured before stub restore).
+    try:
+        agent = _Agent(
+            role="tester",
+            goal="verify BUG-CR-02 fix",
+            backstory="Test agent for patching regression",
+            verbose=False,
+        )
+    except Exception as exc:
+        pytest.skip(f"Could not instantiate crewai.Agent (LLM not configured?): {exc}")
+
+    # Direct assignment must raise on a real Pydantic v2 Agent
+    with pytest.raises((ValueError, TypeError)):
+        agent.execute_task = lambda task: "patched"  # type: ignore[method-assign]
+
+    # object.__setattr__ must succeed — this is what _patch_all_agents() now uses
+    object.__setattr__(agent, "execute_task", lambda task: "patched")
+    assert agent.execute_task("x") == "patched"

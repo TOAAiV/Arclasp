@@ -57,25 +57,29 @@ agent and crew object is restored to its original state even if an
 Known limitations
 -----------------
 *   When ``kickoff_async`` is unavailable (older CrewAI) the crew is run via
-    ``loop.run_in_executor`` — governance events are fire-and-forget and
-    may appear slightly out of sequence in high-concurrency scenarios.
-*   Governance events are scheduled on the event loop via
-    ``run_coroutine_threadsafe``; they are not awaited inside the synchronous
-    ``execute_task`` wrapper.  A ``deny`` decision therefore does not halt
-    task execution mid-flight — it surfaces as an ``ActionDeniedError`` the
-    next time the event loop processes the recording coroutine.
+    ``loop.run_in_executor``.  Governance events are recorded synchronously
+    (``_fire()`` blocks the executor worker thread while the event loop
+    processes each coroutine).  High-concurrency scenarios may see events
+    slightly out of order across parallel crews.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from concurrent.futures import Future as _CFFuture
+import concurrent.futures as _cf
 from typing import Any
 
 from proofrail import client as _proofrail_client
 from proofrail.chain import Chain
 from proofrail.crewai.callbacks import ProofRailCrewAICallback
+from proofrail.exceptions import (
+    ActionDeniedError,
+    BackendUnavailableError,
+    ChainAutoPausedError,
+    ChainTimeoutError,
+    ProofRailKillSwitchError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,20 +119,6 @@ def govern(
     TypeError
         If the object does not have a ``.kickoff`` method.
 
-    Known limitation — post-execution governance only
-    --------------------------------------------------
-    ProofRail records CrewAI task events *after* each task completes (Strategy A
-    uses ``task_callback``/``after_task_callback``; Strategy B wraps
-    ``Agent.execute_task`` and records the result on exit).  This means a
-    ``deny`` decision cannot prevent a task from executing — it surfaces as an
-    ``ActionDeniedError`` that halts the *next* stage of the workflow, not the
-    task itself.
-
-    Pre-execution governance (intercepting before ``execute_task`` is called
-    and blocking on a policy decision before execution starts) requires either
-    a synchronous policy-decision API or native CrewAI middleware support that
-    does not yet exist in the public CrewAI SDK.  See BACKLOG.md item B-2 for
-    the investigation note.
     """
     try:
         import crewai  # noqa: F401
@@ -357,7 +347,11 @@ def _patch_all_agents(
         patched = _make_patched_execute_task(
             original_method, agent, callback, loop, emit_end=emit_end
         )
-        agent.execute_task = patched
+        # crewai.Agent inherits pydantic.BaseModel; execute_task is a method,
+        # not a declared model field.  Direct assignment raises ValueError in
+        # Pydantic v2.  object.__setattr__ bypasses Pydantic's __setattr__
+        # validation.  (BUG-CR-02)
+        object.__setattr__(agent, "execute_task", patched)
         patch_records.append(("agent", agent, original_method))
         logger.debug(
             "proofrail: patched execute_task on agent %r",
@@ -430,7 +424,7 @@ def _restore_instrumentation(patch_records: list) -> None:
         try:
             if kind == "agent":
                 _, agent, original = record
-                agent.execute_task = original
+                object.__setattr__(agent, "execute_task", original)
                 logger.debug(
                     "proofrail: restored execute_task on agent %r",
                     getattr(agent, "role", agent),
@@ -456,21 +450,33 @@ def _restore_instrumentation(patch_records: list) -> None:
 def _fire(
     coro: Any,
     loop: asyncio.AbstractEventLoop,
-) -> "_CFFuture[Any]":
+    timeout: int = 30,
+) -> Any:
     """
-    Schedule *coro* on *loop* from any thread context (fire-and-forget).
+    Schedule *coro* on *loop* from a worker thread and block until it
+    completes or *timeout* seconds elapse.
 
-    Returns the ``concurrent.futures.Future`` for the scheduled coroutine.
-    Callers do not need to await or inspect the return value — errors are
-    logged but never propagated so that a recording failure never disrupts
-    crew execution.
+    Must be called from a **worker thread** — not from the event-loop thread
+    itself.  CrewAI 1.x always dispatches ``kickoff()`` via
+    ``asyncio.to_thread``, so this guarantee holds for all production callers.
+    Test stubs must also dispatch through a worker thread (e.g. via
+    ``asyncio.to_thread``) to avoid deadlocking the event loop.
+
+    Policy exceptions (``ActionDeniedError``, ``ChainTimeoutError``, etc.)
+    propagate directly to the caller so that a backend ``deny`` decision halts
+    the crew immediately.  A ``BackendUnavailableError`` is raised when the
+    governance coroutine does not complete within *timeout* seconds.
     """
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-
-    def _log_error(f: "_CFFuture[Any]") -> None:
-        exc = f.exception()
-        if exc is not None:
-            logger.warning("proofrail: governance recording error: %s", exc)
-
-    future.add_done_callback(_log_error)
-    return future
+    try:
+        return future.result(timeout=timeout)
+    except (
+        ActionDeniedError,
+        ChainTimeoutError,
+        ChainAutoPausedError,
+        ProofRailKillSwitchError,
+    ):
+        raise
+    except _cf.TimeoutError:
+        logger.error("ProofRail callback timed out after %ds", timeout)
+        raise BackendUnavailableError("Backend callback timed out") from None
