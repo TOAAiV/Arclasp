@@ -121,7 +121,7 @@ def init_sdk():
     yield
     # Reset module-level singletons so tests don't bleed into each other
     _client._config = None
-    _client._http_client = None
+    _client._clients_by_loop.clear()
 
 
 def _mock_get(payload: dict):
@@ -415,31 +415,86 @@ async def test_chain_verify_receipt_raises_if_not_started(init_sdk):
 @pytest.mark.asyncio
 async def test_reinit_closes_old_http_client():
     """
-    Calling proofrail.init() a second time must close the old httpx.AsyncClient
-    so that TCP connections and file descriptors are released.
+    Calling proofrail.init() a second time must close the current loop's
+    httpx.AsyncClient so that TCP connections and file descriptors are released.
+
+    With the loop-aware design, clients are created lazily on first _get_client()
+    call.  We force creation here, patch aclose, re-init, then verify the task
+    fired and a subsequent _get_client() returns a fresh instance.
     """
     import asyncio
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import AsyncMock
 
-    # First init — already done by the autouse fixture (init_sdk).
-    old_client = _client._http_client
-    assert old_client is not None
+    # Force creation of the client for the current pytest-asyncio event loop.
+    old_client = _client._get_client()
 
-    # Patch aclose on the *existing* client instance so we can verify it is called.
+    # Patch aclose on the existing client so we can verify it is scheduled.
     old_client.aclose = AsyncMock()
 
-    # Second init with a different api_key — should schedule close of old_client.
+    # Second init with a different api_key — must schedule aclose for current
+    # loop's client, then clear _clients_by_loop.
     proofrail.init(
         api_key="prail_newkey456",
         backend_url="http://test-backend-2",
         environment="development",
     )
 
-    # Allow the event loop to run pending tasks (aclose was fire-and-forget).
+    # Allow the event loop to drain pending tasks (aclose is fire-and-forget).
     await asyncio.sleep(0)
 
     old_client.aclose.assert_called_once()
-    assert _client._http_client is not old_client
+
+    # After re-init the dict is empty; the next _get_client() builds a fresh
+    # client with the new config and is a different object from the old one.
+    new_client = _client._get_client()
+    assert new_client is not old_client
+
+
+# ---------------------------------------------------------------------------
+# BUG-LC-03 regression: loop-aware client (I-5b)
+# ---------------------------------------------------------------------------
+
+def test_loop_aware_client_creates_separate_clients_for_separate_loops():
+    """
+    BUG-LC-03 regression test.
+
+    Before the fix, a single global httpx.AsyncClient was created in the
+    event loop that called proofrail.init().  When a LangChain sync
+    StructuredTool callback invoked proofrail via asyncio.Runner() — which
+    spins up a *new* event loop — httpx's internal anyio.Event raised:
+
+        RuntimeError: asyncio.Event bound to a different event loop
+
+    The exception was swallowed by langchain-core's ``except Exception``
+    handler, silently dropping tool_call events and corrupting the client
+    state so chain._complete() also failed (BUG-LC-04).
+
+    Fix: _get_client() now uses a WeakKeyDictionary keyed on the running
+    loop.  Each loop gets its own freshly-created httpx.AsyncClient.
+
+    This test creates two asyncio.Runner() instances (the exact pattern
+    that triggered the bug in production) and asserts that each gets a
+    distinct client object.
+    """
+    import asyncio
+
+    results_a: list = []
+    results_b: list = []
+
+    async def capture(storage: list) -> None:
+        storage.append(_client._get_client())
+
+    # Two separate Runner() calls → two separate event loops → two clients.
+    with asyncio.Runner() as runner:
+        runner.run(capture(results_a))
+    with asyncio.Runner() as runner:
+        runner.run(capture(results_b))
+
+    assert len(results_a) == 1 and len(results_b) == 1
+    assert results_a[0] is not results_b[0], (
+        "_get_client() must return a separate httpx.AsyncClient per event loop; "
+        "sharing one client across loops causes BUG-LC-03"
+    )
 
 
 # ---------------------------------------------------------------------------

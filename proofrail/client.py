@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import warnings
+import weakref
 from urllib.parse import urlencode
 
 import httpx
@@ -29,7 +30,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _config: ChainConfig | None = None
-_http_client: httpx.AsyncClient | None = None
+# Loop-aware client cache: one httpx.AsyncClient per event loop.  WeakKeyDictionary
+# ensures entries are removed automatically when a loop is garbage-collected, so
+# short-lived loops (e.g. asyncio.Runner()) never accumulate stale clients.
+_clients_by_loop: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +82,7 @@ def init(**kwargs) -> ChainConfig:
     ValueError
         If ``api_key`` is not provided or is empty.
     """
-    global _config, _http_client
+    global _config
 
     if not kwargs.get("api_key"):
         raise ValueError(
@@ -87,28 +91,25 @@ def init(**kwargs) -> ChainConfig:
 
     _config = ChainConfig(**kwargs)
 
-    # Close the old HTTP client before replacing it so we don't leak open
-    # TCP connections and file descriptors on re-init.
-    _old_client = _http_client
-    if _old_client is not None:
-        try:
-            loop = asyncio.get_running_loop()
-            # Inside an async context — schedule close as a fire-and-forget task.
-            loop.create_task(_old_client.aclose())
-        except RuntimeError:
-            # No running event loop — close synchronously via a temporary loop.
-            asyncio.run(_old_client.aclose())
-
-    # Rebuild the HTTP client so that base_url, timeout, and auth header all
-    # stay in sync with the new config.
-    _http_client = httpx.AsyncClient(
-        base_url=_config.backend_url,
-        timeout=httpx.Timeout(_config.backend_timeout_seconds),
-        headers={
-            "Authorization": f"Bearer {_config.api_key}",
-            "Content-Type": "application/json",
-        },
-    )
+    # On re-init: gracefully close the current loop's client (if we're inside
+    # an async context) so that TCP connections and file descriptors are
+    # released.  Then clear every cached client so the next _get_client() call
+    # creates a fresh instance with the updated config.
+    #
+    # Clients bound to *other* loops are dropped from the WeakKeyDictionary
+    # here.  Their resources are reclaimed by httpx + GC when those loops are
+    # eventually garbage-collected.  This is the standard httpx lifecycle for
+    # short-lived loops (e.g. asyncio.Runner()) and is safe for our usage.
+    try:
+        loop = asyncio.get_running_loop()
+        old_client = _clients_by_loop.get(loop)
+        if old_client is not None:
+            # Fire-and-forget: schedule aclose on the current loop.
+            loop.create_task(old_client.aclose())
+    except RuntimeError:
+        # No running event loop — nothing to close explicitly.
+        pass
+    _clients_by_loop.clear()
 
     # Warn loudly when plaintext HTTP is used against a production environment.
     # Governance audit data sent over HTTP is vulnerable to interception.
@@ -145,12 +146,39 @@ def get_config() -> ChainConfig:
 
 
 def _get_client() -> httpx.AsyncClient:
-    """Return the module-level HTTP client, raising if init() was skipped."""
-    if _http_client is None:
+    """Return the httpx.AsyncClient bound to the currently running event loop.
+
+    Each asyncio event loop gets its own client instance, stored in
+    ``_clients_by_loop``.  The first call for a given loop creates and caches
+    the client; subsequent calls return the cached instance.
+
+    This prevents "asyncio.Event bound to a different event loop" errors that
+    occurred when a single global client was shared across loops — the root
+    cause of BUG-LC-03.
+
+    Raises
+    ------
+    RuntimeError
+        If ``init()`` has not been called, or if there is no running event loop
+        (i.e. called from a non-async context without an active loop).
+    """
+    if _config is None:
         raise RuntimeError(
             "proofrail has not been initialized. Call proofrail.init(api_key='prail_...') first."
         )
-    return _http_client
+    loop = asyncio.get_running_loop()  # raises RuntimeError if no running loop
+    client = _clients_by_loop.get(loop)
+    if client is None:
+        client = httpx.AsyncClient(
+            base_url=_config.backend_url,
+            timeout=httpx.Timeout(_config.backend_timeout_seconds),
+            headers={
+                "Authorization": f"Bearer {_config.api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        _clients_by_loop[loop] = client
+    return client
 
 
 # ---------------------------------------------------------------------------
