@@ -389,3 +389,186 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
             sys.modules["proofrail.langchain.callbacks"] = saved_cb_mod
         elif "proofrail.langchain.callbacks" in sys.modules:
             del sys.modules["proofrail.langchain.callbacks"]
+
+
+# ===========================================================================
+# EXPECTED-UNDOCUMENTED-LC-01 — LangChain adapter populates parent_agent_name
+#   via Option B+: executor is the implicit parent of all tool/LLM events.
+# ===========================================================================
+
+class _StubChainWithParentIds:
+    """
+    Stub chain that fires two tool sequences to exercise all parent_run_id paths:
+      - tool_no_parent    fired with parent_run_id=None     (path 1: implicit executor parent)
+      - tool_unknown_parent fired with parent_run_id=<UUID not in _all_runs>  (path 2: Option B fallback)
+    """
+
+    def __init__(self) -> None:
+        self.invoke = MagicMock(return_value={"output": "done"})
+
+    async def ainvoke(self, input: Any, config: Any = None, **kw: Any) -> dict:
+        callbacks = (config or {}).get("callbacks", [])
+
+        # path 1: no parent_run_id → executor is implicit parent
+        run_a = uuid.uuid4()
+        for cb in callbacks:
+            if hasattr(cb, "on_tool_start"):
+                await cb.on_tool_start({"name": "tool_no_parent"}, "input a", run_id=run_a)
+        for cb in callbacks:
+            if hasattr(cb, "on_tool_end"):
+                await cb.on_tool_end("result a", run_id=run_a)
+
+        # path 2: explicit parent_run_id that is NOT in _all_runs (unknown executor chain run)
+        unknown_parent = uuid.uuid4()
+        run_b = uuid.uuid4()
+        for cb in callbacks:
+            if hasattr(cb, "on_tool_start"):
+                await cb.on_tool_start(
+                    {"name": "tool_unknown_parent"}, "input b",
+                    run_id=run_b, parent_run_id=unknown_parent,
+                )
+        for cb in callbacks:
+            if hasattr(cb, "on_tool_end"):
+                await cb.on_tool_end("result b", run_id=run_b)
+
+        return {"output": "lc_parent_sim"}
+
+
+@pytest.mark.asyncio
+async def test_strategy_b_populates_parent_agent_name_simulated():
+    """
+    EXPECTED-UNDOCUMENTED-LC-01 (simulated paths 1 and 2).
+
+    Option B+ semantics: every tool event gets parent_agent_name = executor name,
+    regardless of whether parent_run_id is None (path 1) or an unknown UUID (path 2).
+    The _all_runs resolution path (path 3) is covered in the real langchain-core test.
+    """
+    mock_post, calls = make_mock_post()
+    governed = govern(_StubChainWithParentIds(), chain_name="lc-parent-sim")
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        result = await governed.ainvoke({"input": "test"})
+
+    assert result == {"output": "lc_parent_sim"}
+
+    event_calls = [c for c in calls if "events" in c["path"]]
+    assert len(event_calls) == 4  # 2 tools × (start + end)
+
+    # govern() uses type(chain).__name__ as agent_name
+    executor_name = "_StubChainWithParentIds"
+
+    for ec in event_calls:
+        body = ec["body"]
+        assert body.get("parent_agent_name") == executor_name, (
+            f"Expected parent_agent_name={executor_name!r} but got "
+            f"{body.get('parent_agent_name')!r} in event {body.get('action_name')!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_strategy_b_populates_parent_agent_name_real():
+    """
+    EXPECTED-UNDOCUMENTED-LC-01 (real langchain-core paths 2 and 3).
+
+    Uses real langchain-core's _ahandle_event_for_handler (same pattern as the
+    BUG-LC-02 high-fidelity test) to verify that parent_agent_name resolution
+    works through the actual callback dispatcher:
+
+      path 2: parent_run_id=<UUID not in _all_runs> → falls back to agent_name
+      path 3: parent_run_id=<UUID pre-registered in _all_runs> → resolves to that name
+    """
+    import sys
+    import uuid as _uuid
+    import importlib
+
+    saved_lc = {k: sys.modules.pop(k)
+                for k in list(sys.modules.keys())
+                if k.startswith("langchain_core")}
+
+    try:
+        from langchain_core.callbacks.manager import _ahandle_event_for_handler
+
+        saved_cb_mod = sys.modules.pop("proofrail.langchain.callbacks", None)
+        import proofrail.langchain.callbacks as _fresh_cb_mod
+        importlib.reload(_fresh_cb_mod)
+
+        FreshCallback = _fresh_cb_mod.ProofRailLangChainCallback
+
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=False,
+            fail_mode="allow",
+        )
+
+        async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+            if path == "/v1/chains":
+                return {"id": "chain-parent-real"}
+            if path.endswith("/complete"):
+                return {}
+            return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
+
+        with patch("proofrail.client._post", side_effect=mock_post) as mock_p:
+            async with proofrail.Chain(name="real-parent-test") as chain:
+                callback = FreshCallback(chain, agent_name="test_executor")
+
+                # path 2: unknown parent_run_id → fallback to "test_executor"
+                unknown_parent = _uuid.uuid4()
+                run_a = _uuid.uuid4()
+                await _ahandle_event_for_handler(
+                    callback,
+                    "on_tool_start",
+                    None,
+                    {"name": "tool_unknown_parent"},
+                    "input a",
+                    run_id=run_a,
+                    parent_run_id=unknown_parent,
+                )
+
+                # path 3: known parent pre-registered in _all_runs → resolves to its name
+                parent_run = _uuid.uuid4()
+                callback._all_runs[parent_run] = "parent_tool_name"
+                run_b = _uuid.uuid4()
+                await _ahandle_event_for_handler(
+                    callback,
+                    "on_tool_start",
+                    None,
+                    {"name": "child_tool"},
+                    "input b",
+                    run_id=run_b,
+                    parent_run_id=parent_run,
+                )
+
+        # Collect event bodies from mock_post call args
+        event_bodies: dict[str, dict] = {}
+        for call_args in mock_p.call_args_list:
+            path = call_args[0][0]
+            body = call_args[0][1]
+            if "events" in path:
+                action_name = (body or {}).get("action_name", "")
+                event_bodies[action_name] = body
+
+        # path 2: unknown parent → fallback to agent_name
+        assert "tool_unknown_parent" in event_bodies, "tool_unknown_parent event not recorded"
+        assert event_bodies["tool_unknown_parent"]["parent_agent_name"] == "test_executor", (
+            f"path 2 failed: expected 'test_executor', "
+            f"got {event_bodies['tool_unknown_parent'].get('parent_agent_name')!r}"
+        )
+
+        # path 3: known parent in _all_runs → resolved to registered name
+        assert "child_tool" in event_bodies, "child_tool event not recorded"
+        assert event_bodies["child_tool"]["parent_agent_name"] == "parent_tool_name", (
+            f"path 3 failed: expected 'parent_tool_name', "
+            f"got {event_bodies['child_tool'].get('parent_agent_name')!r}"
+        )
+
+    finally:
+        for k in list(sys.modules.keys()):
+            if k.startswith("langchain_core"):
+                del sys.modules[k]
+        sys.modules.update(saved_lc)
+        if saved_cb_mod is not None:
+            sys.modules["proofrail.langchain.callbacks"] = saved_cb_mod
+        elif "proofrail.langchain.callbacks" in sys.modules:
+            del sys.modules["proofrail.langchain.callbacks"]

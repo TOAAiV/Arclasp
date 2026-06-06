@@ -157,6 +157,37 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         self._active_tools: dict[UUID, str] = {}
         self._active_llms: dict[UUID, str] = {}
 
+        # Non-evicting map for parent resolution (mirrors LangGraph's _all_nodes).
+        # Populated on every start event; never evicted so end events can resolve
+        # their parent even after the parent's own end event has fired.
+        self._all_runs: dict[UUID, str] = {}
+        # Resolved parent_agent_name stored at start time, consumed at end/error.
+        self._run_parents: dict[UUID, str | None] = {}
+
+    # ------------------------------------------------------------------
+    # Parent resolution (Option B+)
+    # ------------------------------------------------------------------
+
+    def _resolve_parent(self, parent_run_id: UUID | None) -> str:
+        """Return the parent agent name for a callback event.
+
+        LangChain Option B+ semantics: always resolves to a non-None name so
+        that executor → tool relationships are visible in audit trails even when
+        the executor never fires its own callback event (no on_chain_start record
+        exists for it).  This differs from LangGraph — where root nodes have
+        parent_agent_name=None because each node has its own distinct name — because
+        LangChain's executor/tool hierarchy is implicit: the executor IS self._agent_name
+        and every tool or LLM invocation is, by definition, a child of that executor.
+
+        Resolution order:
+          1. parent_run_id in _all_runs → use the registered name (tool-calling-tool path)
+          2. parent_run_id is non-None but unknown → self._agent_name (Option B fallback)
+          3. parent_run_id is None → self._agent_name (executor is implicit parent)
+        """
+        if parent_run_id is not None:
+            return self._all_runs.get(parent_run_id, self._agent_name)
+        return self._agent_name
+
     # ------------------------------------------------------------------
     # Tool callbacks
     # ------------------------------------------------------------------
@@ -180,6 +211,9 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         """
         tool_name = _serialized_name(serialized, fallback="unknown_tool")
         self._active_tools[run_id] = tool_name
+        self._all_runs[run_id] = tool_name
+        parent_agent_name = self._resolve_parent(parent_run_id)
+        self._run_parents[run_id] = parent_agent_name
 
         logger.debug("LangChain tool starting: %s (run_id=%s)", tool_name, run_id)
 
@@ -192,6 +226,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
                     "tool_input": str(input_str)[:1000],
                     "tags": tags or [],
                 },
+                parent_agent_name=parent_agent_name,
             )
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
@@ -210,6 +245,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         output as the payload.
         """
         tool_name = self._active_tools.pop(run_id, "unknown_tool")
+        parent_agent_name = self._run_parents.pop(run_id, None)
 
         logger.debug("LangChain tool completed: %s (run_id=%s)", tool_name, run_id)
 
@@ -221,6 +257,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
                 payload={
                     "tool_output": str(output)[:1000],
                 },
+                parent_agent_name=parent_agent_name,
             )
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
@@ -239,6 +276,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         error details as the payload.
         """
         tool_name = self._active_tools.pop(run_id, "unknown_tool")
+        parent_agent_name = self._run_parents.pop(run_id, None)
 
         logger.debug(
             "LangChain tool errored: %s — %s (run_id=%s)", tool_name, error, run_id
@@ -253,6 +291,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
                     "error_type": type(error).__name__,
                     "error_message": str(error)[:500],
                 },
+                parent_agent_name=parent_agent_name,
             )
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
@@ -280,6 +319,9 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         """
         model_name = _serialized_name(serialized, fallback="unknown_llm")
         self._active_llms[run_id] = model_name
+        self._all_runs[run_id] = model_name
+        parent_agent_name = self._resolve_parent(parent_run_id)
+        self._run_parents[run_id] = parent_agent_name
 
         logger.debug("LangChain LLM starting: %s (run_id=%s)", model_name, run_id)
 
@@ -293,6 +335,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
                     "prompts": [p[:500] for p in (prompts or [])],
                     "tags": tags or [],
                 },
+                parent_agent_name=parent_agent_name,
             )
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
@@ -312,6 +355,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         so that no LangChain types need to be imported.
         """
         model_name = self._active_llms.pop(run_id, "unknown_llm")
+        parent_agent_name = self._run_parents.pop(run_id, None)
 
         logger.debug("LangChain LLM completed: %s (run_id=%s)", model_name, run_id)
 
@@ -325,6 +369,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
                 payload={
                     "output": output_text,
                 },
+                parent_agent_name=parent_agent_name,
             )
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
@@ -342,6 +387,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         Records an event with ``action_type="llm_error"``.
         """
         model_name = self._active_llms.pop(run_id, "unknown_llm")
+        parent_agent_name = self._run_parents.pop(run_id, None)
 
         logger.debug(
             "LangChain LLM errored: %s — %s (run_id=%s)", model_name, error, run_id
@@ -356,6 +402,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
                     "error_type": type(error).__name__,
                     "error_message": str(error)[:500],
                 },
+                parent_agent_name=parent_agent_name,
             )
         except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
