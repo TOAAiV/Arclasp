@@ -20,6 +20,13 @@ from uuid import UUID
 if TYPE_CHECKING:
     from proofrail.chain import Chain
 
+from proofrail.exceptions import (
+    ActionDeniedError,
+    ChainAutoPausedError,
+    ChainTimeoutError,
+    ProofRailKillSwitchError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +64,22 @@ def _load_base_handler() -> type:
 
 
 _BaseCallbackHandler: type = _load_base_handler()
+
+
+class _StrategyBPolicyBreak(BaseException):
+    """
+    Internal control-flow signal that bypasses LangChain's callback manager
+    ``except Exception`` clause.  Raised inside callback methods when a policy
+    decision fires; caught and unwrapped in the adapter so the original policy
+    exception reaches the SDK caller.
+
+    Inherits BaseException (NOT Exception) — comparable to CancelledError.
+    Not exported; do not reference outside this package.
+    """
+
+    def __init__(self, original: BaseException) -> None:
+        self.original = original
+        super().__init__(f"Strategy B policy break: {type(original).__name__}")
 
 
 # ---------------------------------------------------------------------------
@@ -160,15 +183,18 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
 
         logger.debug("LangChain tool starting: %s (run_id=%s)", tool_name, run_id)
 
-        await self._chain.record_agent_action(
-            agent_name=self._agent_name,
-            action_type="tool_call",
-            action_name=tool_name,
-            payload={
-                "tool_input": str(input_str)[:1000],
-                "tags": tags or [],
-            },
-        )
+        try:
+            await self._chain.record_agent_action(
+                agent_name=self._agent_name,
+                action_type="tool_call",
+                action_name=tool_name,
+                payload={
+                    "tool_input": str(input_str)[:1000],
+                    "tags": tags or [],
+                },
+            )
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     async def on_tool_end(
         self,
@@ -187,14 +213,17 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
 
         logger.debug("LangChain tool completed: %s (run_id=%s)", tool_name, run_id)
 
-        await self._chain.record_agent_action(
-            agent_name=self._agent_name,
-            action_type="tool_result",
-            action_name=f"{tool_name}:result",
-            payload={
-                "tool_output": str(output)[:1000],
-            },
-        )
+        try:
+            await self._chain.record_agent_action(
+                agent_name=self._agent_name,
+                action_type="tool_result",
+                action_name=f"{tool_name}:result",
+                payload={
+                    "tool_output": str(output)[:1000],
+                },
+            )
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     async def on_tool_error(
         self,
@@ -215,15 +244,18 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             "LangChain tool errored: %s — %s (run_id=%s)", tool_name, error, run_id
         )
 
-        await self._chain.record_agent_action(
-            agent_name=self._agent_name,
-            action_type="tool_error",
-            action_name=f"{tool_name}:error",
-            payload={
-                "error_type": type(error).__name__,
-                "error_message": str(error)[:500],
-            },
-        )
+        try:
+            await self._chain.record_agent_action(
+                agent_name=self._agent_name,
+                action_type="tool_error",
+                action_name=f"{tool_name}:error",
+                payload={
+                    "error_type": type(error).__name__,
+                    "error_message": str(error)[:500],
+                },
+            )
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     # ------------------------------------------------------------------
     # LLM callbacks
@@ -251,16 +283,19 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
 
         logger.debug("LangChain LLM starting: %s (run_id=%s)", model_name, run_id)
 
-        await self._chain.record_agent_action(
-            agent_name=self._agent_name,
-            action_type="llm_call",
-            action_name=model_name,
-            payload={
-                "prompt_count": len(prompts),
-                "prompts": [p[:500] for p in (prompts or [])],
-                "tags": tags or [],
-            },
-        )
+        try:
+            await self._chain.record_agent_action(
+                agent_name=self._agent_name,
+                action_type="llm_call",
+                action_name=model_name,
+                payload={
+                    "prompt_count": len(prompts),
+                    "prompts": [p[:500] for p in (prompts or [])],
+                    "tags": tags or [],
+                },
+            )
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     async def on_llm_end(
         self,
@@ -282,14 +317,17 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
 
         output_text = _extract_llm_output(response)
 
-        await self._chain.record_agent_action(
-            agent_name=self._agent_name,
-            action_type="llm_result",
-            action_name=f"{model_name}:result",
-            payload={
-                "output": output_text,
-            },
-        )
+        try:
+            await self._chain.record_agent_action(
+                agent_name=self._agent_name,
+                action_type="llm_result",
+                action_name=f"{model_name}:result",
+                payload={
+                    "output": output_text,
+                },
+            )
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc
 
     async def on_llm_error(
         self,
@@ -309,12 +347,15 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             "LangChain LLM errored: %s — %s (run_id=%s)", model_name, error, run_id
         )
 
-        await self._chain.record_agent_action(
-            agent_name=self._agent_name,
-            action_type="llm_error",
-            action_name=f"{model_name}:error",
-            payload={
-                "error_type": type(error).__name__,
-                "error_message": str(error)[:500],
-            },
-        )
+        try:
+            await self._chain.record_agent_action(
+                agent_name=self._agent_name,
+                action_type="llm_error",
+                action_name=f"{model_name}:error",
+                payload={
+                    "error_type": type(error).__name__,
+                    "error_message": str(error)[:500],
+                },
+            )
+        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            raise _StrategyBPolicyBreak(exc) from exc

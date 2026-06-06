@@ -21,7 +21,7 @@ import pytest
 
 import proofrail
 from proofrail.langchain.adapter import govern
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
+from proofrail.exceptions import ActionDeniedError, BackendUnavailableError, ChainTimeoutError
 
 from .conftest import (
     make_mock_post,
@@ -205,3 +205,187 @@ async def test_fast_path_engages_langchain():
     assert any(c["path"] == "/v1/chains" for c in calls)
     # Workflow completed without exception — fast-path is engaged
     assert result is not None
+
+
+# ===========================================================================
+# BUG-LC-02 — LangChain adapter must propagate policy exceptions via
+#             BaseException pivot (same mechanism as BUG-LG-02 / Strategy B)
+# ===========================================================================
+
+class _StubChainWithSwallow:
+    """
+    Forces the callback-swallow scenario.  Wraps each callback invocation in
+    ``try/except Exception: pass`` to directly simulate LangChain's callback
+    manager swallowing behaviour.
+
+    Pre-fix: ChainTimeoutError (inherits Exception) is caught and discarded;
+    ainvoke() returns normally — the bug.
+    Post-fix: _StrategyBPolicyBreak (inherits BaseException) escapes the
+    except-Exception guard and propagates to the adapter for unwrapping.
+    """
+
+    def __init__(self, tool_name: str = "deny_tool") -> None:
+        self._tool_name = tool_name
+        self.invoke = MagicMock(return_value={"output": "done"})
+
+    async def ainvoke(self, input: Any, config: Any = None, **kw: Any) -> dict:
+        callbacks = (config or {}).get("callbacks", [])
+        run_id = uuid.uuid4()
+        for cb in callbacks:
+            if hasattr(cb, "on_tool_start"):
+                try:
+                    await cb.on_tool_start(
+                        {"name": self._tool_name}, "tool input",
+                        run_id=run_id,
+                    )
+                except Exception:
+                    pass  # simulates LangChain callback manager swallowing
+                # _StrategyBPolicyBreak(BaseException) propagates here if fix applied
+        return {"output": "should_not_reach_caller"}
+
+
+@pytest.mark.asyncio
+async def test_bug_lc_02_strategy_b_propagates_policy_exception():
+    """
+    BUG-LC-02: LangChain's callback manager catches Exception from
+    BaseCallbackHandler methods, silently swallowing policy decisions.
+    The fix raises _StrategyBPolicyBreak(BaseException) inside the callback,
+    which escapes the except-Exception guard.  The adapter catches it and
+    re-raises the original policy exception so the caller receives the correct
+    signal.
+
+    _StubChainWithSwallow encodes the exact bug: callbacks are wrapped in
+    try/except Exception: pass.  Without the fix the caller sees no error.
+    With the fix ChainTimeoutError propagates intact.
+    """
+    from proofrail.langchain.callbacks import _StrategyBPolicyBreak
+
+    proofrail.init(
+        api_key="prail_test",
+        backend_url="http://localhost:9999",
+        environment="development",
+        enable_local_fast_path=False,
+        fail_mode="allow",
+        default_approval_timeout_hours=0,   # instant ChainTimeoutError on require_approval
+    )
+
+    require_approval_resp = {
+        "policy_decision": "require_approval",
+        "decision_reason": "High-risk tool blocked for approval",
+        "decision_source": "backend_evaluation",
+    }
+
+    async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+        if path == "/v1/chains":
+            return {"id": "chain-lc02-swallow"}
+        if path.endswith("/complete"):
+            return {}
+        action_name = (body or {}).get("action_name", "")
+        if action_name == "deny_tool":
+            return require_approval_resp
+        return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
+
+    governed = govern(_StubChainWithSwallow(), chain_name="bug-lc-02")
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        with pytest.raises(ChainTimeoutError):
+            await governed.ainvoke({"input": "test"})
+
+
+# ===========================================================================
+# BUG-LC-02 (high-fidelity) — BaseException escapes real langchain-core
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
+    """
+    Higher-fidelity regression for BUG-LC-02.
+
+    test_bug_lc_02_strategy_b_propagates_policy_exception uses a hand-written
+    try/except Exception: pass wrapper to simulate LangChain's callback manager.
+    This test invokes langchain-core's REAL _ahandle_event_for_handler with our
+    actual ProofRailLangChainCallback (which inherits real BaseCallbackHandler).
+
+    Verifies that _StrategyBPolicyBreak(BaseException) escapes langchain-core's
+    ``except Exception`` clause intact — if langchain-core ever adds
+    ``except BaseException``, this test regresses before customers are affected.
+    """
+    import sys
+    import uuid as _uuid
+    import importlib
+
+    from proofrail.langchain.callbacks import _StrategyBPolicyBreak
+
+    # Remove conftest stubs so real langchain-core is importable.
+    saved_lc = {k: sys.modules.pop(k)
+                for k in list(sys.modules.keys())
+                if k.startswith("langchain_core")}
+
+    try:
+        from langchain_core.callbacks.manager import _ahandle_event_for_handler
+
+        # Reload our callbacks module so _BaseCallbackHandler becomes the real
+        # langchain_core.callbacks.base.BaseCallbackHandler (not the stub).
+        saved_cb_mod = sys.modules.pop("proofrail.langchain.callbacks", None)
+        import proofrail.langchain.callbacks as _fresh_cb_mod
+        importlib.reload(_fresh_cb_mod)
+
+        FreshCallback = _fresh_cb_mod.ProofRailLangChainCallback
+        FreshStrategyBPolicyBreak = _fresh_cb_mod._StrategyBPolicyBreak
+
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=False,
+            fail_mode="allow",
+            default_approval_timeout_hours=0,
+        )
+
+        require_approval_resp = {
+            "policy_decision": "require_approval",
+            "decision_reason": "Real langchain-core LangChain test",
+            "decision_source": "backend_evaluation",
+        }
+
+        async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+            if path == "/v1/chains":
+                return {"id": "chain-lc02-real"}
+            if path.endswith("/complete"):
+                return {}
+            action_name = (body or {}).get("action_name", "")
+            if action_name == "real_lc_tool":
+                return require_approval_resp
+            return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
+
+        with patch("proofrail.client._post", side_effect=mock_post):
+            async with proofrail.Chain(name="real-lc-test") as chain:
+                callback = FreshCallback(chain, agent_name="test_agent")
+                run_id = _uuid.uuid4()
+
+                # Pass the callback directly — _ahandle_event_for_handler uses
+                # duck-typing (getattr) so real AsyncCallbackHandler inheritance
+                # is not required; the method just needs to be async and present.
+                with pytest.raises(FreshStrategyBPolicyBreak) as exc_info:
+                    await _ahandle_event_for_handler(
+                        callback,
+                        "on_tool_start",
+                        None,                        # ignore_condition_name
+                        {"name": "real_lc_tool"},    # serialized
+                        "tool input",                # input_str
+                        run_id=run_id,
+                    )
+
+                assert isinstance(exc_info.value.original, ChainTimeoutError)
+
+    finally:
+        # Restore stubs and original module state
+        for k in list(sys.modules.keys()):
+            if k.startswith("langchain_core"):
+                del sys.modules[k]
+        sys.modules.update(saved_lc)
+        # Restore original callbacks module so other tests see stub base class
+        if saved_cb_mod is not None:
+            sys.modules["proofrail.langchain.callbacks"] = saved_cb_mod
+        elif "proofrail.langchain.callbacks" in sys.modules:
+            del sys.modules["proofrail.langchain.callbacks"]

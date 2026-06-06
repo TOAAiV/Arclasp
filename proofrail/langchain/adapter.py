@@ -46,7 +46,7 @@ from typing import Any
 from proofrail import client as _proofrail_client
 from proofrail._utils import _merge_config
 from proofrail.chain import Chain
-from proofrail.langchain.callbacks import ProofRailLangChainCallback, _BaseCallbackHandler
+from proofrail.langchain.callbacks import ProofRailLangChainCallback, _BaseCallbackHandler, _StrategyBPolicyBreak
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,10 @@ class GovernedChain:
                 agent_name=self._agent_name,
             )
             merged_config = _merge_config(config, {"callbacks": [proofrail_callback]})
-            return await self._chain.ainvoke(input, config=merged_config, **kwargs)
+            try:
+                return await self._chain.ainvoke(input, config=merged_config, **kwargs)
+            except _StrategyBPolicyBreak as wrapper:
+                raise wrapper.original from None
 
     # ------------------------------------------------------------------
     # Sync invocation (non-async scripts only)
