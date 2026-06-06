@@ -104,15 +104,16 @@ class ProofRailCrewAICallback:
     async def on_task_start(self, task: Any, agent: Any) -> None:
         """Record the start of a CrewAI task execution as a ProofRail chain event."""
         description = _task_description(task)
-        agent_name = _agent_role(agent)
+        agent_role = _agent_role(agent)
         action_name = description[:_ACTION_NAME_MAX]
 
-        logger.debug("CrewAI task starting: %r (agent=%s)", action_name, agent_name)
+        logger.debug("CrewAI task starting: %r (agent=%s)", action_name, agent_role)
 
         await self._chain.record_agent_action(
-            agent_name=agent_name,
+            agent_name=action_name,           # task label — the governed entity (child)
             action_type="task_execution",
             action_name=action_name,
+            parent_agent_name=agent_role,     # agent.role — who executes the task (parent)
             payload={
                 "task": description,
                 "expected_output": _task_expected_output(task),
@@ -126,15 +127,17 @@ class ProofRailCrewAICallback:
     async def on_task_end(self, task: Any, agent: Any, output: Any) -> None:
         """Record successful completion of a CrewAI task."""
         description = _task_description(task)
-        agent_name = _agent_role(agent)
-        action_name = f"{description[:_ACTION_NAME_MAX - 7]}:result"
+        agent_role = _agent_role(agent)
+        task_label = description[:_ACTION_NAME_MAX - 7]
+        action_name = f"{task_label}:result"
 
-        logger.debug("CrewAI task completed: %r (agent=%s)", description[:60], agent_name)
+        logger.debug("CrewAI task completed: %r (agent=%s)", description[:60], agent_role)
 
         await self._chain.record_agent_action(
-            agent_name=agent_name,
+            agent_name=task_label,            # task label — the governed entity (child)
             action_type="task_result",
             action_name=action_name,
+            parent_agent_name=agent_role,     # agent.role — who executed the task (parent)
             payload={
                 "task": description,
                 "output": str(output)[:_OUTPUT_MAX],
@@ -151,25 +154,28 @@ class ProofRailCrewAICallback:
         ``TaskOutput`` object directly.
 
         Used when the native ``crew.task_callback`` hook is available
-        (CrewAI >= 0.28).  ``task_output.agent`` provides the role label;
-        ``task`` is optional additional context.
+        (CrewAI >= 0.28).  ``task_output.agent`` provides the role label
+        (used as ``parent_agent_name``); ``task`` is optional additional
+        context for the task description.
         """
-        agent_name = str(getattr(task_output, "agent", "unknown_agent"))
+        agent_role = str(getattr(task_output, "agent", "unknown_agent"))
         description = (
             _task_description(task)
             if task is not None
             else str(getattr(task_output, "description", "task"))
         )
-        action_name = f"{description[:_ACTION_NAME_MAX - 7]}:result"
+        task_label = description[:_ACTION_NAME_MAX - 7]
+        action_name = f"{task_label}:result"
 
         logger.debug(
-            "CrewAI task_callback fired: %r (agent=%s)", description[:60], agent_name
+            "CrewAI task_callback fired: %r (agent=%s)", description[:60], agent_role
         )
 
         await self._chain.record_agent_action(
-            agent_name=agent_name,
+            agent_name=task_label,            # task label — the governed entity (child)
             action_type="task_result",
             action_name=action_name,
+            parent_agent_name=agent_role,     # agent.role — who executed the task (parent)
             payload=_extract_task_output(task_output),
         )
 
@@ -178,20 +184,22 @@ class ProofRailCrewAICallback:
     ) -> None:
         """Record a task that raised an exception."""
         description = _task_description(task)
-        agent_name = _agent_role(agent)
-        action_name = f"{description[:_ACTION_NAME_MAX - 6]}:error"
+        agent_role = _agent_role(agent)
+        task_label = description[:_ACTION_NAME_MAX - 6]
+        action_name = f"{task_label}:error"
 
         logger.debug(
             "CrewAI task errored: %r (agent=%s) — %s",
             description[:60],
-            agent_name,
+            agent_role,
             error,
         )
 
         await self._chain.record_agent_action(
-            agent_name=agent_name,
+            agent_name=task_label,            # task label — the governed entity (child)
             action_type="task_error",
             action_name=action_name,
+            parent_agent_name=agent_role,     # agent.role — who was executing (parent)
             payload={
                 "task": description,
                 "error_type": type(error).__name__,

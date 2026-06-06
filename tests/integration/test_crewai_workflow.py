@@ -61,10 +61,13 @@ class _MockAgent:
 
 
 class _MockTaskOutput:
-    def __init__(self, raw: str, agent: str) -> None:
-        self.raw     = raw
-        self.agent   = agent
-        self.summary = raw[:100]
+    def __init__(self, raw: str, agent: str, description: str = "") -> None:
+        self.raw         = raw
+        self.agent       = agent
+        self.summary     = raw[:100]
+        # description mirrors the required TaskOutput.description field in CrewAI 1.x;
+        # without it, on_task_end_from_output falls back to the literal string "task".
+        self.description = description
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +91,10 @@ class _StubCrewA:
         for task, agent in zip(self.tasks, self.agents):
             if callable(self.before_task_callback):
                 self.before_task_callback(task, agent)
-            out = _MockTaskOutput(f"Result for {task.description}", agent.role)
+            out = _MockTaskOutput(
+                f"Result for {task.description}", agent.role,
+                description=task.description,   # mirrors TaskOutput.description in 1.x
+            )
             results.append(out)
             if callable(self.task_callback):
                 self.task_callback(out)
@@ -150,7 +156,10 @@ class _StubCrewMixed:
         for task, agent in zip(self.tasks, self.agents):
             # execute_task is patched by Strategy B → fires on_task_start only
             raw = agent.execute_task(task)
-            out = _MockTaskOutput(raw, agent.role)
+            out = _MockTaskOutput(
+                raw, agent.role,
+                description=task.description,   # mirrors TaskOutput.description in 1.x
+            )
             results.append(out)
             # task_callback is wrapped by Strategy A → fires on_task_end_from_output
             if callable(self.task_callback):
@@ -404,4 +413,101 @@ async def test_mixed_callback_no_double_firing():
         assert s_idx < e_idx, (
             f"Task {i}: task_execution (index {s_idx}) must precede "
             f"task_result (index {e_idx}) in event stream"
+        )
+
+
+# ===========================================================================
+# Regression — CR-01: parent_agent_name population
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_parent_agent_name_strategy_b():
+    """
+    Regression for CR-01 — Strategy B (pure monkey-patch) path.
+
+    When execute_task is patched directly (no native task_callback), both
+    on_task_start and on_task_end fire through Strategy B's wrapper.  Each
+    event must carry:
+      - agent_name  = task description (the governed entity / child)
+      - parent_agent_name = agent.role (the executor / parent)
+
+    Verifies the Crew → Agent → Task hierarchy is preserved in the audit
+    trail for the pure Strategy B path (crew with no callback attributes).
+    """
+    crew = _StubCrewB()   # no task_callback / before_task_callback → pure Strategy B
+    governed = govern(crew, chain_name="crew-b-cr01")
+    mock_post, calls = make_mock_post()
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        await governed.kickoff_async(inputs={"topic": "data"})
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    event_calls = [c for c in calls if "events" in c["path"]]
+    assert event_calls, "Expected at least one governance event"
+
+    for ev in event_calls:
+        body = ev["body"]
+        # agent_name must be the task description, not the agent role
+        assert body.get("agent_name") == "Analyse the data", (
+            f"Expected agent_name='Analyse the data' (task label), "
+            f"got {body.get('agent_name')!r}"
+        )
+        # parent_agent_name must be the agent's role
+        assert body.get("parent_agent_name") == "Analyst", (
+            f"Expected parent_agent_name='Analyst' (agent role), "
+            f"got {body.get('parent_agent_name')!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_parent_agent_name_strategy_a_mixed():
+    """
+    Regression for CR-01 — Strategy A mixed path (CrewAI 1.x default).
+
+    When the crew has task_callback but no before_task_callback, Strategy B
+    provides on_task_start (execute_task patch) and Strategy A provides
+    on_task_end_from_output (task_callback wrapper).  Both paths must set:
+      - agent_name        = task description (the governed entity / child)
+      - parent_agent_name = agent.role (the executor / parent)
+
+    Uses _StubCrewMixed which accurately simulates the CrewAI 1.x Crew shape.
+    Two agents ("Researcher", "Writer") run two tasks so we can assert the
+    correct per-agent parent_agent_name on each event.
+    """
+    crew = _StubCrewMixed()   # task_callback only → mixed Strategy A + B
+    governed = govern(crew, chain_name="crew-mixed-cr01")
+    mock_post, calls = make_mock_post()
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        await governed.kickoff_async(inputs={"topic": "test"})
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    event_calls = [c for c in calls if "events" in c["path"]]
+    assert len(event_calls) == 4, (
+        f"Expected 4 events (2 tasks × start + end), got {len(event_calls)}"
+    )
+
+    # Build expected (agent_name, parent_agent_name) pairs — task description
+    # and corresponding agent role, in event-stream order:
+    # task_execution "Research the market" fired by Strategy B (Researcher)
+    # task_result    "Research the market" fired by Strategy A (Researcher)
+    # task_execution "Write the report"    fired by Strategy B (Writer)
+    # task_result    "Write the report"    fired by Strategy A (Writer)
+    expected_pairs = [
+        ("Research the market", "Researcher"),
+        ("Research the market", "Researcher"),
+        ("Write the report",    "Writer"),
+        ("Write the report",    "Writer"),
+    ]
+
+    for ev, (exp_agent, exp_parent) in zip(event_calls, expected_pairs):
+        body = ev["body"]
+        assert body.get("agent_name") == exp_agent, (
+            f"agent_name: expected {exp_agent!r}, got {body.get('agent_name')!r}"
+        )
+        assert body.get("parent_agent_name") == exp_parent, (
+            f"parent_agent_name: expected {exp_parent!r}, "
+            f"got {body.get('parent_agent_name')!r}"
         )
