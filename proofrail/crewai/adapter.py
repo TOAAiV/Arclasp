@@ -27,11 +27,20 @@ How it works
         Additionally, if ``crew.before_task_callback`` exists, it is wrapped
         to fire ``on_task_start``.
 
-    Strategy B — Monkey-patch ``Agent.execute_task`` (fallback)
+    Strategy B — Monkey-patch ``Agent.execute_task`` (fallback / start-only supplement)
         For each agent in ``crew.agents``, the instance-level
-        ``execute_task`` method is replaced with a wrapper that fires
-        ``on_task_start`` before and ``on_task_end`` / ``on_task_error``
-        after the original executes.
+        ``execute_task`` method is replaced with a wrapper.  Two modes:
+
+        *  ``emit_end=True`` (pure Strategy B, no Strategy A present):
+           fires ``on_task_start`` before *and* ``on_task_end`` /
+           ``on_task_error`` after the original executes.
+        *  ``emit_end=False`` (mixed scenario — Strategy A wraps
+           ``task_callback`` but ``before_task_callback`` is absent,
+           the default for all CrewAI 1.x crews): fires only
+           ``on_task_start``; ``on_task_end`` is left to Strategy A's
+           ``task_callback`` wrapper so each task emits exactly one
+           ``task_result`` event.  ``on_task_error`` still fires here
+           because Strategy A has no error path.
 
         Because ``execute_task`` is *synchronous* and ``record_agent_action``
         is *async*, the wrapper uses ``asyncio.run_coroutine_threadsafe``
@@ -296,14 +305,18 @@ def _install_instrumentation(
             crew.task_callback = _wrapped_after
             patch_records.append(("crew_after", crew, original_after))
 
-        # If we only have after_callback (no before), also patch execute_task
-        # so we can capture pre-task events.
+        # Mixed scenario: task_callback present but no before_task_callback
+        # (the default for all CrewAI 1.x crews).  Patch execute_task to
+        # capture pre-task start events, but set emit_end=False so Strategy B
+        # does NOT also fire on_task_end — that slot belongs to Strategy A's
+        # task_callback wrapper.  on_task_error remains in Strategy B because
+        # Strategy A has no error path.
         if has_after and not has_before:
             logger.debug(
-                "proofrail: no before_task_callback found — also patching "
-                "execute_task for pre-task events"
+                "proofrail: no before_task_callback — patching execute_task "
+                "for pre-task start events only (Strategy A owns on_task_end)"
             )
-            _patch_all_agents(crew, callback, loop, patch_records)
+            _patch_all_agents(crew, callback, loop, patch_records, emit_end=False)
 
         return patch_records
 
@@ -324,8 +337,14 @@ def _patch_all_agents(
     callback: ProofRailCrewAICallback,
     loop: asyncio.AbstractEventLoop,
     patch_records: list,
+    emit_end: bool = True,
 ) -> None:
-    """Patch ``execute_task`` on every agent in *crew.agents*."""
+    """Patch ``execute_task`` on every agent in *crew.agents*.
+
+    ``emit_end`` is forwarded to :func:`_make_patched_execute_task`.  Pass
+    ``False`` in the mixed-callback scenario where Strategy A's
+    ``task_callback`` wrapper already handles ``on_task_end``.
+    """
     for agent in getattr(crew, "agents", []):
         if not hasattr(agent, "execute_task"):
             logger.debug(
@@ -335,7 +354,9 @@ def _patch_all_agents(
             continue
 
         original_method = agent.execute_task
-        patched = _make_patched_execute_task(original_method, agent, callback, loop)
+        patched = _make_patched_execute_task(
+            original_method, agent, callback, loop, emit_end=emit_end
+        )
         agent.execute_task = patched
         patch_records.append(("agent", agent, original_method))
         logger.debug(
@@ -349,10 +370,18 @@ def _make_patched_execute_task(
     agent_ref: Any,
     callback: ProofRailCrewAICallback,
     loop: asyncio.AbstractEventLoop,
+    emit_end: bool = True,
 ) -> Any:
     """
     Return a replacement for ``agent.execute_task`` that fires ProofRail
-    governance events before and after the original synchronous method runs.
+    governance events before (and optionally after) the original synchronous
+    method runs.
+
+    When ``emit_end=False``, the wrapper omits ``on_task_end`` on the success
+    path — used in the mixed-callback scenario where Strategy A's
+    ``task_callback`` wrapper already covers that slot.  ``on_task_error`` is
+    always emitted regardless of ``emit_end`` because Strategy A has no error
+    path.
 
     The wrapper uses ``asyncio.run_coroutine_threadsafe`` so that recording
     coroutines are correctly scheduled on *loop* regardless of whether the
@@ -372,10 +401,14 @@ def _make_patched_execute_task(
             error = exc
 
         if error is not None:
+            # Error path: always record and re-raise. The early return here
+            # means the emit_end guard below is never reached on error —
+            # keep this raise in place so that guarantee holds.
             _fire(callback.on_task_error(task, agent_ref, error), loop)
             raise error  # re-raise after recording
 
-        _fire(callback.on_task_end(task, agent_ref, result), loop)
+        if emit_end:
+            _fire(callback.on_task_end(task, agent_ref, result), loop)
         return result
 
     return patched

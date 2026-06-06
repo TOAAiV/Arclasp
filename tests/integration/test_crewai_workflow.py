@@ -122,6 +122,45 @@ class _StubCrewB:
         return asyncio.run(self.kickoff_async(inputs, **kw))
 
 
+# ---------------------------------------------------------------------------
+# Mixed-callback crew stub (task_callback only — no before_task_callback)
+# This is the exact shape of every CrewAI 1.x Crew instance.
+# ---------------------------------------------------------------------------
+
+class _StubCrewMixed:
+    """
+    Crew with task_callback but NO before_task_callback — the default shape
+    of every CrewAI 1.x Crew instance (before_task_callback was removed in 1.x).
+
+    Calls execute_task on each agent (so Strategy B's start-event patch fires),
+    then calls self.task_callback with a TaskOutput-like object (so Strategy A's
+    end-event wrapper fires).  Accurately simulates the CrewAI 1.x execution flow.
+    """
+
+    def __init__(self, tasks: list[_MockTask] | None = None) -> None:
+        self.agents = [_MockAgent("Researcher"), _MockAgent("Writer")]
+        self.tasks  = tasks or [
+            _MockTask("Research the market"),
+            _MockTask("Write the report"),
+        ]
+        self.task_callback = None   # has task_callback, but NO before_task_callback
+
+    async def kickoff_async(self, inputs: Any = None, **kw: Any) -> list:
+        results = []
+        for task, agent in zip(self.tasks, self.agents):
+            # execute_task is patched by Strategy B → fires on_task_start only
+            raw = agent.execute_task(task)
+            out = _MockTaskOutput(raw, agent.role)
+            results.append(out)
+            # task_callback is wrapped by Strategy A → fires on_task_end_from_output
+            if callable(self.task_callback):
+                self.task_callback(out)
+        return results
+
+    def kickoff(self, inputs: Any = None, **kw: Any) -> Any:
+        return asyncio.run(self.kickoff_async(inputs, **kw))
+
+
 def _govern_a(tasks=None, chain_name="crew-test"):
     return govern(_StubCrewA(tasks), chain_name=chain_name)
 
@@ -306,3 +345,63 @@ async def test_strategy_b_fallback_crewai(running_event_loop_in_thread):
     # Governance events recorded on the background loop
     assert_event_recorded(calls, action_type="task_execution")
     assert_event_recorded(calls, action_type="task_result")
+
+
+# ===========================================================================
+# Regression — B-6: mixed callback scenario (CrewAI 1.x default)
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_mixed_callback_no_double_firing():
+    """
+    Regression for B-6: a crew with task_callback but no before_task_callback
+    (the default shape of every CrewAI 1.x Crew instance) must emit exactly
+    1× task_execution + 1× task_result per task — never 1× + 2×.
+
+    Before the fix, _make_patched_execute_task always fired on_task_end even
+    when Strategy A's task_callback wrapper was already active, producing a
+    duplicate task_result event for every completed task.
+
+    Event-ordering check: within each task's pair of events, task_execution
+    must arrive before task_result (Strategy B fires start, Strategy A fires
+    end — ordering must not be accidentally swapped by a future refactor).
+    """
+    crew = _StubCrewMixed()
+    governed = govern(crew, chain_name="crew-mixed-b6")
+    mock_post, calls = make_mock_post()
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        result = await governed.kickoff_async(inputs={"topic": "test"})
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    assert len(result) == 2
+    assert_chain_completed(calls)
+
+    event_calls = [c for c in calls if "events" in c["path"]]
+    starts = [c for c in event_calls if c["body"].get("action_type") == "task_execution"]
+    ends   = [c for c in event_calls if c["body"].get("action_type") == "task_result"]
+
+    # 2 tasks × 1 start each (Strategy B) — B-6 would not affect this count
+    assert len(starts) == 2, (
+        f"Expected 2 task_execution events, got {len(starts)}: "
+        f"{[c['body'] for c in starts]}"
+    )
+    # 2 tasks × 1 end each (Strategy A) — B-6 would produce 4 here
+    assert len(ends) == 2, (
+        f"Expected 2 task_result events, got {len(ends)}: "
+        f"{[c['body'] for c in ends]}"
+    )
+    # Total: exactly 4 events for 2 tasks, not 6
+    assert count_event_calls(calls) == 4
+
+    # Ordering: every task_execution must appear before the next task_result
+    # in the calls list.  Confirms Strategy B fires start before Strategy A
+    # fires end — a regression guard against accidental event-order reversal.
+    start_indices = [event_calls.index(c) for c in starts]
+    end_indices   = [event_calls.index(c) for c in ends]
+    for i, (s_idx, e_idx) in enumerate(zip(start_indices, end_indices)):
+        assert s_idx < e_idx, (
+            f"Task {i}: task_execution (index {s_idx}) must precede "
+            f"task_result (index {e_idx}) in event stream"
+        )
