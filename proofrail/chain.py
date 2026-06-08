@@ -230,7 +230,12 @@ class Chain:
         config = _client.get_config()
         sanitized = sanitize_payload(payload or {}, config)
 
+        # Generated once here; travels unchanged through retries, offline
+        # buffer, and drain — backend deduplicates on (chain_id, idempotency_key).
+        idempotency_key = uuid.uuid4().hex
+
         event_body = {
+            "idempotency_key": idempotency_key,
             "agent_name": agent_name,
             "parent_agent_name": parent_agent_name,
             "action_type": action_type,
