@@ -30,8 +30,18 @@ class _StubAsyncCallbackHandler(_StubBaseCallbackHandler):
 # 2.  Seed sys.modules BEFORE any adapter imports happen
 # ============================================================
 
+import importlib.util
 import sys
 from types import ModuleType
+
+
+def _has_real_package(name: str) -> bool:
+    """True if the package is genuinely installed (not just stubbed in sys.modules)."""
+    try:
+        spec = importlib.util.find_spec(name)
+        return spec is not None and spec.origin is not None
+    except (ValueError, ModuleNotFoundError):
+        return False
 
 
 def _make_mod(name: str, **attrs) -> ModuleType:
@@ -61,6 +71,8 @@ for _name, _mod in [
     ("langgraph",                       _make_mod("langgraph")),
     ("crewai",                          _make_mod("crewai")),
 ]:
+    if _has_real_package(_name):
+        continue  # real package available — don't override with stub
     sys.modules.setdefault(_name, _mod)
 
 
