@@ -103,6 +103,11 @@ class ChainConfig(BaseModel):
     # and fail_mode.
     fail_modes: dict[str, str] = Field(default_factory=dict)
     backend_timeout_seconds: int = 5
+    # Drain timeout override.  None (default) = use the buffer-size formula:
+    #   max(10.0, buffer_size * backend_timeout_seconds * 1.5).
+    # Set to a positive integer to enforce a hard ceiling regardless of
+    # buffer size — useful when the agent run has a known wall-clock budget.
+    drain_timeout_seconds: int | None = None
     offline_buffer_max_events: int = 100
 
     # HTTP retry configuration.

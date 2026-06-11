@@ -555,13 +555,22 @@ class Chain:
         # can be lost if the event loop shuts down before the drain task runs
         # (audit finding I-6).
         if self._drain_task is not None and not self._drain_task.done():
+            config = _client.get_config()
+            buffer_size = len(self._offline_buffer)
+            if config.drain_timeout_seconds is not None:
+                drain_timeout = float(config.drain_timeout_seconds)
+            else:
+                # Scale with work to do: 50% headroom over expected drain time,
+                # floor of 10 s for empty/small buffers.  BUG-LR-01.
+                drain_timeout = max(10.0, buffer_size * config.backend_timeout_seconds * 1.5)
             try:
-                await asyncio.wait_for(self._drain_task, timeout=10.0)
+                await asyncio.wait_for(self._drain_task, timeout=drain_timeout)
             except (asyncio.TimeoutError, Exception) as exc:
+                actual_dropped = len(self._offline_buffer)
                 logger.warning(
-                    "Drain task did not finish before chain %s completed: %s",
-                    self._chain_id,
-                    exc,
+                    "Drain task did not finish before chain %s completed: "
+                    "%d event(s) dropped (timeout=%.1fs): %s",
+                    self._chain_id, actual_dropped, drain_timeout, exc,
                 )
 
         try:
