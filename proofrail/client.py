@@ -212,8 +212,13 @@ async def _retry_with_backoff(
 
     Retry policy
     ------------
-    * **Retryable:** ``httpx.TimeoutException``, ``httpx.ConnectError``,
+    * **Retryable:** ``httpx.TimeoutException``, ``httpx.NetworkError``
+      (which covers ``ConnectError``, ``ReadError``, and ``WriteError``),
       5xx responses (500/502/503/504), 429 with optional Retry-After.
+    * **Non-retryable — propagates immediately:** ``httpx.RemoteProtocolError``
+      and ``httpx.DecodingError`` indicate backend health issues (malformed
+      HTTP, bad response body) that should surface to the caller for
+      ``fail_mode`` handling rather than silently retrying.
     * **Non-retryable (immediate return):** 2xx success or 4xx client error.
 
     After all retries are exhausted on a network exception, re-raises the
@@ -228,7 +233,7 @@ async def _retry_with_backoff(
     for attempt in range(max_retries + 1):
         try:
             response: httpx.Response = await coro_factory()
-        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
             if attempt < max_retries:
                 backoff_ms = backoff_base_ms * (2 ** attempt)
                 logger.info(
@@ -277,8 +282,8 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     POST *data* as JSON to *path* on the configured backend.
 
     Retries up to ``config.max_retries`` times (exponential backoff, base
-    ``config.retry_backoff_base_ms`` ms) on transient errors: network
-    timeouts, connection failures, 5xx responses, and 429 rate limits.
+    ``config.retry_backoff_base_ms`` ms) on transient errors: timeouts,
+    ``NetworkError`` (connect / read / write failures), 5xx, and 429.
 
     After all retries are exhausted:
     * Network/5xx/429 → ``fail_mode`` determines behaviour: ``"deny"`` raises
@@ -297,7 +302,7 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
             config.max_retries,
             config.retry_backoff_base_ms,
         )
-    except (httpx.TimeoutException, httpx.ConnectError) as exc:
+    except (httpx.TimeoutException, httpx.NetworkError) as exc:
         _handle_backend_failure(
             f"Backend request failed after {config.max_retries + 1} attempts "
             f"(POST {path}): {exc}",
@@ -332,7 +337,7 @@ async def _get(path: str, action_type: str | None = None) -> dict:
             config.max_retries,
             config.retry_backoff_base_ms,
         )
-    except (httpx.TimeoutException, httpx.ConnectError) as exc:
+    except (httpx.TimeoutException, httpx.NetworkError) as exc:
         _handle_backend_failure(
             f"Backend request failed after {config.max_retries + 1} attempts "
             f"(GET {path}): {exc}",
