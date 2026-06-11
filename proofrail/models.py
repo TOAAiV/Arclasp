@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from proofrail._constants import (
     DEFAULT_SENSITIVE_FIELD_PATTERNS,
@@ -75,7 +75,7 @@ class ChainConfig(BaseModel):
     and stored as a module-level singleton.
     """
 
-    api_key: str
+    api_key: SecretStr
 
     environment: str = "production"
     backend_url: str = "http://localhost:8000"

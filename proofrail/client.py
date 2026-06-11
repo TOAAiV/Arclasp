@@ -173,7 +173,7 @@ def _get_client() -> httpx.AsyncClient:
             base_url=_config.backend_url,
             timeout=httpx.Timeout(_config.backend_timeout_seconds),
             headers={
-                "Authorization": f"Bearer {_config.api_key}",
+                "Authorization": f"Bearer {_config.api_key.get_secret_value()}",
                 "Content-Type": "application/json",
             },
         )

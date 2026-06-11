@@ -164,7 +164,25 @@ def test_policies_engine_uses_same_constants():
 
 
 # ---------------------------------------------------------------------------
-# 6. Chain.metadata sanitized before ChainCreate POST (SDK-S-1 regression)
+# 6. api_key uses SecretStr — repr masks value, get_secret_value() works (SDK-S-7)
+# ---------------------------------------------------------------------------
+
+def test_chain_config_repr_masks_api_key():
+    """repr(ChainConfig) must not expose the api_key value."""
+    cfg = ChainConfig(api_key="prail_sk_supersecret", backend_url="http://localhost:9999")
+    r = repr(cfg)
+    assert "prail_sk_supersecret" not in r, "api_key value must not appear in repr()"
+    assert "api_key" in r, "api_key field name must still be visible in repr()"
+
+
+def test_chain_config_get_secret_value_returns_actual_key():
+    """The actual key value must be retrievable via .get_secret_value() for HTTP headers."""
+    cfg = ChainConfig(api_key="prail_sk_supersecret", backend_url="http://localhost:9999")
+    assert cfg.api_key.get_secret_value() == "prail_sk_supersecret"
+
+
+# ---------------------------------------------------------------------------
+# 7. Chain.metadata sanitized before ChainCreate POST (SDK-S-1 regression)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
