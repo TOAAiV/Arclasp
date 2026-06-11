@@ -11,9 +11,12 @@ Covers:
 - Nested dict and list payloads are handled recursively.
 - policies._SENSITIVE_PATTERNS and sanitization.DEFAULT_SENSITIVE_FIELD_PATTERNS
   contain the same members (drift regression guard).
+- Chain.metadata is sanitized before the ChainCreate POST (SDK-S-1 regression).
 """
 
 from __future__ import annotations
+
+from unittest.mock import patch
 
 import pytest
 
@@ -158,3 +161,104 @@ def test_policies_engine_uses_same_constants():
         "sanitization.DEFAULT_SENSITIVE_FIELD_PATTERNS. "
         "Update proofrail/_constants.py — both sets derive from there."
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. Chain.metadata sanitized before ChainCreate POST (SDK-S-1 regression)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_chain_metadata_api_key_redacted_in_post():
+    """
+    Field-name path: api_key in Chain metadata must arrive at the backend as
+    [REDACTED], not the raw value.  Non-sensitive fields pass through unchanged.
+    """
+    from proofrail.chain import Chain
+
+    captured: dict = {}
+
+    async def mock_post(path, body, action_type=None):
+        if path == "/v1/chains":
+            captured["body"] = body
+            return {"id": "chain-sec-001"}
+        return {
+            "policy_decision": "allow",
+            "decision_reason": "",
+            "decision_source": "backend_evaluation",
+        }
+
+    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
+    with patch("proofrail.client._post", side_effect=mock_post):
+        async with Chain("test", metadata={"api_key": "sk_live_abc123", "order_id": "999"}):
+            pass
+
+    meta = captured["body"]["metadata"]
+    assert meta["api_key"] == "[REDACTED]", "api_key field must be redacted"
+    assert meta["order_id"] == "999", "non-sensitive field must pass through unchanged"
+
+
+@pytest.mark.asyncio
+async def test_chain_metadata_value_prefix_redacted_in_post():
+    """
+    Value-prefix path: a GitHub token stored under a benign key name (github_token)
+    must be redacted because the value starts with 'ghp_', regardless of the key.
+    """
+    from proofrail.chain import Chain
+
+    captured: dict = {}
+
+    async def mock_post(path, body, action_type=None):
+        if path == "/v1/chains":
+            captured["body"] = body
+            return {"id": "chain-sec-002"}
+        return {
+            "policy_decision": "allow",
+            "decision_reason": "",
+            "decision_source": "backend_evaluation",
+        }
+
+    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
+    with patch("proofrail.client._post", side_effect=mock_post):
+        async with Chain(
+            "test",
+            metadata={"github_token": "ghp_abc123XYZ", "env": "staging"},
+        ):
+            pass
+
+    meta = captured["body"]["metadata"]
+    assert meta["github_token"] == "[REDACTED]", "ghp_ value must be redacted by value-prefix path"
+    assert meta["env"] == "staging", "non-sensitive field must pass through unchanged"
+
+
+@pytest.mark.asyncio
+async def test_chain_metadata_nested_dict_sanitized():
+    """
+    Recursive path: sensitive data nested inside a sub-dict within metadata must
+    still be redacted.  Verifies that sanitize_payload's recursive traversal
+    applies through the metadata channel.
+    """
+    from proofrail.chain import Chain
+
+    captured: dict = {}
+
+    async def mock_post(path, body, action_type=None):
+        if path == "/v1/chains":
+            captured["body"] = body
+            return {"id": "chain-sec-003"}
+        return {
+            "policy_decision": "allow",
+            "decision_reason": "",
+            "decision_source": "backend_evaluation",
+        }
+
+    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
+    with patch("proofrail.client._post", side_effect=mock_post):
+        async with Chain(
+            "test",
+            metadata={"customer": {"name": "Acme", "secret_key": "sk_live_xyz"}},
+        ):
+            pass
+
+    meta = captured["body"]["metadata"]
+    assert meta["customer"]["name"] == "Acme", "non-sensitive nested field must pass through"
+    assert meta["customer"]["secret_key"] == "[REDACTED]", "nested secret_key must be redacted"

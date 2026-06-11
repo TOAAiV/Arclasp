@@ -513,7 +513,7 @@ class Chain:
             "organization_id": _ORG_ID_PLACEHOLDER,
             "external_chain_id": self.name,
             "environment": config.environment,
-            "metadata": self.metadata,
+            "metadata": sanitize_payload(self.metadata, config),
         }
 
         try:
