@@ -778,6 +778,38 @@ async def _drain_offline_buffer(chain: Chain) -> None:
                 )
                 chain._offline_buffer.pop(0)
                 sent_count += 1
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if status in (400, 401, 403, 404, 422):
+                    # Permanent client error — this event can never succeed.
+                    # 404: chain should exist by the time events fire — backend
+                    # confirms creation before returning. A 404 here means the
+                    # chain was deleted mid-flight or DB inconsistency. Discard
+                    # rather than spin forever.
+                    try:
+                        body_preview = exc.response.text[:200]
+                    except Exception:
+                        body_preview = "<unreadable>"
+                    logger.warning(
+                        "Offline drain: discarding event with permanent error "
+                        "(chain=%s action=%r status=%d body=%s)",
+                        chain._chain_id,
+                        event_body.get("action_name"),
+                        status,
+                        body_preview,
+                    )
+                    chain._offline_buffer.pop(0)
+                    sent_count += 1
+                    continue
+                else:
+                    # Transient (429, 5xx) — stop this pass, retry in 30s.
+                    logger.debug(
+                        "Offline drain: transient error %d (chain=%s): %s — retrying in 30s",
+                        status,
+                        chain._chain_id,
+                        exc,
+                    )
+                    break
             except Exception as exc:
                 logger.debug(
                     "Offline drain: send failed (chain=%s): %s — retrying in 30s",
