@@ -498,54 +498,87 @@ def test_loop_aware_client_creates_separate_clients_for_separate_loops():
 
 
 # ---------------------------------------------------------------------------
-# HTTP-in-production warning (I-7)
+# HTTP plaintext warning (SDK-S-6)
+#
+# Warning now fires via logger.warning (not warnings.warn) for any
+# non-localhost HTTP backend_url, regardless of environment.
 # ---------------------------------------------------------------------------
 
-import warnings as _warnings_mod
-
-
-def test_init_warns_on_http_in_production():
+def test_init_warns_on_http_non_localhost(caplog):
     """
-    proofrail.init() must emit a UserWarning when environment='production'
-    and backend_url starts with 'http://'.
+    logger.warning must fire when backend_url is a non-localhost HTTP URL.
+    The check applies regardless of environment (production or otherwise).
     """
-    with _warnings_mod.catch_warnings(record=True) as caught:
-        _warnings_mod.simplefilter("always")
+    import logging
+    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
         proofrail.init(
             api_key="prail_test_warn",
             backend_url="http://insecure-backend",
             environment="production",
         )
 
-    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
-    assert len(user_warnings) == 1
-    assert "plaintext HTTP" in str(user_warnings[0].message)
-    assert "production" in str(user_warnings[0].message)
+    assert any("plaintext HTTP" in r.message for r in caplog.records), (
+        "Expected a 'plaintext HTTP' logger.warning for a non-localhost HTTP URL"
+    )
 
 
-def test_init_no_warn_on_https_in_production():
-    """No warning when backend_url uses https:// in production."""
-    with _warnings_mod.catch_warnings(record=True) as caught:
-        _warnings_mod.simplefilter("always")
+def test_init_warns_on_http_non_localhost_regardless_of_environment(caplog):
+    """
+    logger.warning fires for a non-localhost HTTP URL even when
+    environment='development' — the check is no longer scoped to production.
+    """
+    import logging
+    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
+        proofrail.init(
+            api_key="prail_test_warn_dev",
+            backend_url="http://staging-backend",
+            environment="development",
+        )
+
+    assert any("plaintext HTTP" in r.message for r in caplog.records), (
+        "Expected a 'plaintext HTTP' logger.warning for a non-localhost HTTP URL "
+        "regardless of environment"
+    )
+
+
+def test_init_no_warn_on_https(caplog):
+    """No logger warning when backend_url uses https://."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
         proofrail.init(
             api_key="prail_test_no_warn",
             backend_url="https://secure-backend",
             environment="production",
         )
 
-    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
-    assert len(user_warnings) == 0
+    assert not any("plaintext HTTP" in r.message for r in caplog.records)
 
 
-def test_init_no_warn_on_http_in_development():
-    """No warning when backend_url uses http:// but environment is not 'production'."""
-    with _warnings_mod.catch_warnings(record=True) as caught:
-        _warnings_mod.simplefilter("always")
+def test_init_no_warn_on_http_localhost(caplog):
+    """
+    localhost URLs are exempt from the HTTP warning regardless of environment.
+    This explains why tests using http://localhost:9999 with environment=production
+    no longer emit warnings.
+    """
+    import logging
+    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
+        proofrail.init(
+            api_key="prail_test_localhost",
+            backend_url="http://localhost:9999",
+            environment="production",
+        )
+
+    assert not any("plaintext HTTP" in r.message for r in caplog.records)
+
+
+def test_init_no_warn_on_http_localhost_in_production(caplog):
+    """http://localhost:8000 in production must not warn — localhost is always exempt."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
         proofrail.init(
             api_key="prail_test_dev",
             backend_url="http://localhost:8000",
-            environment="development",
+            environment="production",
         )
 
-    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
-    assert len(user_warnings) == 0
+    assert not any("plaintext HTTP" in r.message for r in caplog.records)

@@ -151,7 +151,10 @@ async def test_drain_timeout_drop_count_logged(caplog):
                     )
             # _complete() runs: drain sends 2 events, stalls, timeout fires.
 
-    warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+    warning_records = [
+        r for r in caplog.records
+        if r.levelname == "WARNING" and r.name == "proofrail.chain"
+    ]
     assert warning_records, "Expected a WARNING log from the drain timeout"
 
     msg = warning_records[0].message

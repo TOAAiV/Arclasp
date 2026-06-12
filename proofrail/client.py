@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import warnings
 import weakref
 from urllib.parse import urlencode
 
@@ -24,6 +23,24 @@ from proofrail.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Localhost URL detection — exempt from the HTTP plaintext warning.
+# startswith() covers port variants automatically (e.g. http://localhost:9999).
+# ---------------------------------------------------------------------------
+
+_LOCALHOST_HTTP_PREFIXES: tuple[str, ...] = (
+    "http://localhost",
+    "http://127.0.0.1",
+    "http://0.0.0.0",
+    "http://[::1]",
+)
+
+
+def _is_localhost_url(url: str) -> bool:
+    """Return True when *url* points at a local loopback address."""
+    return any(url.startswith(p) for p in _LOCALHOST_HTTP_PREFIXES)
+
 
 # ---------------------------------------------------------------------------
 # Module-level singletons
@@ -111,18 +128,15 @@ def init(**kwargs) -> ChainConfig:
         pass
     _clients_by_loop.clear()
 
-    # Warn loudly when plaintext HTTP is used against a production environment.
-    # Governance audit data sent over HTTP is vulnerable to interception.
-    if (
-        _config.environment == "production"
-        and _config.backend_url.startswith("http://")
-    ):
-        warnings.warn(
-            f"ProofRail SDK: backend_url uses plaintext HTTP ({_config.backend_url!r}) "
-            "in environment='production'. All audit data will be transmitted unencrypted. "
-            "Switch to an https:// URL for production deployments.",
-            UserWarning,
-            stacklevel=2,
+    # Warn when plaintext HTTP is used against a non-localhost backend.
+    # Localhost URLs are exempt (development/testing). All other HTTP backends
+    # transmit governance audit data unencrypted regardless of environment.
+    if _config.backend_url.startswith("http://") and not _is_localhost_url(_config.backend_url):
+        logger.warning(
+            "ProofRail SDK: backend_url uses plaintext HTTP (%r). "
+            "All audit data will be transmitted unencrypted. "
+            "Switch to an https:// URL for non-local deployments.",
+            _config.backend_url,
         )
 
     logger.debug("ProofRail SDK initialized (environment=%s)", _config.environment)
