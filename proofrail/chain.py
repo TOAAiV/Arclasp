@@ -269,6 +269,14 @@ class Chain:
             config=config,
         )
         if fast_decision is not None:
+            # Update local cumulative metrics so the next fast-path eligibility
+            # check (criterion 4) uses accurate totals instead of the initial
+            # empty dict. Safe without a lock: no await exists between the
+            # read (passed to evaluate_fast_path above) and this write, so no
+            # other coroutine can preempt at this point. (SDK-S-2)
+            self._cumulative_metrics = fast_decision.pop(
+                "updated_cumulative_metrics", self._cumulative_metrics
+            )
             # Buffer the event and drain asynchronously — agent is not blocked.
             # Single-flight: only spawn a new drain task when no task is running.
             # This prevents concurrent drain tasks from reading the same buffer

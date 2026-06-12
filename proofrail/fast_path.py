@@ -207,4 +207,5 @@ def evaluate_fast_path(
         "policy_decision": "allow",
         "decision_reason": local_result["reason"],
         "decision_source": "local_fast_path",
+        "updated_cumulative_metrics": local_result["updated_cumulative_metrics"],
     }
