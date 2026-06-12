@@ -139,6 +139,16 @@ def init(**kwargs) -> ChainConfig:
             _config.backend_url,
         )
 
+    if _config.enable_local_fast_path:
+        logger.info(
+            "ProofRail SDK: enable_local_fast_path is True. Fast-path actions in "
+            "non-production environments bypass the backend kill switch — they "
+            "execute locally and only sync to backend asynchronously. For workflows "
+            "where kill-switch guarantees are critical (e.g. compliance-sensitive "
+            "agents), set enable_local_fast_path=False to route all actions through "
+            "the backend synchronously."
+        )
+
     logger.debug("ProofRail SDK initialized (environment=%s)", _config.environment)
     return _config
 

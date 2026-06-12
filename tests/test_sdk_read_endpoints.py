@@ -582,3 +582,46 @@ def test_init_no_warn_on_http_localhost_in_production(caplog):
         )
 
     assert not any("plaintext HTTP" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Fast-path kill switch INFO log (SDK-S-3)
+#
+# When enable_local_fast_path=True (default), init() logs an INFO message
+# surfacing the kill-switch limitation. When False, no message is emitted.
+# ---------------------------------------------------------------------------
+
+def test_init_info_logs_fast_path_kill_switch_warning(caplog):
+    """
+    An INFO log mentioning the kill-switch limitation must fire when
+    enable_local_fast_path=True (the default).
+    """
+    import logging
+    with caplog.at_level(logging.INFO, logger="proofrail.client"):
+        proofrail.init(
+            api_key="prail_test_fp_on",
+            backend_url="http://localhost:9999",
+            enable_local_fast_path=True,
+        )
+
+    assert any("kill switch" in r.message for r in caplog.records), (
+        "Expected an INFO log mentioning 'kill switch' when enable_local_fast_path=True"
+    )
+
+
+def test_init_no_info_when_fast_path_disabled(caplog):
+    """
+    No kill-switch INFO log must fire when enable_local_fast_path=False —
+    the limitation does not apply when fast-path is disabled.
+    """
+    import logging
+    with caplog.at_level(logging.INFO, logger="proofrail.client"):
+        proofrail.init(
+            api_key="prail_test_fp_off",
+            backend_url="http://localhost:9999",
+            enable_local_fast_path=False,
+        )
+
+    assert not any("kill switch" in r.message for r in caplog.records), (
+        "Expected no kill-switch INFO log when enable_local_fast_path=False"
+    )
