@@ -15,6 +15,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from proofrail._constants import _ACTION_NAME_MAX
+from proofrail._utils import sanitize_log_field
 from proofrail.exceptions import (
     ActionDeniedError,
     ChainAutoPausedError,
@@ -94,7 +96,7 @@ class ProofRailLangGraphCallback:
         self._chain = chain
 
     async def on_node_start(self, node_name: str, input_state: Any, *, parent_agent_name: str | None = None) -> None:
-        logger.debug("LangGraph node starting: %s", node_name)
+        logger.debug("LangGraph node starting: %s", sanitize_log_field(node_name))
         await self._chain.record_agent_action(
             agent_name=node_name,
             action_type="node_execution",
@@ -119,7 +121,7 @@ class ProofRailLangGraphCallback:
         ``node_result`` with the node's output state.
         """
         if error is not None:
-            logger.debug("LangGraph node errored: %s — %s", node_name, error)
+            logger.debug("LangGraph node errored: %s — %s", sanitize_log_field(node_name), error)
             await self._chain.record_agent_action(
                 agent_name=node_name,
                 action_type="node_error",
@@ -131,7 +133,7 @@ class ProofRailLangGraphCallback:
                 parent_agent_name=parent_agent_name,
             )
         else:
-            logger.debug("LangGraph node completed: %s", node_name)
+            logger.debug("LangGraph node completed: %s", sanitize_log_field(node_name))
             await self._chain.record_agent_action(
                 agent_name=node_name,
                 action_type="node_result",
@@ -226,6 +228,7 @@ def _make_on_chain_start():
         node_name = (metadata or {}).get("langgraph_node", "")
         if not node_name or node_name in _INTERNAL_NODES:
             return
+        node_name = node_name[:_ACTION_NAME_MAX - 7]
         # Track run_id → node_name so on_chain_end can look it up
         if not hasattr(self, "_node_runs"):
             self._node_runs = {}

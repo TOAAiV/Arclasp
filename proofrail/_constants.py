@@ -27,6 +27,13 @@ DEFAULT_SENSITIVE_FIELD_PATTERNS: list[str] = [
     "private_key",
 ]
 
+#: Maximum length for ``action_name`` values recorded on ProofRail events.
+#: Adapter layers truncate framework-supplied names to this limit at extraction
+#: time before passing them to ``record_agent_action()``.  Suffixes like
+#: ``:result`` (7 chars) are appended after truncation, so the stored name is
+#: sliced to ``_ACTION_NAME_MAX - len(suffix)`` to keep the final string ≤ 100.
+_ACTION_NAME_MAX: int = 100
+
 #: String value prefixes that trigger redaction regardless of the containing
 #: key name.  Catches well-known API-key formats embedded as plain values
 #: (e.g. ``{"note": "my key is sk_live_abc..."}``) that a key-name scan would

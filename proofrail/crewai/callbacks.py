@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from proofrail.chain import Chain
 
-logger = logging.getLogger(__name__)
+from proofrail._constants import _ACTION_NAME_MAX
+from proofrail._utils import sanitize_log_field
 
-# Maximum characters used for ``action_name`` (task description truncated).
-_ACTION_NAME_MAX = 100
+logger = logging.getLogger(__name__)
 
 # Maximum characters included in the output payload field.
 _OUTPUT_MAX = 1000
@@ -107,7 +107,7 @@ class ProofRailCrewAICallback:
         agent_role = _agent_role(agent)
         action_name = description[:_ACTION_NAME_MAX]
 
-        logger.debug("CrewAI task starting: %r (agent=%s)", action_name, agent_role)
+        logger.debug("CrewAI task starting: %r (agent=%s)", action_name, sanitize_log_field(agent_role))
 
         await self._chain.record_agent_action(
             agent_name=action_name,           # task label — the governed entity (child)
@@ -131,7 +131,7 @@ class ProofRailCrewAICallback:
         task_label = description[:_ACTION_NAME_MAX - 7]
         action_name = f"{task_label}:result"
 
-        logger.debug("CrewAI task completed: %r (agent=%s)", description[:60], agent_role)
+        logger.debug("CrewAI task completed: %r (agent=%s)", description[:60], sanitize_log_field(agent_role))
 
         await self._chain.record_agent_action(
             agent_name=task_label,            # task label — the governed entity (child)
@@ -168,7 +168,7 @@ class ProofRailCrewAICallback:
         action_name = f"{task_label}:result"
 
         logger.debug(
-            "CrewAI task_callback fired: %r (agent=%s)", description[:60], agent_role
+            "CrewAI task_callback fired: %r (agent=%s)", description[:60], sanitize_log_field(agent_role)
         )
 
         await self._chain.record_agent_action(
@@ -191,7 +191,7 @@ class ProofRailCrewAICallback:
         logger.debug(
             "CrewAI task errored: %r (agent=%s) — %s",
             description[:60],
-            agent_role,
+            sanitize_log_field(agent_role),
             error,
         )
 

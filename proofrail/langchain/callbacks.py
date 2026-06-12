@@ -20,6 +20,8 @@ from uuid import UUID
 if TYPE_CHECKING:
     from proofrail.chain import Chain
 
+from proofrail._constants import _ACTION_NAME_MAX
+from proofrail._utils import sanitize_log_field
 from proofrail.exceptions import (
     ActionDeniedError,
     ChainAutoPausedError,
@@ -209,13 +211,13 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         Records an event with ``action_type="tool_call"`` and the tool's
         input as the payload.
         """
-        tool_name = _serialized_name(serialized, fallback="unknown_tool")
+        tool_name = _serialized_name(serialized, fallback="unknown_tool")[:_ACTION_NAME_MAX - 7]
         self._active_tools[run_id] = tool_name
         self._all_runs[run_id] = tool_name
         parent_agent_name = self._resolve_parent(parent_run_id)
         self._run_parents[run_id] = parent_agent_name
 
-        logger.debug("LangChain tool starting: %s (run_id=%s)", tool_name, run_id)
+        logger.debug("LangChain tool starting: %s (run_id=%s)", sanitize_log_field(tool_name), run_id)
 
         try:
             await self._chain.record_agent_action(
@@ -247,7 +249,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         tool_name = self._active_tools.pop(run_id, "unknown_tool")
         parent_agent_name = self._run_parents.pop(run_id, None)
 
-        logger.debug("LangChain tool completed: %s (run_id=%s)", tool_name, run_id)
+        logger.debug("LangChain tool completed: %s (run_id=%s)", sanitize_log_field(tool_name), run_id)
 
         try:
             await self._chain.record_agent_action(
@@ -279,7 +281,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         parent_agent_name = self._run_parents.pop(run_id, None)
 
         logger.debug(
-            "LangChain tool errored: %s — %s (run_id=%s)", tool_name, error, run_id
+            "LangChain tool errored: %s — %s (run_id=%s)", sanitize_log_field(tool_name), error, run_id
         )
 
         try:
@@ -317,13 +319,13 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         Records an event with ``action_type="llm_call"``.  Prompt text is
         truncated to 500 characters per prompt to stay within payload limits.
         """
-        model_name = _serialized_name(serialized, fallback="unknown_llm")
+        model_name = _serialized_name(serialized, fallback="unknown_llm")[:_ACTION_NAME_MAX - 7]
         self._active_llms[run_id] = model_name
         self._all_runs[run_id] = model_name
         parent_agent_name = self._resolve_parent(parent_run_id)
         self._run_parents[run_id] = parent_agent_name
 
-        logger.debug("LangChain LLM starting: %s (run_id=%s)", model_name, run_id)
+        logger.debug("LangChain LLM starting: %s (run_id=%s)", sanitize_log_field(model_name), run_id)
 
         try:
             await self._chain.record_agent_action(
@@ -357,7 +359,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         model_name = self._active_llms.pop(run_id, "unknown_llm")
         parent_agent_name = self._run_parents.pop(run_id, None)
 
-        logger.debug("LangChain LLM completed: %s (run_id=%s)", model_name, run_id)
+        logger.debug("LangChain LLM completed: %s (run_id=%s)", sanitize_log_field(model_name), run_id)
 
         output_text = _extract_llm_output(response)
 
@@ -390,7 +392,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
         parent_agent_name = self._run_parents.pop(run_id, None)
 
         logger.debug(
-            "LangChain LLM errored: %s — %s (run_id=%s)", model_name, error, run_id
+            "LangChain LLM errored: %s — %s (run_id=%s)", sanitize_log_field(model_name), error, run_id
         )
 
         try:
