@@ -46,6 +46,8 @@ def sanitize_payload(payload: dict, config: ChainConfig) -> dict:
     3. Any string value longer than ``config.max_payload_string_length`` is
        truncated to that length with ``"...[truncated]"`` appended.
     4. Nested dicts and lists are processed recursively.
+    5. ``bytes`` values are replaced with ``"[REDACTED_BYTES]"`` — binary blobs
+       may encode credentials and cannot be safely inspected by prefix patterns.
 
     The original payload is not mutated — a new dict is returned.
     """
@@ -85,6 +87,8 @@ def _sanitize_value(value: object, config: ChainConfig) -> object:
         if _has_sensitive_value_prefix(value, config.sensitive_value_patterns):
             return "[REDACTED]"
         return _truncate(value, config.max_payload_string_length)
+    if isinstance(value, bytes):
+        return "[REDACTED_BYTES]"
     return value
 
 

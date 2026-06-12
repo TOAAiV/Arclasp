@@ -52,8 +52,8 @@ def test_default_sensitive_field_patterns_complete():
 
 
 def test_default_sensitive_value_patterns_complete():
-    """All 4 v2-spec value-prefix patterns must be present."""
-    required = {"sk_", "pk_", "ghp_", "hf_"}
+    """All 7 value-prefix patterns must be present (4 original + 3 added in SDK-S-8)."""
+    required = {"sk_", "pk_", "ghp_", "hf_", "eyJ", "AKIA", "prail_"}
     actual = set(DEFAULT_SENSITIVE_VALUE_PATTERNS)
     missing = required - actual
     assert not missing, f"Missing required value patterns: {missing}"
@@ -280,3 +280,47 @@ async def test_chain_metadata_nested_dict_sanitized():
     meta = captured["body"]["metadata"]
     assert meta["customer"]["name"] == "Acme", "non-sensitive nested field must pass through"
     assert meta["customer"]["secret_key"] == "[REDACTED]", "nested secret_key must be redacted"
+
+
+# ---------------------------------------------------------------------------
+# 8. Expanded value-prefix patterns: JWT, AWS access keys, ProofRail keys
+#    (SDK-S-8 regression)
+# ---------------------------------------------------------------------------
+
+def test_jwt_prefix_value_redacted():
+    """eyJ prefix matches all JWTs — base64url encoding of '{"' that starts every JWT."""
+    cfg = _config()
+    result = sanitize_payload({"auth": "eyJhbGciOiJIUzI1NiJ9.payload.sig"}, cfg)
+    assert result["auth"] == "[REDACTED]"
+
+
+def test_aws_access_key_prefix_redacted():
+    """AKIA prefix matches AWS access key IDs embedded as plain values."""
+    cfg = _config()
+    result = sanitize_payload({"aws_id": "AKIAIOSFODNN7EXAMPLE"}, cfg)
+    assert result["aws_id"] == "[REDACTED]"
+
+
+def test_proofrail_key_prefix_redacted():
+    """prail_ prefix redacts ProofRail API keys appearing in customer payloads."""
+    cfg = _config()
+    result = sanitize_payload({"service_key": "prail_sk_live_abc123"}, cfg)
+    assert result["service_key"] == "[REDACTED]"
+
+
+# ---------------------------------------------------------------------------
+# 9. bytes redaction (SDK-S-9 regression)
+# ---------------------------------------------------------------------------
+
+def test_sanitize_bytes_value_redacted():
+    """bytes values are replaced with [REDACTED_BYTES] — binary may encode credentials."""
+    cfg = _config()
+    result = sanitize_payload({"cert": b"\x89PNG\r\n\x1a\n"}, cfg)
+    assert result["cert"] == "[REDACTED_BYTES]"
+
+
+def test_sanitize_bytes_in_nested_dict():
+    """bytes values nested inside a sub-dict are redacted via recursive traversal."""
+    cfg = _config()
+    result = sanitize_payload({"config": {"tls_cert": b"-----BEGIN CERT-----"}}, cfg)
+    assert result["config"]["tls_cert"] == "[REDACTED_BYTES]"
