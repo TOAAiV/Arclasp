@@ -1,41 +1,75 @@
-[build-system]
+﻿[build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
 name = "proofrail"
 version = "0.1.0"
-description = "AI Agent Governance Layer SDK"
+description = "Runtime governance for AI agent chains."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
+authors = [
+    { name = "Ansh Pradhan", email = "hello@proofrail.dev" },
+]
+keywords = [
+    "ai",
+    "agents",
+    "governance",
+    "policy",
+    "audit",
+    "langchain",
+    "langgraph",
+    "crewai",
+    "mcp",
+    "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
+]
 dependencies = [
-    "httpx>=0.27.0",
-    "pydantic>=2.0.0",
+    "httpx>=0.27.0,<1.0.0",
+    "pydantic>=2.0.0,<3.0.0",
 ]
 
 [project.optional-dependencies]
 langchain = [
-    "langchain-core>=0.1.0",
+    "langchain-core>=0.3.0,<0.4.0",
 ]
 langgraph = [
-    "langgraph>=0.1.0",
-    "langchain-core>=0.1.0",
+    "langgraph>=0.2.0,<0.4.0",
+    "langchain-core>=0.3.0,<0.4.0",
 ]
 crewai = [
-    # Lower bound 1.10.0 reflects approximate first stable 1.x release; tested against 1.14.6.
     "crewai>=1.10.0,<2.0.0",
 ]
 mcp = [
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2.0.0",
 ]
 all = [
-    "langchain-core>=0.1.0",
-    "langgraph>=0.1.0",
-    # Lower bound 1.10.0 reflects approximate first stable 1.x release; tested against 1.14.6.
+    "langchain-core>=0.3.0,<0.4.0",
+    "langgraph>=0.2.0,<0.4.0",
     "crewai>=1.10.0,<2.0.0",
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2.0.0",
 ]
+
+[project.urls]
+Homepage = "https://proofrail.dev"
+Documentation = "https://docs.proofrail.dev"
+Repository = "https://github.com/TOAAiV/proofrail"
+Issues = "https://github.com/TOAAiV/proofrail/issues"
+Changelog = "https://github.com/TOAAiV/proofrail/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 markers = [

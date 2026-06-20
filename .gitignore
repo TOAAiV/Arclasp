@@ -1,0 +1,115 @@
+﻿# ─── Secrets & credentials (NEVER commit) ─────────────────────────────
+# Environment files — covers .env, .env.local, .env.production, etc.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Private keys, certs, credentials
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+id_rsa
+id_rsa.*
+id_ecdsa
+id_ecdsa.*
+id_ed25519
+id_ed25519.*
+
+# Common credential directories
+secrets/
+secret/
+credentials/
+private/
+.secrets/
+
+# Backup files (often contain pre-edit copies of env files)
+*.bak
+*.backup
+*.dump
+*.old
+*~
+
+# ─── AI tool artifacts (project-local, never useful in public repo) ──
+.claude/
+.claire/
+.cursor/
+.aider*
+.continue/
+.codex/
+CLAUDE.md
+AGENTS.md
+
+# ─── Python build artifacts ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.so
+*.whl
+wheels/
+
+# ─── Python tool caches ──────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+
+# ─── Virtual environments ────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+.python-version
+
+# ─── Local databases & data dumps ────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.sql.gz
+*.dump
+
+# ─── IDE / editor ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# ─── OS ──────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ─── Local dev scratch ───────────────────────────────────────────────
+*.log
+local_*
+scratch/
+tmp/
+temp/
+.notes/
+NOTES.md
+TODO.md
+
+# ─── Process artifacts ───────────────────────────────────────────────
+*.pid
+*.sock
