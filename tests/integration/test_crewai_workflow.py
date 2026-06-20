@@ -37,6 +37,15 @@ from .conftest import (
     count_event_calls,
 )
 
+try:
+    import crewai  # noqa: F401
+
+    CREWAI_AVAILABLE = True
+except ImportError:
+    CREWAI_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(not CREWAI_AVAILABLE, reason="crewai not installed")
+
 
 # ---------------------------------------------------------------------------
 # Stub helpers (< 30 lines combined)
