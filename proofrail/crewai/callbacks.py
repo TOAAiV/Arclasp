@@ -32,6 +32,7 @@ _OUTPUT_MAX = 1000
 # Attribute extraction helpers — all duck-typed, no crewai imports
 # ---------------------------------------------------------------------------
 
+
 def _task_description(task: Any) -> str:
     """Return the task's description string, falling back gracefully."""
     return str(getattr(task, "description", task))
@@ -82,6 +83,7 @@ def _extract_task_output(task_output: Any) -> dict:
 # Callback class
 # ---------------------------------------------------------------------------
 
+
 class ProofRailCrewAICallback:
     """
     Handles CrewAI task and agent lifecycle events, recording each as a
@@ -107,13 +109,17 @@ class ProofRailCrewAICallback:
         agent_role = _agent_role(agent)
         action_name = description[:_ACTION_NAME_MAX]
 
-        logger.debug("CrewAI task starting: %r (agent=%s)", action_name, sanitize_log_field(agent_role))
+        logger.debug(
+            "CrewAI task starting: %r (agent=%s)",
+            action_name,
+            sanitize_log_field(agent_role),
+        )
 
         await self._chain.record_agent_action(
-            agent_name=action_name,           # task label — the governed entity (child)
+            agent_name=action_name,  # task label — the governed entity (child)
             action_type="task_execution",
             action_name=action_name,
-            parent_agent_name=agent_role,     # agent.role — who executes the task (parent)
+            parent_agent_name=agent_role,  # agent.role — who executes the task (parent)
             payload={
                 "task": description,
                 "expected_output": _task_expected_output(task),
@@ -128,16 +134,20 @@ class ProofRailCrewAICallback:
         """Record successful completion of a CrewAI task."""
         description = _task_description(task)
         agent_role = _agent_role(agent)
-        task_label = description[:_ACTION_NAME_MAX - 7]
+        task_label = description[: _ACTION_NAME_MAX - 7]
         action_name = f"{task_label}:result"
 
-        logger.debug("CrewAI task completed: %r (agent=%s)", description[:60], sanitize_log_field(agent_role))
+        logger.debug(
+            "CrewAI task completed: %r (agent=%s)",
+            description[:60],
+            sanitize_log_field(agent_role),
+        )
 
         await self._chain.record_agent_action(
-            agent_name=task_label,            # task label — the governed entity (child)
+            agent_name=task_label,  # task label — the governed entity (child)
             action_type="task_result",
             action_name=action_name,
-            parent_agent_name=agent_role,     # agent.role — who executed the task (parent)
+            parent_agent_name=agent_role,  # agent.role — who executed the task (parent)
             payload={
                 "task": description,
                 "output": str(output)[:_OUTPUT_MAX],
@@ -164,28 +174,28 @@ class ProofRailCrewAICallback:
             if task is not None
             else str(getattr(task_output, "description", "task"))
         )
-        task_label = description[:_ACTION_NAME_MAX - 7]
+        task_label = description[: _ACTION_NAME_MAX - 7]
         action_name = f"{task_label}:result"
 
         logger.debug(
-            "CrewAI task_callback fired: %r (agent=%s)", description[:60], sanitize_log_field(agent_role)
+            "CrewAI task_callback fired: %r (agent=%s)",
+            description[:60],
+            sanitize_log_field(agent_role),
         )
 
         await self._chain.record_agent_action(
-            agent_name=task_label,            # task label — the governed entity (child)
+            agent_name=task_label,  # task label — the governed entity (child)
             action_type="task_result",
             action_name=action_name,
-            parent_agent_name=agent_role,     # agent.role — who executed the task (parent)
+            parent_agent_name=agent_role,  # agent.role — who executed the task (parent)
             payload=_extract_task_output(task_output),
         )
 
-    async def on_task_error(
-        self, task: Any, agent: Any, error: BaseException
-    ) -> None:
+    async def on_task_error(self, task: Any, agent: Any, error: BaseException) -> None:
         """Record a task that raised an exception."""
         description = _task_description(task)
         agent_role = _agent_role(agent)
-        task_label = description[:_ACTION_NAME_MAX - 6]
+        task_label = description[: _ACTION_NAME_MAX - 6]
         action_name = f"{task_label}:error"
 
         logger.debug(
@@ -196,10 +206,10 @@ class ProofRailCrewAICallback:
         )
 
         await self._chain.record_agent_action(
-            agent_name=task_label,            # task label — the governed entity (child)
+            agent_name=task_label,  # task label — the governed entity (child)
             action_type="task_error",
             action_name=action_name,
-            parent_agent_name=agent_role,     # agent.role — who was executing (parent)
+            parent_agent_name=agent_role,  # agent.role — who was executing (parent)
             payload={
                 "task": description,
                 "error_type": type(error).__name__,

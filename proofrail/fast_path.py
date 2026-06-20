@@ -45,14 +45,16 @@ logger = logging.getLogger(__name__)
 
 # Categories whose presence blocks fast-path evaluation — too high-risk to
 # bypass the backend, even if the risk score happens to be below 40.
-_FAST_PATH_BLOCKING_CATEGORIES: frozenset[str] = frozenset([
-    "destructive",
-    "credential_exposure",
-    "exfiltration",
-    "privilege_escalation",
-    "financial",
-    "financial_high",
-])
+_FAST_PATH_BLOCKING_CATEGORIES: frozenset[str] = frozenset(
+    [
+        "destructive",
+        "credential_exposure",
+        "exfiltration",
+        "privilege_escalation",
+        "financial",
+        "financial_high",
+    ]
+)
 
 
 def is_fast_path_eligible(

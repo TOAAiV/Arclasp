@@ -46,7 +46,11 @@ from typing import Any
 from proofrail import client as _proofrail_client
 from proofrail._utils import _merge_config
 from proofrail.chain import Chain
-from proofrail.langchain.callbacks import ProofRailLangChainCallback, _BaseCallbackHandler, _StrategyBPolicyBreak
+from proofrail.langchain.callbacks import (
+    ProofRailLangChainCallback,
+    _BaseCallbackHandler,
+    _StrategyBPolicyBreak,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
+
 
 def govern(
     agent_executor_or_chain: Any,
@@ -121,6 +126,7 @@ def govern(
 # Governed chain wrapper
 # ---------------------------------------------------------------------------
 
+
 class GovernedChain:
     """
     Drop-in replacement for a LangChain chain / ``AgentExecutor`` that wraps
@@ -178,7 +184,9 @@ class GovernedChain:
         # Fail fast with a clear message if the SDK was never initialised.
         _proofrail_client.get_config()
 
-        async with Chain(self._chain_name, metadata=self._chain_metadata) as proofrail_chain:
+        async with Chain(
+            self._chain_name, metadata=self._chain_metadata
+        ) as proofrail_chain:
             proofrail_callback = ProofRailLangChainCallback(
                 chain=proofrail_chain,
                 agent_name=self._agent_name,
@@ -218,10 +226,9 @@ class GovernedChain:
                 "event loop.  Use 'await governed_chain.ainvoke(...)' instead."
             )
         except RuntimeError as exc:
-            if (
-                "no running event loop" not in str(exc)
-                and "no current event loop" not in str(exc)
-            ):
+            if "no running event loop" not in str(
+                exc
+            ) and "no current event loop" not in str(exc):
                 raise
 
         return asyncio.run(self.ainvoke(input, config, **kwargs))

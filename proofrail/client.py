@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import weakref
+from typing import NoReturn
 from urllib.parse import urlencode
 
 import httpx
@@ -57,6 +58,7 @@ _clients_by_loop: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 # Internal signal
 # ---------------------------------------------------------------------------
 
+
 class _OfflineSignal(Exception):
     """
     Raised by _handle_backend_failure when the backend is unreachable and the
@@ -74,6 +76,7 @@ class _OfflineSignal(Exception):
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def init(**kwargs) -> ChainConfig:
     """
@@ -131,7 +134,9 @@ def init(**kwargs) -> ChainConfig:
     # Warn when plaintext HTTP is used against a non-localhost backend.
     # Localhost URLs are exempt (development/testing). All other HTTP backends
     # transmit governance audit data unencrypted regardless of environment.
-    if _config.backend_url.startswith("http://") and not _is_localhost_url(_config.backend_url):
+    if _config.backend_url.startswith("http://") and not _is_localhost_url(
+        _config.backend_url
+    ):
         logger.warning(
             "ProofRail SDK: backend_url uses plaintext HTTP (%r). "
             "All audit data will be transmitted unencrypted. "
@@ -209,6 +214,7 @@ def _get_client() -> httpx.AsyncClient:
 # Retry helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_retry_after_ms(response: httpx.Response, default_ms: int) -> int:
     """
     Extract the Retry-After header value in milliseconds.
@@ -259,10 +265,13 @@ async def _retry_with_backoff(
             response: httpx.Response = await coro_factory()
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
             if attempt < max_retries:
-                backoff_ms = backoff_base_ms * (2 ** attempt)
+                backoff_ms = backoff_base_ms * (2**attempt)
                 logger.info(
                     "ProofRail SDK retry attempt %d/%d after %dms: %s",
-                    attempt + 1, max_retries, backoff_ms, exc,
+                    attempt + 1,
+                    max_retries,
+                    backoff_ms,
+                    exc,
                 )
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
@@ -270,10 +279,13 @@ async def _retry_with_backoff(
 
         if response.status_code in (500, 502, 503, 504):
             if attempt < max_retries:
-                backoff_ms = backoff_base_ms * (2 ** attempt)
+                backoff_ms = backoff_base_ms * (2**attempt)
                 logger.info(
                     "ProofRail SDK retry attempt %d/%d after %dms: HTTP %d",
-                    attempt + 1, max_retries, backoff_ms, response.status_code,
+                    attempt + 1,
+                    max_retries,
+                    backoff_ms,
+                    response.status_code,
                 )
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
@@ -282,11 +294,13 @@ async def _retry_with_backoff(
         elif response.status_code == 429:
             if attempt < max_retries:
                 backoff_ms = _get_retry_after_ms(
-                    response, backoff_base_ms * (2 ** attempt)
+                    response, backoff_base_ms * (2**attempt)
                 )
                 logger.info(
                     "ProofRail SDK retry attempt %d/%d after %dms: HTTP 429",
-                    attempt + 1, max_retries, backoff_ms,
+                    attempt + 1,
+                    max_retries,
+                    backoff_ms,
                 )
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
@@ -300,6 +314,7 @@ async def _retry_with_backoff(
 # ---------------------------------------------------------------------------
 # Low-level HTTP helpers
 # ---------------------------------------------------------------------------
+
 
 async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     """
@@ -384,6 +399,7 @@ async def _get(path: str, action_type: str | None = None) -> dict:
 # ---------------------------------------------------------------------------
 # Public read API — chain detail, events, receipt, list
 # ---------------------------------------------------------------------------
+
 
 async def get_chain(chain_id: str) -> ChainDetail:
     """
@@ -535,7 +551,7 @@ def _handle_backend_failure(
     message: str,
     config: ChainConfig,
     action_type: str | None = None,
-) -> None:
+) -> NoReturn:
     """
     Apply the resolved fail_mode to a transport-level backend failure.
 

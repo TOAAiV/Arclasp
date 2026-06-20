@@ -88,6 +88,7 @@ logger = logging.getLogger(__name__)
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 def govern(
     crew: Any,
     chain_name: str = "crewai_workflow",
@@ -124,8 +125,7 @@ def govern(
         import crewai  # noqa: F401
     except ImportError:
         raise ImportError(
-            "crewai is not installed.  Install it with:\n\n"
-            "    pip install crewai\n"
+            "crewai is not installed.  Install it with:\n\n    pip install crewai\n"
         )
 
     if not hasattr(crew, "kickoff"):
@@ -144,6 +144,7 @@ def govern(
 # ---------------------------------------------------------------------------
 # Governed crew wrapper
 # ---------------------------------------------------------------------------
+
 
 class GovernedCrew:
     """
@@ -183,7 +184,10 @@ class GovernedCrew:
         # schedule coroutines from synchronous worker threads.
         loop = asyncio.get_running_loop()
 
-        async with Chain(self._chain_name, metadata=self._chain_metadata) as proofrail_chain:
+        result: Any = None
+        async with Chain(
+            self._chain_name, metadata=self._chain_metadata
+        ) as proofrail_chain:
             callback = ProofRailCrewAICallback(proofrail_chain)
             patch_records = _install_instrumentation(self._crew, callback, loop)
 
@@ -221,10 +225,9 @@ class GovernedCrew:
                 "event loop.  Use 'await governed_crew.kickoff_async(...)' instead."
             )
         except RuntimeError as exc:
-            if (
-                "no running event loop" not in str(exc)
-                and "no current event loop" not in str(exc)
-            ):
+            if "no running event loop" not in str(
+                exc
+            ) and "no current event loop" not in str(exc):
                 raise
 
         return asyncio.run(self.kickoff_async(inputs, **kwargs))
@@ -237,14 +240,13 @@ class GovernedCrew:
         return getattr(self._crew, name)
 
     def __repr__(self) -> str:
-        return (
-            f"GovernedCrew(chain_name={self._chain_name!r}, crew={self._crew!r})"
-        )
+        return f"GovernedCrew(chain_name={self._chain_name!r}, crew={self._crew!r})"
 
 
 # ---------------------------------------------------------------------------
 # Instrumentation — installation
 # ---------------------------------------------------------------------------
+
 
 def _install_instrumentation(
     crew: Any,
@@ -412,6 +414,7 @@ def _make_patched_execute_task(
 # Instrumentation — cleanup
 # ---------------------------------------------------------------------------
 
+
 def _restore_instrumentation(patch_records: list) -> None:
     """
     Undo all patches installed by :func:`_install_instrumentation`.
@@ -446,6 +449,7 @@ def _restore_instrumentation(patch_records: list) -> None:
 # ---------------------------------------------------------------------------
 # Coroutine scheduling helper
 # ---------------------------------------------------------------------------
+
 
 def _fire(
     coro: Any,

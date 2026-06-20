@@ -5,7 +5,6 @@ proofrail.models — Shared Pydantic models and data types.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, Field, SecretStr
 
@@ -91,7 +90,7 @@ class ChainConfig(BaseModel):
     default_approval_timeout_hours: int = 24
     fallback_approvers: list[str] = Field(default_factory=list)
 
-    fail_mode: str = "deny"           # "deny" | "allow" — global default
+    fail_mode: str = "deny"  # "deny" | "allow" — global default
     # Per-action-class overrides.  Keys are action_type strings (e.g.
     # "tool_call", "llm_inference", "chain_create"); values are "deny" or "allow".
     # Two reserved keys are also recognised:
@@ -176,11 +175,13 @@ class ChainConfig(BaseModel):
 # from the backend package) so the SDK remains independently installable.
 # ---------------------------------------------------------------------------
 
+
 class ChainDetail(BaseModel):
     """
     Full chain detail returned by the GET /v1/chains/{chain_id} endpoint.
     Accessed via ``client.get_chain()`` or ``chain.detail()``.
     """
+
     id: str
     organization_id: str
     external_chain_id: str | None = None
@@ -197,6 +198,7 @@ class ChainDetail(BaseModel):
 
 class ChainEventDetail(BaseModel):
     """Single event record from GET /v1/chains/{chain_id}/events."""
+
     id: str
     sequence_number: int
     agent_name: str
@@ -216,6 +218,7 @@ class ChainEventDetail(BaseModel):
 
 class ChainEventsResponse(BaseModel):
     """Paginated event list from GET /v1/chains/{chain_id}/events."""
+
     events: list[ChainEventDetail]
     total: int
     limit: int
@@ -232,7 +235,8 @@ class ChainReceiptResponse(BaseModel):
     When present it can be passed to ``client.verify_receipt(receipt_id)`` to
     cryptographically confirm the receipt is untampered.
     """
-    id: str | None = None          # backend UUID; included when available
+
+    id: str | None = None  # backend UUID; included when available
     receipt_number: str
     summary: str | None = None
     structured_data: dict = Field(default_factory=dict)
@@ -249,6 +253,7 @@ class ReceiptVerifyResponse(BaseModel):
     structured_data matches the server-side HMAC; False means tampering was
     detected.  ``receipt_number`` and ``chain_id`` are included for display.
     """
+
     valid: bool
     receipt_number: str
     chain_id: str
@@ -257,6 +262,7 @@ class ReceiptVerifyResponse(BaseModel):
 
 class ChainSummary(BaseModel):
     """Lightweight chain entry in the list returned by GET /v1/chains."""
+
     id: str
     external_chain_id: str | None = None
     status: str
@@ -269,6 +275,7 @@ class ChainSummary(BaseModel):
 
 class ChainListResponse(BaseModel):
     """Paginated chain list from GET /v1/chains."""
+
     chains: list[ChainSummary]
     total: int
     limit: int

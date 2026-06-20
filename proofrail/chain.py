@@ -56,6 +56,7 @@ _ORG_ID_PLACEHOLDER = "00000000-0000-0000-0000-000000000001"
 # Offline buffer helper
 # ---------------------------------------------------------------------------
 
+
 def _buffer_event(buffer: list, event_body: dict, max_events: int) -> bool:
     """
     Append *event_body* to *buffer*, evicting the oldest entry when full.
@@ -84,6 +85,7 @@ def _buffer_event(buffer: list, event_body: dict, max_events: int) -> bool:
 # ---------------------------------------------------------------------------
 # Chain
 # ---------------------------------------------------------------------------
+
 
 class Chain:
     """
@@ -146,7 +148,9 @@ class Chain:
                 "event loop.  Use 'async with Chain(...)' instead."
             )
         except RuntimeError as exc:
-            if "no running event loop" not in str(exc) and "no current event loop" not in str(exc):
+            if "no running event loop" not in str(
+                exc
+            ) and "no current event loop" not in str(exc):
                 raise
         asyncio.run(self._start())
         return self
@@ -225,7 +229,9 @@ class Chain:
         ...     print(decision.decision_source)
         """
         if self._chain_id is None and not self._offline:
-            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+            raise RuntimeError(
+                "Chain has not been started. Use it as a context manager."
+            )
 
         config = _client.get_config()
         sanitized = sanitize_payload(payload or {}, config)
@@ -246,7 +252,9 @@ class Chain:
 
         if self._offline:
             # Backend unavailable and fail_mode=allow — buffer the event locally.
-            _buffer_event(self._offline_buffer, event_body, config.offline_buffer_max_events)
+            _buffer_event(
+                self._offline_buffer, event_body, config.offline_buffer_max_events
+            )
             self._sequence_number += 1
             logger.debug(
                 "Offline mode: buffered event for action '%s' (buffered=%d)",
@@ -281,7 +289,9 @@ class Chain:
             # Single-flight: only spawn a new drain task when no task is running.
             # This prevents concurrent drain tasks from reading the same buffer
             # entry and sending duplicate events (audit finding C-1).
-            _buffer_event(self._offline_buffer, event_body, config.offline_buffer_max_events)
+            _buffer_event(
+                self._offline_buffer, event_body, config.offline_buffer_max_events
+            )
             if self._drain_task is None or self._drain_task.done():
                 self._drain_task = asyncio.create_task(_drain_buffer_to_backend(self))
             self._sequence_number += 1
@@ -292,13 +302,16 @@ class Chain:
 
         try:
             response = await _client._post(
-                f"/v1/chains/{self._chain_id}/events", event_body,
+                f"/v1/chains/{self._chain_id}/events",
+                event_body,
                 action_type=action_type,
             )
         except _client._OfflineSignal:
             # Backend went offline mid-chain — transition to offline and buffer.
             self._offline = True
-            _buffer_event(self._offline_buffer, event_body, config.offline_buffer_max_events)
+            _buffer_event(
+                self._offline_buffer, event_body, config.offline_buffer_max_events
+            )
             self._sequence_number += 1
             logger.warning(
                 "Backend went offline mid-chain (id=%s) — switching to offline mode",
@@ -360,10 +373,14 @@ class Chain:
                     or "All agent actions are denied: organisation kill switch is active",
                     reason=decision_obj.pause_reason,
                 )
-            raise _build_action_denied(decision_obj, self._chain_id, self._sequence_number)
+            raise _build_action_denied(
+                decision_obj, self._chain_id, self._sequence_number
+            )
 
         if decision_obj.policy_decision == "require_approval":
-            approver_notes = await self._poll_for_approval()  # raises if denied or timed out
+            approver_notes = (
+                await self._poll_for_approval()
+            )  # raises if denied or timed out
             return PolicyDecision(
                 policy_decision="allow",
                 decision_reason=(
@@ -402,7 +419,9 @@ class Chain:
             On unexpected backend errors.
         """
         if self._chain_id is None:
-            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+            raise RuntimeError(
+                "Chain has not been started. Use it as a context manager."
+            )
         return await _client.get_chain(self._chain_id)
 
     async def events(
@@ -434,7 +453,9 @@ class Chain:
             If the chain has not been started yet.
         """
         if self._chain_id is None:
-            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+            raise RuntimeError(
+                "Chain has not been started. Use it as a context manager."
+            )
         return await _client.get_chain_events(
             self._chain_id,
             limit=limit,
@@ -462,7 +483,9 @@ class Chain:
             On unexpected backend errors (not 404).
         """
         if self._chain_id is None:
-            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+            raise RuntimeError(
+                "Chain has not been started. Use it as a context manager."
+            )
         try:
             return await _client.get_chain_receipt(self._chain_id)
         except httpx.HTTPStatusError as exc:
@@ -506,7 +529,9 @@ class Chain:
         ProofRail dashboard.
         """
         if self._chain_id is None:
-            raise RuntimeError("Chain has not been started. Use it as a context manager.")
+            raise RuntimeError(
+                "Chain has not been started. Use it as a context manager."
+            )
         return await _client.verify_receipt(receipt_id)
 
     # ------------------------------------------------------------------
@@ -525,7 +550,9 @@ class Chain:
         }
 
         try:
-            response = await _client._post("/v1/chains", body, action_type="chain_create")
+            response = await _client._post(
+                "/v1/chains", body, action_type="chain_create"
+            )
             self._chain_id = response["id"]
         except _client._OfflineSignal:
             # Backend unreachable and fail_mode=allow — generate a local UUID
@@ -541,7 +568,9 @@ class Chain:
 
         logger.debug(
             "Chain started (id=%s name=%s offline=%s)",
-            self._chain_id, self.name, self._offline,
+            self._chain_id,
+            self.name,
+            self._offline,
         )
 
     async def _complete(self) -> None:
@@ -570,7 +599,9 @@ class Chain:
             else:
                 # Scale with work to do: 50% headroom over expected drain time,
                 # floor of 10 s for empty/small buffers.  BUG-LR-01.
-                drain_timeout = max(10.0, buffer_size * config.backend_timeout_seconds * 1.5)
+                drain_timeout = max(
+                    10.0, buffer_size * config.backend_timeout_seconds * 1.5
+                )
             try:
                 await asyncio.wait_for(self._drain_task, timeout=drain_timeout)
             except (asyncio.TimeoutError, Exception) as exc:
@@ -578,7 +609,10 @@ class Chain:
                 logger.warning(
                     "Drain task did not finish before chain %s completed: "
                     "%d event(s) dropped (timeout=%.1fs): %s",
-                    self._chain_id, actual_dropped, drain_timeout, exc,
+                    self._chain_id,
+                    actual_dropped,
+                    drain_timeout,
+                    exc,
                 )
 
         try:
@@ -587,7 +621,9 @@ class Chain:
         except Exception as exc:
             # Completing a chain is best-effort — log but do not mask any
             # exception that is already propagating from the with-block body.
-            logger.warning("Failed to mark chain %s as completed: %s", self._chain_id, exc)
+            logger.warning(
+                "Failed to mark chain %s as completed: %s", self._chain_id, exc
+            )
 
     async def _poll_for_approval(self) -> str | None:
         """
@@ -642,9 +678,13 @@ class Chain:
 
             if approval_status in ("denied", "timed_out"):
                 policy_name = (
-                    "human_approval_denied" if approval_status == "denied" else "approval_timeout"
+                    "human_approval_denied"
+                    if approval_status == "denied"
+                    else "approval_timeout"
                 )
-                default_rem, default_docs = _POLICY_REMEDIATION.get(policy_name, (None, None))
+                default_rem, default_docs = _POLICY_REMEDIATION.get(
+                    policy_name, (None, None)
+                )
                 condition = (
                     approver_notes
                     if approval_status == "denied"
@@ -667,6 +707,7 @@ class Chain:
                 elapsed,
             )
 
+        assert self._chain_id is not None  # always set before _poll_for_approval is called
         raise ChainTimeoutError(
             chain_id=self._chain_id,
             timeout_seconds=timeout_seconds,
@@ -676,6 +717,7 @@ class Chain:
 # ---------------------------------------------------------------------------
 # Error construction helper
 # ---------------------------------------------------------------------------
+
 
 def _build_action_denied(
     decision: PolicyDecision,
@@ -704,7 +746,9 @@ def _build_action_denied(
         message=message,
         policy_name=policy_name,
         condition=decision.decision_reason or None,
-        chain_context={"chain_id": chain_id, "sequence": sequence_number} if chain_id else None,
+        chain_context={"chain_id": chain_id, "sequence": sequence_number}
+        if chain_id
+        else None,
         remediation=decision.remediation or default_remediation,
         docs_url=decision.docs_url or default_docs_url,
         decision_source=decision.decision_source,
@@ -714,6 +758,7 @@ def _build_action_denied(
 # ---------------------------------------------------------------------------
 # Fast-path async drain helper
 # ---------------------------------------------------------------------------
+
 
 async def _drain_buffer_to_backend(chain: Chain) -> None:
     """
@@ -752,6 +797,7 @@ async def _drain_buffer_to_backend(chain: Chain) -> None:
 # ---------------------------------------------------------------------------
 # Offline-mode buffer drain helper
 # ---------------------------------------------------------------------------
+
 
 async def _drain_offline_buffer(chain: Chain) -> None:
     """

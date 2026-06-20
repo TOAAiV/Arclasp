@@ -180,9 +180,11 @@ class ProofRailMcpAdapter:
             async def query_database(name: str, arguments: dict):
                 ...  # your implementation
         """
+
         def decorator(fn: ToolHandler) -> ToolHandler:
             async def _governed(name: str, arguments: dict) -> Any:
                 return await self.handle_tool_call(name, arguments, fn)
+
             _governed.__name__ = fn.__name__
             _governed.__doc__ = fn.__doc__
             return _governed

@@ -60,7 +60,6 @@ from proofrail.langgraph.callbacks import (
     ProofRailLangGraphCallback,
     _INTERNAL_NODES,
     _StrategyBPolicyBreak,
-    _state_to_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +68,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
+
 
 def govern(
     compiled_graph: Any,
@@ -130,6 +130,7 @@ def govern(
 # Governed graph wrapper
 # ---------------------------------------------------------------------------
 
+
 class GovernedGraph:
     """
     Drop-in replacement for a compiled LangGraph graph that wraps every
@@ -175,7 +176,9 @@ class GovernedGraph:
         # Fail fast with a clear message if the SDK was never initialised.
         _proofrail_client.get_config()
 
-        async with Chain(self._chain_name, metadata=self._chain_metadata) as proofrail_chain:
+        async with Chain(
+            self._chain_name, metadata=self._chain_metadata
+        ) as proofrail_chain:
             callback = ProofRailLangGraphCallback(proofrail_chain)
 
             if hasattr(self._graph, "astream_events"):
@@ -210,7 +213,9 @@ class GovernedGraph:
                 "event loop.  Use 'await governed_graph.ainvoke(...)' instead."
             )
         except RuntimeError as exc:
-            if "no running event loop" not in str(exc) and "no current event loop" not in str(exc):
+            if "no running event loop" not in str(
+                exc
+            ) and "no current event loop" not in str(exc):
                 raise
 
         return asyncio.run(self.ainvoke(state, config, **kwargs))
@@ -240,8 +245,10 @@ class GovernedGraph:
           run_id with no parent)         → capture final graph output
         """
         root_run_id: str | None = None
-        active_nodes: dict[str, str] = {}          # run_id → node_name (active; popped on end)
-        all_nodes: dict[str, str] = {}             # run_id → node_name (never evicted; parent lookup)
+        active_nodes: dict[str, str] = {}  # run_id → node_name (active; popped on end)
+        all_nodes: dict[
+            str, str
+        ] = {}  # run_id → node_name (never evicted; parent lookup)
         active_node_parents: dict[str, str | None] = {}  # run_id → parent_agent_name
         final_output: Any = None
 
@@ -273,7 +280,7 @@ class GovernedGraph:
                         and node_name not in _INTERNAL_NODES
                     ):
                         parent_agent_name: str | None = None
-                        for pid in (event.get("parent_ids") or []):
+                        for pid in event.get("parent_ids") or []:
                             parent = all_nodes.get(str(pid))
                             if parent:
                                 parent_agent_name = parent
@@ -282,27 +289,27 @@ class GovernedGraph:
                         all_nodes[run_id] = node_name
                         active_node_parents[run_id] = parent_agent_name
                         input_state = (event.get("data") or {}).get("input")
-                        await callback.on_node_start(node_name, input_state, parent_agent_name=parent_agent_name)
+                        await callback.on_node_start(
+                            node_name, input_state, parent_agent_name=parent_agent_name
+                        )
 
                     # --- Node end ---
-                    elif (
-                        event_type == "on_chain_end"
-                        and run_id in active_nodes
-                    ):
+                    elif event_type == "on_chain_end" and run_id in active_nodes:
                         finished_node = active_nodes.pop(run_id)
                         par = active_node_parents.pop(run_id, None)
                         output_state = (event.get("data") or {}).get("output")
-                        await callback.on_node_end(finished_node, output_state, parent_agent_name=par)
+                        await callback.on_node_end(
+                            finished_node, output_state, parent_agent_name=par
+                        )
 
                     # --- Node error ---
-                    elif (
-                        event_type == "on_chain_error"
-                        and run_id in active_nodes
-                    ):
+                    elif event_type == "on_chain_error" and run_id in active_nodes:
                         finished_node = active_nodes.pop(run_id)
                         par = active_node_parents.pop(run_id, None)
                         error = (event.get("data") or {}).get("error")
-                        await callback.on_node_end(finished_node, None, error=error, parent_agent_name=par)
+                        await callback.on_node_end(
+                            finished_node, None, error=error, parent_agent_name=par
+                        )
 
                 except (
                     ChainTimeoutError,
@@ -384,7 +391,4 @@ class GovernedGraph:
         return getattr(self._graph, name)
 
     def __repr__(self) -> str:
-        return (
-            f"GovernedGraph(chain_name={self._chain_name!r}, "
-            f"graph={self._graph!r})"
-        )
+        return f"GovernedGraph(chain_name={self._chain_name!r}, graph={self._graph!r})"

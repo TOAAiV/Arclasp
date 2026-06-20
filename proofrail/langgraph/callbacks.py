@@ -56,6 +56,7 @@ class _StrategyBPolicyBreak(BaseException):
 # State → dict conversion helper
 # ---------------------------------------------------------------------------
 
+
 def _state_to_dict(state: Any) -> dict:
     """
     Convert a LangGraph state value to a plain ``dict`` suitable for the
@@ -66,11 +67,11 @@ def _state_to_dict(state: Any) -> dict:
         return {}
     if isinstance(state, dict):
         return state
-    if hasattr(state, "model_dump"):          # Pydantic v2
+    if hasattr(state, "model_dump"):  # Pydantic v2
         return state.model_dump()
-    if hasattr(state, "dict"):                # Pydantic v1
+    if hasattr(state, "dict"):  # Pydantic v1
         return state.dict()
-    if hasattr(state, "_asdict"):             # NamedTuple
+    if hasattr(state, "_asdict"):  # NamedTuple
         return state._asdict()
     try:
         return dict(state)
@@ -81,6 +82,7 @@ def _state_to_dict(state: Any) -> dict:
 # ---------------------------------------------------------------------------
 # Primary callback class — clean public interface
 # ---------------------------------------------------------------------------
+
 
 class ProofRailLangGraphCallback:
     """
@@ -95,7 +97,9 @@ class ProofRailLangGraphCallback:
     def __init__(self, chain: "Chain") -> None:
         self._chain = chain
 
-    async def on_node_start(self, node_name: str, input_state: Any, *, parent_agent_name: str | None = None) -> None:
+    async def on_node_start(
+        self, node_name: str, input_state: Any, *, parent_agent_name: str | None = None
+    ) -> None:
         logger.debug("LangGraph node starting: %s", sanitize_log_field(node_name))
         await self._chain.record_agent_action(
             agent_name=node_name,
@@ -121,7 +125,9 @@ class ProofRailLangGraphCallback:
         ``node_result`` with the node's output state.
         """
         if error is not None:
-            logger.debug("LangGraph node errored: %s — %s", sanitize_log_field(node_name), error)
+            logger.debug(
+                "LangGraph node errored: %s — %s", sanitize_log_field(node_name), error
+            )
             await self._chain.record_agent_action(
                 agent_name=node_name,
                 action_type="node_error",
@@ -160,6 +166,7 @@ class ProofRailLangGraphCallback:
 # LangChain AsyncCallbackHandler bridge
 # ---------------------------------------------------------------------------
 
+
 def _build_langchain_base():
     """
     Lazily import ``langchain_core.callbacks.AsyncCallbackHandler``.
@@ -167,6 +174,7 @@ def _build_langchain_base():
     """
     try:
         from langchain_core.callbacks.base import AsyncCallbackHandler  # type: ignore[import]
+
         return AsyncCallbackHandler
     except ImportError:
         raise ImportError(
@@ -200,13 +208,15 @@ class _AsLangChainCallback:
             "_ProofRailNodeEventHandler",
             (base,),
             {
-                "__init__": lambda self_inner, cb: setattr(self_inner, "_proofrail", cb),
+                "__init__": lambda self_inner, cb: setattr(
+                    self_inner, "_proofrail", cb
+                ),
                 "on_chain_start": _make_on_chain_start(),
                 "on_chain_end": _make_on_chain_end(),
                 "on_chain_error": _make_on_chain_error(),
             },
         )
-        self._handler = cls(proofrail_callback)
+        self._handler = cls(proofrail_callback)  # type: ignore[call-arg]  # Dynamic type() build — runtime-correct, pyright can't infer signature
 
     def __getattr__(self, name: str) -> Any:
         # Proxy everything to the dynamically built handler.
@@ -228,7 +238,7 @@ def _make_on_chain_start():
         node_name = (metadata or {}).get("langgraph_node", "")
         if not node_name or node_name in _INTERNAL_NODES:
             return
-        node_name = node_name[:_ACTION_NAME_MAX - 7]
+        node_name = node_name[: _ACTION_NAME_MAX - 7]
         # Track run_id → node_name so on_chain_end can look it up
         if not hasattr(self, "_node_runs"):
             self._node_runs = {}
@@ -246,8 +256,15 @@ def _make_on_chain_start():
             self._node_parents = {}
         self._node_parents[run_id] = parent_agent_name
         try:
-            await self._proofrail.on_node_start(node_name, inputs, parent_agent_name=parent_agent_name)
-        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            await self._proofrail.on_node_start(
+                node_name, inputs, parent_agent_name=parent_agent_name
+            )
+        except (
+            ActionDeniedError,
+            ChainTimeoutError,
+            ChainAutoPausedError,
+            ProofRailKillSwitchError,
+        ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
     return on_chain_start
@@ -266,8 +283,15 @@ def _make_on_chain_end():
             return
         parent_agent_name = getattr(self, "_node_parents", {}).pop(run_id, None)
         try:
-            await self._proofrail.on_node_end(node_name, outputs, error=None, parent_agent_name=parent_agent_name)
-        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            await self._proofrail.on_node_end(
+                node_name, outputs, error=None, parent_agent_name=parent_agent_name
+            )
+        except (
+            ActionDeniedError,
+            ChainTimeoutError,
+            ChainAutoPausedError,
+            ProofRailKillSwitchError,
+        ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
     return on_chain_end
@@ -286,8 +310,15 @@ def _make_on_chain_error():
             return
         parent_agent_name = getattr(self, "_node_parents", {}).pop(run_id, None)
         try:
-            await self._proofrail.on_node_end(node_name, None, error=error, parent_agent_name=parent_agent_name)
-        except (ActionDeniedError, ChainTimeoutError, ChainAutoPausedError, ProofRailKillSwitchError) as exc:
+            await self._proofrail.on_node_end(
+                node_name, None, error=error, parent_agent_name=parent_agent_name
+            )
+        except (
+            ActionDeniedError,
+            ChainTimeoutError,
+            ChainAutoPausedError,
+            ProofRailKillSwitchError,
+        ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
     return on_chain_error

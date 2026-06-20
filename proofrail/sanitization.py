@@ -20,17 +20,26 @@ Two categories of redaction (v2 spec section 12):
 
 from __future__ import annotations
 
+from typing import cast
+
 # Re-export the shared constants so callers can do:
 #   from proofrail.sanitization import DEFAULT_SENSITIVE_FIELD_PATTERNS
 # The definitions live in _constants.py to avoid the circular import that would
 # arise if models.py imported from here while this module imports ChainConfig
 # from models.py.
+# The `import X as X` form signals to ruff/mypy that these are intentional
+# re-exports rather than unused imports.
 from proofrail._constants import (
-    DEFAULT_SENSITIVE_FIELD_PATTERNS,
-    DEFAULT_SENSITIVE_VALUE_PATTERNS,
+    DEFAULT_SENSITIVE_FIELD_PATTERNS as DEFAULT_SENSITIVE_FIELD_PATTERNS,
+    DEFAULT_SENSITIVE_VALUE_PATTERNS as DEFAULT_SENSITIVE_VALUE_PATTERNS,
 )
-
 from proofrail.models import ChainConfig
+
+__all__ = [
+    "sanitize_payload",
+    "DEFAULT_SENSITIVE_FIELD_PATTERNS",
+    "DEFAULT_SENSITIVE_VALUE_PATTERNS",
+]
 
 
 def sanitize_payload(payload: dict, config: ChainConfig) -> dict:
@@ -51,12 +60,13 @@ def sanitize_payload(payload: dict, config: ChainConfig) -> dict:
 
     The original payload is not mutated — a new dict is returned.
     """
-    return _sanitize_value(payload, config)
+    return cast(dict, _sanitize_value(payload, config))
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _is_sensitive(key: str, patterns: list[str]) -> bool:
     key_lower = key.lower()

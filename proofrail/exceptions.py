@@ -53,6 +53,7 @@ _POLICY_REMEDIATION: dict[str, tuple[str, str]] = {
 # Base class
 # ---------------------------------------------------------------------------
 
+
 class ProofRailPolicyError(Exception):
     """
     Common base for all policy-denial exceptions raised by the SDK.
@@ -124,6 +125,7 @@ class ProofRailPolicyError(Exception):
 # Policy-denial subclasses
 # ---------------------------------------------------------------------------
 
+
 class ActionDeniedError(ProofRailPolicyError):
     """
     Raised when the backend policy engine returns a ``"deny"`` decision for an
@@ -150,6 +152,7 @@ class PolicyViolationError(ProofRailPolicyError):
 # Transport / lifecycle exceptions
 # ---------------------------------------------------------------------------
 
+
 class BackendUnavailableError(Exception):
     """
     Raised when the ProofRail backend cannot be reached and fail_mode is
@@ -172,9 +175,7 @@ class ChainTimeoutError(Exception):
     def __init__(self, chain_id: str, timeout_seconds: int) -> None:
         self.chain_id = chain_id
         self.timeout_seconds = timeout_seconds
-        super().__init__(
-            f"chain '{chain_id}' timed out after {timeout_seconds}s"
-        )
+        super().__init__(f"chain '{chain_id}' timed out after {timeout_seconds}s")
 
 
 class ProofRailKillSwitchError(Exception):

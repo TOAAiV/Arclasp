@@ -39,11 +39,11 @@ _ACTION_NAME_MAX: int = 100
 #: (e.g. ``{"note": "my key is sk_live_abc..."}``) that a key-name scan would
 #: miss entirely.  Extend via ``ChainConfig(sensitive_value_patterns=[...])``.
 DEFAULT_SENSITIVE_VALUE_PATTERNS: list[str] = [
-    "sk_",    # OpenAI / Stripe secret keys
-    "pk_",    # Stripe public keys (still sensitive in payload context)
-    "ghp_",   # GitHub personal access tokens
-    "hf_",    # Hugging Face tokens
-    "eyJ",    # JWT tokens — base64url encoding of '{"' — every JWT starts with this
-    "AKIA",   # AWS access key IDs (AKIA + 16 uppercase alphanumeric chars)
-    "prail_", # ProofRail API keys
+    "sk_",  # OpenAI / Stripe secret keys
+    "pk_",  # Stripe public keys (still sensitive in payload context)
+    "ghp_",  # GitHub personal access tokens
+    "hf_",  # Hugging Face tokens
+    "eyJ",  # JWT tokens — base64url encoding of '{"' — every JWT starts with this
+    "AKIA",  # AWS access key IDs (AKIA + 16 uppercase alphanumeric chars)
+    "prail_",  # ProofRail API keys
 ]

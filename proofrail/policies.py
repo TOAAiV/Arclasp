@@ -74,6 +74,7 @@ _SENSITIVE_PATTERNS: frozenset[str] = frozenset(DEFAULT_SENSITIVE_FIELD_PATTERNS
 # Internal helpers — verbatim from backend policy_engine.py
 # ---------------------------------------------------------------------------
 
+
 def _extract_numeric(payload: dict, keys: list[str]) -> float | None:
     """Return the first numeric value found under any of *keys*, or None."""
     for key in keys:
@@ -137,6 +138,7 @@ def _full_result(
 # ---------------------------------------------------------------------------
 # Stage 1 — Risk classification
 # ---------------------------------------------------------------------------
+
 
 def classify_risk(
     action_type: str,
@@ -261,6 +263,7 @@ def classify_risk(
 # Stage 2 — Cumulative metrics updater (in-memory)
 # ---------------------------------------------------------------------------
 
+
 def update_chain_metrics_local(
     cumulative_metrics: dict,
     action_type: str,
@@ -318,9 +321,7 @@ def update_chain_metrics_local(
         )
 
     if "write" in categories:
-        metrics["records_modified_count"] = (
-            metrics.get("records_modified_count", 0) + 1
-        )
+        metrics["records_modified_count"] = metrics.get("records_modified_count", 0) + 1
 
     if "privilege_escalation" in categories:
         metrics["privileged_actions_count"] = (
@@ -329,7 +330,9 @@ def update_chain_metrics_local(
 
     domain_or_url: str | None = payload.get("domain") or payload.get("url")
     if domain_or_url:
-        existing_domains: list[str] = list(metrics.get("external_domains_contacted", []))
+        existing_domains: list[str] = list(
+            metrics.get("external_domains_contacted", [])
+        )
         domain_str = str(domain_or_url)
         if domain_str not in existing_domains:
             existing_domains.append(domain_str)
@@ -341,6 +344,7 @@ def update_chain_metrics_local(
 # ---------------------------------------------------------------------------
 # Stage 3 — Policy evaluator
 # ---------------------------------------------------------------------------
+
 
 def evaluate_policy(
     action_type: str,
@@ -448,7 +452,9 @@ def evaluate_policy(
         "communication" in categories
         and cumulative_metrics.get("external_communications_count", 0) == 1
     ):
-        return _decision("require_approval", "First external communication requires approval")
+        return _decision(
+            "require_approval", "First external communication requires approval"
+        )
 
     if risk_score >= 70:
         return _decision(
@@ -482,6 +488,7 @@ def evaluate_policy(
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+
 
 def process_action_local(
     agent_name: str,
@@ -570,7 +577,8 @@ def process_action_local(
     if policy_mode == "disabled":
         logger.info(
             "Policy disabled for agent=%s action=%s — auto-allow",
-            agent_name, action_name,
+            agent_name,
+            action_name,
         )
         result = _full_result(
             decision="allow",
@@ -662,7 +670,8 @@ def process_action_local(
             true_reason = "Monthly LLM cost budget would be exceeded"
             logger.warning(
                 "Monthly budget gate triggered for agent=%s action=%s",
-                agent_name, action_name,
+                agent_name,
+                action_name,
             )
 
     # ------------------------------------------------------------------
@@ -673,7 +682,8 @@ def process_action_local(
         if active_exception_id is not None:
             logger.info(
                 "Time-boxed exception bypass: agent=%s exception=%s",
-                agent_name, active_exception_id,
+                agent_name,
+                active_exception_id,
             )
             result = _full_result(
                 decision="allow",
@@ -693,7 +703,8 @@ def process_action_local(
     if policy_mode == "shadow":
         logger.info(
             "Shadow mode: would-have-been decision=%s for agent=%s",
-            true_decision, agent_name,
+            true_decision,
+            agent_name,
         )
         result = _full_result(
             decision="allow",
