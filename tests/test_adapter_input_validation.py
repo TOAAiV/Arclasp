@@ -12,7 +12,7 @@ framework-supplied strings before they reach logger calls.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from uuid import uuid4
 
 import pytest

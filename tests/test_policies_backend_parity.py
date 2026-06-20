@@ -41,7 +41,7 @@ for _mock_name in [
 ]:
     sys.modules.setdefault(_mock_name, MagicMock())
 
-import pytest
+import pytest  # noqa: E402
 
 # ------------------------------------------------------------------
 # Attempt to load the backend.  All tests in this file are skipped if
@@ -59,8 +59,8 @@ try:
 except Exception as _import_exc:
     _BACKEND_IMPORT_ERROR = str(_import_exc)
 
-from proofrail.policies import classify_risk as _sdk_classify_risk
-from proofrail.policies import evaluate_policy as _sdk_evaluate_policy
+from proofrail.policies import classify_risk as _sdk_classify_risk  # noqa: E402
+from proofrail.policies import evaluate_policy as _sdk_evaluate_policy  # noqa: E402
 
 _skip_no_backend = pytest.mark.skipif(
     not BACKEND_AVAILABLE,

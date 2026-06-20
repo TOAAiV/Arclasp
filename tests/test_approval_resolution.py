@@ -9,7 +9,6 @@ fields when an approver denies it or the approval times out.
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest

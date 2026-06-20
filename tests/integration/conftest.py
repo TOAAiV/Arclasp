@@ -30,9 +30,9 @@ class _StubAsyncCallbackHandler(_StubBaseCallbackHandler):
 # 2.  Seed sys.modules BEFORE any adapter imports happen
 # ============================================================
 
-import importlib.util
-import sys
-from types import ModuleType
+import importlib.util  # noqa: E402
+import sys  # noqa: E402
+from types import ModuleType  # noqa: E402
 
 
 def _has_real_package(name: str) -> bool:
@@ -83,21 +83,20 @@ for _name, _mod in [
 #     govern()'s "is object" guard passes.
 # ============================================================
 
-import proofrail
-import proofrail.langchain.callbacks as _lc_cb_mod
-import proofrail.langchain.adapter  as _lc_adapt_mod
+import proofrail  # noqa: E402
+import proofrail.langchain.callbacks as _lc_cb_mod  # noqa: E402
+import proofrail.langchain.adapter as _lc_adapt_mod  # noqa: E402
 
 if _lc_adapt_mod._BaseCallbackHandler is object:
     _lc_adapt_mod._BaseCallbackHandler = _StubBaseCallbackHandler
 if _lc_cb_mod._BaseCallbackHandler is object:
     _lc_cb_mod._BaseCallbackHandler = _StubBaseCallbackHandler
 
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
-from proofrail.client import _OfflineSignal
+from proofrail.exceptions import BackendUnavailableError  # noqa: E402
+from proofrail.client import _OfflineSignal  # noqa: E402
 
-import asyncio
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+import asyncio  # noqa: E402
+import pytest  # noqa: E402
 
 
 # ============================================================
@@ -191,9 +190,12 @@ def assert_event_recorded(
     event_calls = [c for c in calls if "events" in c["path"]]
     for c in event_calls:
         b = c["body"]
-        if agent_name  is not None and b.get("agent_name")  != agent_name:  continue
-        if action_name is not None and b.get("action_name") != action_name: continue
-        if action_type is not None and b.get("action_type") != action_type: continue
+        if agent_name is not None and b.get("agent_name") != agent_name:
+            continue
+        if action_name is not None and b.get("action_name") != action_name:
+            continue
+        if action_type is not None and b.get("action_type") != action_type:
+            continue
         return  # match found
     raise AssertionError(
         f"No event found matching agent_name={agent_name!r} "

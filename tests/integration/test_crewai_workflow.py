@@ -20,8 +20,7 @@ NOT installed.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from typing import Any
 
 import pytest
@@ -363,8 +362,6 @@ async def test_strategy_b_fallback_crewai():
     The original method is restored in the finally block.
     """
     crew = _StubCrewB()
-    original_execute = crew.agents[0].execute_task
-
     governed = govern(crew, chain_name="crew-b")
     mock_post, calls = make_mock_post()
 
@@ -622,7 +619,9 @@ def test_bug_cr02_object_setattr_bypasses_pydantic():
         agent.execute_task = lambda task: "patched"  # type: ignore[method-assign]
 
     # object.__setattr__ bypasses Pydantic's validation — this is the fix
-    patched_fn = lambda task: "patched"
+    def patched_fn(task):
+        return "patched"
+
     object.__setattr__(agent, "execute_task", patched_fn)
     assert agent.execute_task("x") == "patched"
 

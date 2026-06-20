@@ -21,7 +21,6 @@ Three tests:
 from __future__ import annotations
 
 import asyncio
-import uuid
 from unittest.mock import MagicMock, Mock, patch
 
 import httpx

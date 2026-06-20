@@ -258,7 +258,6 @@ async def test_bug_lc_02_strategy_b_propagates_policy_exception():
     try/except Exception: pass.  Without the fix the caller sees no error.
     With the fix ChainTimeoutError propagates intact.
     """
-    from proofrail.langchain.callbacks import _StrategyBPolicyBreak
 
     proofrail.init(
         api_key="prail_test",
@@ -314,7 +313,6 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
     import uuid as _uuid
     import importlib
 
-    from proofrail.langchain.callbacks import _StrategyBPolicyBreak
 
     # Remove conftest stubs so real langchain-core is importable.
     saved_lc = {k: sys.modules.pop(k)

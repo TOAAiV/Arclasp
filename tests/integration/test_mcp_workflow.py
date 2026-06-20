@@ -32,7 +32,6 @@ from .conftest import (
     assert_event_recorded,
     assert_chain_completed,
     count_event_calls,
-    CHAIN_ID,
 )
 
 
@@ -179,7 +178,7 @@ async def test_backend_unreachable_fail_allow_mcp():
     with patch("proofrail.client._post", side_effect=mock_post):
         async with Chain("mcp-offline") as chain:
             adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
-            result = await adapter.handle_tool_call("query_database", {}, tracking_handler)
+            await adapter.handle_tool_call("query_database", {}, tracking_handler)
 
     # Handler was called despite backend being offline
     assert "query_database" in handler_calls

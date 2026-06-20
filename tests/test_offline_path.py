@@ -59,7 +59,7 @@ class TestOfflineAllow:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
-            async with Chain("test") as chain:
+            async with Chain("test"):
                 pass  # must not raise
 
     @pytest.mark.asyncio

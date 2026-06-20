@@ -11,7 +11,7 @@ These tests mock the backend HTTP client and verify the fast-path integration:
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 import pytest
 

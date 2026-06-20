@@ -137,7 +137,7 @@ def _mock_get(payload: dict):
 async def test_get_chain_calls_correct_url():
     chain_id = "abc-123"
     with _mock_get(_CHAIN_DETAIL_PAYLOAD) as mock:
-        result = await _client.get_chain(chain_id)
+        await _client.get_chain(chain_id)
         mock.assert_called_once_with(f"/v1/chains/{chain_id}")
 
 
@@ -159,7 +159,7 @@ async def test_get_chain_returns_chain_detail_model():
 async def test_get_chain_events_default_params():
     chain_id = "abc-123"
     with _mock_get(_EVENTS_PAYLOAD) as mock:
-        result = await _client.get_chain_events(chain_id)
+        await _client.get_chain_events(chain_id)
         mock.assert_called_once_with(f"/v1/chains/{chain_id}/events?limit=100&offset=0")
 
 
@@ -167,7 +167,7 @@ async def test_get_chain_events_default_params():
 async def test_get_chain_events_with_cursor():
     chain_id = "abc-123"
     with _mock_get(_EVENTS_PAYLOAD) as mock:
-        result = await _client.get_chain_events(chain_id, limit=10, offset=5, sequence_after=3)
+        await _client.get_chain_events(chain_id, limit=10, offset=5, sequence_after=3)
         mock.assert_called_once_with(
             f"/v1/chains/{chain_id}/events?limit=10&offset=5&sequence_after=3"
         )
@@ -191,7 +191,7 @@ async def test_get_chain_events_returns_response_model():
 async def test_get_chain_receipt_calls_correct_url():
     chain_id = "abc-123"
     with _mock_get(_RECEIPT_PAYLOAD) as mock:
-        result = await _client.get_chain_receipt(chain_id)
+        await _client.get_chain_receipt(chain_id)
         mock.assert_called_once_with(f"/v1/chains/{chain_id}/receipt")
 
 
@@ -212,14 +212,14 @@ async def test_get_chain_receipt_returns_receipt_model():
 @pytest.mark.asyncio
 async def test_list_chains_default_params():
     with _mock_get(_CHAIN_LIST_PAYLOAD) as mock:
-        result = await _client.list_chains()
+        await _client.list_chains()
         mock.assert_called_once_with("/v1/chains?limit=50&offset=0")
 
 
 @pytest.mark.asyncio
 async def test_list_chains_with_filters():
     with _mock_get(_CHAIN_LIST_PAYLOAD) as mock:
-        result = await _client.list_chains(
+        await _client.list_chains(
             limit=10, offset=20, status="completed", environment="production"
         )
         called_path = mock.call_args[0][0]

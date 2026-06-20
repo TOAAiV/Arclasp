@@ -6,9 +6,7 @@ from __future__ import annotations
 
 import time
 
-import pytest
 
-import proofrail
 from proofrail.fast_path import evaluate_fast_path, is_fast_path_eligible
 from proofrail.models import ChainConfig
 

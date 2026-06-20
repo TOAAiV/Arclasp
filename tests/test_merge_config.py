@@ -2,9 +2,7 @@
 Tests for _merge_config helper — Item F verification.
 """
 
-import inspect
 
-import pytest
 
 from proofrail._utils import _merge_config
 
