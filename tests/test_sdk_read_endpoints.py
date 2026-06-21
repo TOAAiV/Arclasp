@@ -16,6 +16,8 @@ import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import sys
+
 import httpx
 import pytest
 
@@ -454,6 +456,10 @@ async def test_reinit_closes_old_http_client():
 # BUG-LC-03 regression: loop-aware client (I-5b)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="asyncio.Runner requires Python 3.11+",
+)
 def test_loop_aware_client_creates_separate_clients_for_separate_loops():
     """
     BUG-LC-03 regression test.
