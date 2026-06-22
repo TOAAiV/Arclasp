@@ -1,0 +1,71 @@
+{
+  "demo_name": "mcp_vendor_workflow",
+  "run_at": "2026-06-22T09:48:11.150665+00:00",
+  "chain_id": "chn_demo_mcp_vendor_001",
+  "framework": "mcp",
+  "governance_config": {
+    "cumulative_financial_threshold_usd": 10000,
+    "fast_path_enabled": false
+  },
+  "events": [
+    {
+      "seq": 1,
+      "agent": "vendor-purchase-mcp",
+      "action": "search_web",
+      "decision": "allow",
+      "decision_source": "backend_evaluation"
+    },
+    {
+      "seq": 2,
+      "agent": "vendor-purchase-mcp",
+      "action": "calculate_offer",
+      "decision": "allow",
+      "decision_source": "backend_evaluation",
+      "amount_usd": 3000,
+      "cumulative_usd": 3000
+    },
+    {
+      "seq": 3,
+      "agent": "vendor-purchase-mcp",
+      "action": "send_email",
+      "decision": "allow",
+      "decision_source": "backend_evaluation"
+    },
+    {
+      "seq": 4,
+      "agent": "vendor-purchase-mcp",
+      "action": "record_commitment",
+      "decision": "allow",
+      "decision_source": "backend_evaluation",
+      "amount_usd": 3000,
+      "cumulative_usd": 3000
+    },
+    {
+      "seq": 5,
+      "agent": "vendor-purchase-mcp",
+      "action": "record_commitment",
+      "decision": "allow",
+      "decision_source": "backend_evaluation",
+      "amount_usd": 3000,
+      "cumulative_usd": 6000
+    },
+    {
+      "seq": 6,
+      "agent": "vendor-purchase-mcp",
+      "action": "record_commitment",
+      "decision": "allow",
+      "decision_source": "backend_evaluation",
+      "amount_usd": 3000,
+      "cumulative_usd": 9000
+    },
+    {
+      "seq": 7,
+      "agent": "vendor-purchase-mcp",
+      "action": "record_commitment",
+      "decision": "allow",
+      "decision_source": "human_approval",
+      "amount_usd": 3000,
+      "cumulative_usd": 12000
+    }
+  ]
+}
