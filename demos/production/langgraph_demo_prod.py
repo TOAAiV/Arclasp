@@ -135,19 +135,10 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
             agent_name="offer-calculator",
             action_type="tool_call",
             action_name="calculate_offer",
-            payload={"vendor": "vendor-a", "amount_usd": 3000},
+            payload={"vendor": "vendor-a", "amount": 3000},
         )
         events_log.append({"seq": 2, "agent": "offer-calculator", "action": "calculate_offer", "amount_usd": 3000, "decision": d.policy_decision, "decision_source": d.decision_source})
         print(f"  [2] offer-calculator     calculate_offer ($3,000)       → {d.policy_decision}")
-
-        d = await chain.record_agent_action(
-            agent_name="communication",
-            action_type="tool_call",
-            action_name="send_email",
-            payload={"to": "vendor-a@example.com", "subject": "Initial purchase proposal"},
-        )
-        events_log.append({"seq": 3, "agent": "communication", "action": "send_email", "decision": d.policy_decision, "decision_source": d.decision_source})
-        print(f"  [3] communication        send_email                     → {d.policy_decision}")
 
         commitments = [
             ("vendor-a", 3000,  3_000),
@@ -160,10 +151,10 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
                 agent_name="commitment-recorder",
                 action_type="tool_call",
                 action_name="record_commitment",
-                payload={"vendor": vendor, "amount_usd": amount},
+                payload={"vendor": vendor, "amount": amount},
             )
             entry = {
-                "seq": 3 + i,
+                "seq": 2 + i,
                 "agent": "commitment-recorder",
                 "action": "record_commitment",
                 "vendor": vendor,
@@ -179,10 +170,21 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
             elif cumulative >= 10000:
                 note = f"  <- crossed $10,000 threshold"
             print(
-                f"  [{3+i}] commitment-recorder  record_commitment "
+                f"  [{2+i}] commitment-recorder  record_commitment "
                 f"{vendor} ${amount:,}  (cumulative ${cumulative:,})"
                 f"  → {d.policy_decision}{note}"
             )
+
+        # send_email after financial threshold is crossed and approval granted,
+        # so the "first external communication" policy does not fire prematurely.
+        d = await chain.record_agent_action(
+            agent_name="communication",
+            action_type="tool_call",
+            action_name="send_email",
+            payload={"to": "vendor-d@example.com", "subject": "Purchase commitments confirmed"},
+        )
+        events_log.append({"seq": 7, "agent": "communication", "action": "send_email", "decision": d.policy_decision, "decision_source": d.decision_source})
+        print(f"  [7] communication        send_email                     → {d.policy_decision}")
 
     return chain, events_log
 

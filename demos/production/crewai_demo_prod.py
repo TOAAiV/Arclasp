@@ -128,24 +128,31 @@ class _MockTaskOutput:
         self.description = description
 
 
+# Note: The CrewAI adapter records task descriptions as event payloads and does
+# not pass numeric amounts to the backend. The cumulative financial threshold
+# gate is therefore not exercised by this demo. This demo instead exercises
+# chain creation, task-event recording, the first-external-communication
+# approval gate (send_email), and receipt generation.
+# send_email is placed last so it is the approval-triggering event rather than
+# firing prematurely before any financial events are recorded.
 _VENDOR_TASKS = [
     _MockTask("Search vendor pricing benchmarks for enterprise SaaS Q2 2026"),
-    _MockTask("Calculate initial offer: $3,000 for vendor-a"),
-    _MockTask("Send proposal email to vendor-a@example.com"),
-    _MockTask("Record vendor-a commitment: $3,000 (cumulative $3,000)"),
-    _MockTask("Record vendor-b commitment: $3,000 (cumulative $6,000)"),
-    _MockTask("Record vendor-c commitment: $3,000 (cumulative $9,000)"),
-    _MockTask("Record vendor-d commitment: $3,000 (cumulative $12,000)"),
+    _MockTask("Calculate initial offer for vendor-a"),
+    _MockTask("Record vendor-a commitment: $3,000"),
+    _MockTask("Record vendor-b commitment: $3,000"),
+    _MockTask("Record vendor-c commitment: $3,000"),
+    _MockTask("Record vendor-d commitment: $3,000"),
+    _MockTask("Send confirmation email to vendor-d@example.com"),  # first external comm → require_approval
 ]
 
 _VENDOR_AGENTS = [
     _MockAgent("pricing-researcher"),
     _MockAgent("offer-calculator"),
+    _MockAgent("commitment-recorder"),
+    _MockAgent("commitment-recorder"),
+    _MockAgent("commitment-recorder"),
+    _MockAgent("commitment-recorder"),
     _MockAgent("communications-manager"),
-    _MockAgent("commitment-recorder"),
-    _MockAgent("commitment-recorder"),
-    _MockAgent("commitment-recorder"),
-    _MockAgent("commitment-recorder"),
 ]
 
 

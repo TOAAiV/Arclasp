@@ -108,12 +108,12 @@ _pr_client._get = _get_instrument
 
 _VENDOR_TOOLS = [
     ("search_web",        {"query": "enterprise SaaS pricing benchmarks Q2 2026"}),
-    ("calculate_offer",   {"vendor": "vendor-a", "amount_usd": 3000}),
-    ("send_email",        {"to": "vendor-a@example.com", "subject": "Initial proposal"}),
-    ("record_commitment", {"vendor": "vendor-a", "amount_usd": 3000}),
-    ("record_commitment", {"vendor": "vendor-b", "amount_usd": 3000}),
-    ("record_commitment", {"vendor": "vendor-c", "amount_usd": 3000}),
-    ("record_commitment", {"vendor": "vendor-d", "amount_usd": 3000}),
+    ("calculate_offer",   {"vendor": "vendor-a", "amount": 3000}),
+    ("record_commitment", {"vendor": "vendor-a", "amount": 3000}),
+    ("record_commitment", {"vendor": "vendor-b", "amount": 3000}),
+    ("record_commitment", {"vendor": "vendor-c", "amount": 3000}),
+    ("record_commitment", {"vendor": "vendor-d", "amount": 3000}),
+    ("send_email",        {"to": "vendor-d@example.com", "subject": "Purchase commitments confirmed"}),
 ]
 
 
@@ -141,11 +141,11 @@ class _VendorWorkflowChain:
 _SEMANTIC_STEPS = [
     ("pricing-research",    "search_web",        None,  None),
     ("offer-calculator",    "calculate_offer",   3000,  3_000),
-    ("communication",       "send_email",        None,  None),
     ("commitment-recorder", "record_commitment", 3000,  3_000),
     ("commitment-recorder", "record_commitment", 3000,  6_000),
     ("commitment-recorder", "record_commitment", 3000,  9_000),
     ("commitment-recorder", "record_commitment", 3000, 12_000),
+    ("communication",       "send_email",        None,  None),
 ]
 
 
