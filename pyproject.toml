@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "proofrail"
-version = "0.1.0"
+version = "0.1.0a7"
 description = "Runtime governance for AI agent chains."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -34,6 +34,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Monitoring",
     "Typing :: Typed",
@@ -51,8 +53,10 @@ langgraph = [
     "langgraph>=0.2.0,<0.4.0",
     "langchain-core>=0.3.0,<0.4.0",
 ]
+# CrewAI requires Python <3.14 due to its own dependency constraints.
+# Users on Python 3.14+ should use Python 3.10-3.13 for CrewAI integration.
 crewai = [
-    "crewai>=1.10.0,<2.0.0",
+    "crewai>=1.10.0,<2.0.0; python_version < '3.14'",
 ]
 mcp = [
     "mcp>=1.0.0,<2.0.0",
@@ -71,7 +75,7 @@ dev = [
 all = [
     "langchain-core>=0.3.0,<0.4.0",
     "langgraph>=0.2.0,<0.4.0",
-    "crewai>=1.10.0,<2.0.0",
+    "crewai>=1.10.0,<2.0.0; python_version < '3.14'",
     "mcp>=1.0.0,<2.0.0",
 ]
 
@@ -89,3 +93,23 @@ markers = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["proofrail"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".measure/",
+    ".measure_full/",
+    ".venv311/",
+    ".venv/",
+    "dist/",
+    "*.egg-info/",
+    "__pycache__/",
+    ".pytest_cache/",
+    ".github/",
+    "verify-scripts/",
+    "verify-docker.ps1",
+    "Dockerfile.verify",
+    "import_times.txt",
+    "AUDIT_FINDINGS.md",
+    "BACKLOG.md",
+    "CODE_QUALITY_FINDINGS.md",
+]

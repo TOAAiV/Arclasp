@@ -547,6 +547,7 @@ class Chain:
             "external_chain_id": self.name,
             "environment": config.environment,
             "metadata": sanitize_payload(self.metadata, config),
+            "fallback_approvers": config.fallback_approvers,
         }
 
         try:

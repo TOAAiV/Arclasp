@@ -209,5 +209,13 @@ def evaluate_fast_path(
         "policy_decision": "allow",
         "decision_reason": local_result["reason"],
         "decision_source": "local_fast_path",
+        # "cumulative_metrics" populates the PolicyDecision returned to the
+        # caller; "updated_cumulative_metrics" is a separate key consumed
+        # (and popped) by chain.py to update its own running-totals snapshot.
+        # Without both keys present, PolicyDecision.model_validate() silently
+        # defaults cumulative_metrics to {} for every fast-path-allowed
+        # decision once chain.py pops "updated_cumulative_metrics" out of
+        # this same dict before validating it.
+        "cumulative_metrics": local_result["updated_cumulative_metrics"],
         "updated_cumulative_metrics": local_result["updated_cumulative_metrics"],
     }

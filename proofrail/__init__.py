@@ -26,7 +26,7 @@ from proofrail.exceptions import (
     ProofRailKillSwitchError,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.0a7"
 
 __all__ = [
     "init",
