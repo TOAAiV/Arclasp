@@ -97,9 +97,21 @@ class Chain:
     ``async with`` in that case.
     """
 
-    def __init__(self, name: str, metadata: dict | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        metadata: dict | None = None,
+        policy_config: dict | None = None,
+    ) -> None:
         self.name = name
         self.metadata: dict = metadata or {}
+        # Per-chain policy override, merged by the backend key-by-key over
+        # the org-wide config (chain value wins where set). None/{} = no
+        # override — behaves identically to the org-wide config alone.
+        # Build with the add_financial_threshold() facade, or pass a raw
+        # dict directly for the recognised keys (see add_financial_threshold
+        # docstring for the schema).
+        self.policy_config: dict = dict(policy_config) if policy_config else {}
 
         self._chain_id: str | None = None
         self._sequence_number: int = 1
@@ -163,6 +175,58 @@ class Chain:
     ) -> bool:
         asyncio.run(self._complete())
         return False
+
+    # ------------------------------------------------------------------
+    # Policy configuration facade
+    # ------------------------------------------------------------------
+
+    def add_financial_threshold(
+        self,
+        usd: float,
+        notify: list[str] | None = None,
+        deny: bool = False,
+    ) -> None:
+        """
+        Configure a per-chain cumulative financial threshold, overriding the
+        org-wide default for this chain only.
+
+        Must be called before the chain is started (i.e. before entering the
+        ``async with`` / ``with`` block) — the resulting ``policy_config`` is
+        sent once, in the ``POST /v1/chains`` body.
+
+        Parameters
+        ----------
+        usd : float
+            The cumulative spend threshold for this chain, in USD. Overrides
+            the org-wide ``cumulative_financial_threshold_usd`` (or its
+            backend default) for this chain only.
+        notify : list[str], optional
+            Additional approver emails to notify when this chain's threshold
+            crosses. Unioned with this chain's ``fallback_approvers`` and
+            deduplicated — does not replace them.
+        deny : bool, default False
+            If True, crossing this threshold denies the action outright
+            instead of pausing for human approval.
+
+        This is equivalent to constructing the chain with:
+
+            Chain("name", policy_config={
+                "cumulative_financial_threshold_usd": usd,
+                "notify": notify,  # only if notify is truthy
+                "cumulative_financial_threshold_action": "deny",  # only if deny
+            })
+        """
+        self.policy_config["cumulative_financial_threshold_usd"] = usd
+
+        if notify:
+            existing: list[str] = list(self.policy_config.get("notify", []))
+            for email in notify:
+                if email not in existing:
+                    existing.append(email)
+            self.policy_config["notify"] = existing
+
+        if deny:
+            self.policy_config["cumulative_financial_threshold_action"] = "deny"
 
     # ------------------------------------------------------------------
     # Public async API
@@ -548,6 +612,10 @@ class Chain:
             "environment": config.environment,
             "metadata": sanitize_payload(self.metadata, config),
             "fallback_approvers": config.fallback_approvers,
+            # Per-chain override (Chain(policy_config={...}) or
+            # add_financial_threshold()). {} = no override, org-wide config
+            # from proofrail.init() applies unchanged.
+            "policy_config": self.policy_config,
         }
 
         try:
