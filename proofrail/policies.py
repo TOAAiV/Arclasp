@@ -198,7 +198,7 @@ def classify_risk(
         reasons.append("Write/modify operation detected")
 
     # Financial value in payload
-    amount = _extract_numeric(payload, ["amount", "value"])
+    amount = _extract_numeric(payload, ["amount_usd", "amount", "value"])
     if amount is not None:
         if amount > 10_000:
             risk_score += 50
@@ -309,7 +309,7 @@ def update_chain_metrics_local(
     metrics: dict = dict(cumulative_metrics)  # never mutate the caller's dict
     categories: list[str] = risk_classification.get("categories", [])
 
-    amount = _extract_numeric(payload, ["amount", "value"])
+    amount = _extract_numeric(payload, ["amount_usd", "amount", "value"])
     if amount is not None:
         metrics["financial_exposure_usd"] = (
             metrics.get("financial_exposure_usd", 0.0) + amount
@@ -427,7 +427,7 @@ def evaluate_policy(
     # Approval triggers
     # ---------------------------------------------------------------------------
 
-    single_amount: float = _extract_numeric(payload, ["amount", "value"]) or 0.0
+    single_amount: float = _extract_numeric(payload, ["amount_usd", "amount", "value"]) or 0.0
     financial_threshold: float = float(
         org_config.get("financial_approval_threshold_usd", 5_000)
     )
