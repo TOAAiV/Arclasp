@@ -67,6 +67,11 @@ class PolicyDecision(BaseModel):
     # due to a runaway-limit trigger.  The SDK raises ChainAutoPausedError when True.
     auto_paused: bool = False
 
+    # Running chain totals after this event: financial_exposure_usd,
+    # records_modified_count, external_communications_count, etc.
+    # Empty dict on early-exit paths (kill switch, disabled mode).
+    cumulative_metrics: dict = Field(default_factory=dict)
+
 
 class ChainConfig(BaseModel):
     """

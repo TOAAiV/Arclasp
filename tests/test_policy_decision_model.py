@@ -114,3 +114,18 @@ class TestModelValidate:
             decision_source="offline_stub",
         )
         assert d.policy_decision == "allow"
+
+    def test_policy_decision_preserves_cumulative_metrics_on_model_validate(self):
+        d = PolicyDecision.model_validate({
+            "policy_decision": "allow",
+            "decision_reason": "test",
+            "auto_paused": False,
+            "cumulative_metrics": {
+                "financial_exposure_usd": 5000,
+                "records_modified_count": 3,
+            },
+        })
+        assert d.cumulative_metrics == {
+            "financial_exposure_usd": 5000,
+            "records_modified_count": 3,
+        }
