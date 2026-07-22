@@ -62,21 +62,49 @@ def _state_to_dict(state: Any) -> dict:
     Convert a LangGraph state value to a plain ``dict`` suitable for the
     ProofRail payload.  Handles TypedDict, Pydantic v1/v2 models, NamedTuples,
     and plain dicts gracefully.
+
+    When the input is already a plain dict, each value is recursively
+    normalized via ``_safe_value`` so non-JSON-serializable objects nested
+    inside (e.g. LangChain message objects in MessagesState) don't break
+    downstream JSON encoding of the payload.
     """
     if state is None:
         return {}
-    if isinstance(state, dict):
-        return state
     if hasattr(state, "model_dump"):  # Pydantic v2
         return state.model_dump()
     if hasattr(state, "dict"):  # Pydantic v1
         return state.dict()
     if hasattr(state, "_asdict"):  # NamedTuple
         return state._asdict()
+    if isinstance(state, dict):
+        # Recursively convert values — the dict may contain non-serializable
+        # objects (e.g. LangChain HumanMessage objects in MessagesState).
+        return {k: _safe_value(v) for k, v in state.items()}
     try:
         return dict(state)
     except (TypeError, ValueError):
         return {"state_repr": str(state)[:500]}
+
+
+def _safe_value(v: Any) -> Any:
+    """Convert a single value to a JSON-safe type."""
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if isinstance(v, dict):
+        return {k: _safe_value(val) for k, val in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_safe_value(item) for item in v]
+    if hasattr(v, "model_dump"):
+        try:
+            return v.model_dump()
+        except Exception:
+            return str(v)[:500]
+    if hasattr(v, "dict"):
+        try:
+            return v.dict()
+        except Exception:
+            return str(v)[:500]
+    return str(v)[:500]
 
 
 # ---------------------------------------------------------------------------
