@@ -91,6 +91,12 @@ def _has_sensitive_fields(payload: dict) -> bool:
     """Return True if any payload key contains a sensitive-field pattern."""
     for key in payload:
         key_lower = key.lower()
+        # Exact match for bare "token" key — mirrors sanitization._is_sensitive.
+        if key_lower == "token":
+            return True
+        # LLM telemetry counters (_tokens suffix) are never sensitive.
+        if key_lower.endswith("_tokens"):
+            continue
         if any(pat in key_lower for pat in _SENSITIVE_PATTERNS):
             return True
     return False

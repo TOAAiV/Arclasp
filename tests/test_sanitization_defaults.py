@@ -44,8 +44,14 @@ def _config(**overrides) -> ChainConfig:
 # ---------------------------------------------------------------------------
 
 def test_default_sensitive_field_patterns_complete():
-    """All 7 v2-spec field-name patterns must be present."""
-    required = {"api_key", "password", "secret", "token", "credit_card", "ssn", "private_key"}
+    """All required field-name patterns must be present.
+
+    Uses ``"_token"`` (with underscore) rather than plain ``"token"`` so that
+    LLM telemetry counters (``input_tokens``, ``output_tokens``) are NOT
+    redacted.  A bare key named exactly ``"token"`` is still caught by
+    ``_is_sensitive``'s exact-name guard in ``sanitization.py``.
+    """
+    required = {"api_key", "password", "secret", "_token", "credit_card", "ssn", "private_key"}
     actual = set(DEFAULT_SENSITIVE_FIELD_PATTERNS)
     missing = required - actual
     assert not missing, f"Missing required field patterns: {missing}"
@@ -79,6 +85,30 @@ def test_private_key_field_redacted():
     cfg = _config()
     result = sanitize_payload({"private_key": "-----BEGIN RSA PRIVATE KEY-----"}, cfg)
     assert result["private_key"] == "[REDACTED]"
+
+
+def test_token_field_redacted():
+    """A bare 'token' key must be redacted (exact-name guard)."""
+    cfg = _config()
+    result = sanitize_payload({"token": "some-bearer-token"}, cfg)
+    assert result["token"] == "[REDACTED]"
+
+
+def test_token_suffix_fields_redacted():
+    """Fields ending in _token (auth_token, access_token) must be redacted."""
+    cfg = _config()
+    result = sanitize_payload({"auth_token": "abc", "access_token": "xyz"}, cfg)
+    assert result["auth_token"] == "[REDACTED]"
+    assert result["access_token"] == "[REDACTED]"
+
+
+def test_llm_token_counters_not_redacted():
+    """input_tokens, output_tokens, total_tokens must NOT be redacted — LLM telemetry."""
+    cfg = _config()
+    result = sanitize_payload({"input_tokens": 42, "output_tokens": 15, "total_tokens": 57}, cfg)
+    assert result["input_tokens"] == 42, "input_tokens must not be redacted"
+    assert result["output_tokens"] == 15, "output_tokens must not be redacted"
+    assert result["total_tokens"] == 57, "total_tokens must not be redacted"
 
 
 # ---------------------------------------------------------------------------

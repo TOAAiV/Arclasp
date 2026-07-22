@@ -17,11 +17,17 @@ from __future__ import annotations
 #: Field-name substrings that trigger redaction of a dict value, regardless
 #: of what that value contains.  Case-insensitive substring match is applied
 #: against each key.  Extend via ``ChainConfig(sensitive_field_patterns=[...])``.
+#:
+#: NOTE on the token rule: the pattern ``"_token"`` (with underscore) catches
+#: ``auth_token``, ``my_token``, ``access_token``, etc. while leaving LLM
+#: telemetry counters (``input_tokens``, ``output_tokens``, ``total_tokens``)
+#: intact.  A bare field named exactly ``"token"`` still matches because
+#: ``sanitize_payload``'s ``_is_sensitive`` also checks for an exact key match.
 DEFAULT_SENSITIVE_FIELD_PATTERNS: list[str] = [
     "api_key",
     "password",
     "secret",
-    "token",
+    "_token",
     "credit_card",
     "ssn",
     "private_key",
@@ -39,7 +45,7 @@ _ACTION_NAME_MAX: int = 100
 #: (e.g. ``{"note": "my key is sk_live_abc..."}``) that a key-name scan would
 #: miss entirely.  Extend via ``ChainConfig(sensitive_value_patterns=[...])``.
 DEFAULT_SENSITIVE_VALUE_PATTERNS: list[str] = [
-    "sk_",  # OpenAI / Stripe secret keys
+    "sk_",  # Stripe secret keys
     "pk_",  # Stripe public keys (still sensitive in payload context)
     "ghp_",  # GitHub personal access tokens
     "hf_",  # Hugging Face tokens

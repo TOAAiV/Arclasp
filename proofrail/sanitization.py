@@ -70,6 +70,14 @@ def sanitize_payload(payload: dict, config: ChainConfig) -> dict:
 
 def _is_sensitive(key: str, patterns: list[str]) -> bool:
     key_lower = key.lower()
+    # Exact match for a bare "token" key — common in many APIs.
+    if key_lower == "token":
+        return True
+    # LLM telemetry counters (input_tokens, output_tokens, total_tokens, …)
+    # end in "_tokens" (plural) and must NOT be redacted even though they
+    # contain "_token" as a substring.
+    if key_lower.endswith("_tokens"):
+        return False
     return any(pattern.lower() in key_lower for pattern in patterns)
 
 
