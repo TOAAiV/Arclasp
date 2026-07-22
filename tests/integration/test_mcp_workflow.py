@@ -260,39 +260,19 @@ async def test_handle_tool_call_direct_mcp():
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_install_patches_server_mcp():
+async def test_install_raises_for_unsupported_mcp_api():
     """
-    install() must wrap whatever coroutine is in server._call_tool_handler.
-    After install, calling the handler must record a governance event AND
-    forward to the original implementation.
+    install() is not supported with mcp >= 1.0 and must raise RuntimeError
+    with a message directing users to handle_tool_call() instead.
     """
-    mock_post, calls = make_mock_post()
-    original_calls: list[str] = []
-
-    async def original_handler(tool_name: str, arguments: dict) -> dict:
-        original_calls.append(tool_name)
-        return {"result": f"handled_{tool_name}"}
-
+    mock_post, _calls = make_mock_post()
     server = MagicMock()
-    server._call_tool_handler = original_handler
 
     with patch("proofrail.client._post", side_effect=mock_post):
         async with Chain("mcp-install") as chain:
             adapter = ProofRailMcpAdapter(chain=chain, agent_name="install-agent")
-            adapter.install(server)
-
-            # Handler is now the wrapped version
-            assert server._call_tool_handler is not original_handler
-
-            # Calling it routes through ProofRail governance
-            result = await server._call_tool_handler("get_data", {"k": "v"})
-
-    assert result == {"result": "handled_get_data"}
-    assert "get_data" in original_calls
-    assert_event_recorded(
-        calls, agent_name="install-agent",
-        action_name="get_data", action_type="tool_call",
-    )
+            with pytest.raises(RuntimeError, match="handle_tool_call"):
+                adapter.install(server)
 
 
 # ===========================================================================

@@ -22,7 +22,15 @@ Typical integration pattern
 
     async with proofrail.Chain("mcp-session") as chain:
         adapter = ProofRailMcpAdapter(chain=chain, agent_name="my-tools")
-        adapter.install(server)            # patches server.call_tool handler
+
+        @server.call_tool()
+        async def handle_call_tool(name: str, arguments: dict):
+            return await adapter.handle_tool_call(
+                tool_name=name,
+                arguments=arguments,
+                handler=your_actual_handler,
+            )
+
         await server.run(...)
 
 Manual / framework-independent pattern
@@ -45,10 +53,6 @@ logger = logging.getLogger(__name__)
 
 # Type alias for a coroutine that executes a single tool call.
 ToolHandler = Callable[[str, dict], Awaitable[Any]]
-
-# Internal attribute name used by the reference mcp SDK to store the registered
-# call_tool handler.  Checked at install() time so the error message is specific.
-_CALL_TOOL_HANDLER_ATTR = "_call_tool_handler"
 
 
 class ProofRailMcpAdapter:
@@ -131,37 +135,25 @@ class ProofRailMcpAdapter:
 
     def install(self, server: Any) -> None:
         """
-        Patch *server*'s ``call_tool`` handler so every tool call is
-        recorded through this adapter automatically.
+        Not supported with mcp >= 1.0.
 
-        This wraps whatever coroutine is already registered on
-        ``server._call_tool_handler`` (the internal attribute used by the
-        reference ``mcp`` SDK).  If the attribute does not exist, a
-        ``RuntimeError`` is raised with instructions for manual wiring.
+        The mcp SDK no longer exposes a patchable ``_call_tool_handler``
+        attribute.  Wire ProofRail governance directly in your
+        ``@server.call_tool()`` handler instead::
 
-        Parameters
-        ----------
-        server : mcp.server.Server
-            An MCP ``Server`` instance whose ``call_tool`` handler should be
-            wrapped.
+            @server.call_tool()
+            async def handle_call_tool(name: str, arguments: dict):
+                return await adapter.handle_tool_call(
+                    tool_name=name,
+                    arguments=arguments,
+                    handler=your_actual_handler,
+                )
         """
-        original: ToolHandler | None = getattr(server, _CALL_TOOL_HANDLER_ATTR, None)
-        if original is None:
-            raise RuntimeError(
-                f"Cannot find '{_CALL_TOOL_HANDLER_ATTR}' on {server!r}.  Either the "
-                "mcp Server API has changed or no @server.call_tool() handler "
-                "has been registered yet.  Use handle_tool_call() directly "
-                "instead of install()."
-            )
-
-        async def _wrapped(tool_name: str, arguments: dict) -> Any:
-            return await self.handle_tool_call(tool_name, arguments, original)
-
-        setattr(server, _CALL_TOOL_HANDLER_ATTR, _wrapped)
-        logger.info(
-            "ProofRail MCP adapter installed on server %r (agent_name=%r)",
-            server,
-            self.agent_name,
+        raise RuntimeError(
+            "ProofRailMcpAdapter.install() is not supported with the current mcp "
+            "SDK (>= 1.0).  Use handle_tool_call() directly inside your "
+            "@server.call_tool() handler instead.  See the ProofRail README for "
+            "an example."
         )
 
     # ------------------------------------------------------------------
