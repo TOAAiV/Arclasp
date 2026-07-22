@@ -4,7 +4,7 @@ This document describes the security guarantees the ProofRail SDK provides,
 the intentional design trade-offs that operators must understand before
 deploying it, and how to report vulnerabilities.
 
-For a full audit history, see [AUDIT_FINDINGS.md](AUDIT_FINDINGS.md).
+For a full audit history, see [AUDIT_FINDINGS.md](https://github.com/TOAAiV/ProofRail/blob/main/AUDIT_FINDINGS.md).
 
 ---
 
