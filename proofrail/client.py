@@ -7,22 +7,28 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import warnings
 import weakref
+from datetime import datetime
 from typing import NoReturn
 from urllib.parse import urlencode
 
 import httpx
 
-from proofrail.exceptions import BackendUnavailableError
+from proofrail.exceptions import BackendUnavailableError, ProofRailVerificationError
 from proofrail.models import (
+    AuthenticatedVerificationResponse,
     ChainConfig,
     ChainDetail,
     ChainEventsResponse,
     ChainListResponse,
     ChainReceiptResponse,
+    PublicVerificationResponse,
+    PublicVerificationTokenCreateResponse,
+    PublicVerificationTokenListResponse,
+    PublicVerificationTokenMetadata,
     ReceiptVerifyResponse,
 )
-
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -396,6 +402,31 @@ async def _get(path: str, action_type: str | None = None) -> dict:
     return response.json()
 
 
+async def _post_once(path: str, data: dict) -> dict:
+    """
+    POST *data* without automatic retries.
+
+    Used for mutation endpoints where replaying a successful-but-interrupted
+    request could create duplicate state, such as one-time public token issue.
+    """
+    client = _get_client()
+    response = await client.post(path, json=data)
+    response.raise_for_status()
+    return response.json()
+
+
+async def _get_unauthenticated_json(path: str) -> dict:
+    """GET public JSON using the configured base URL without auth headers."""
+    config = get_config()
+    async with httpx.AsyncClient(
+        base_url=config.backend_url,
+        timeout=httpx.Timeout(config.backend_timeout_seconds),
+        headers={"Content-Type": "application/json"},
+    ) as client:
+        response = await client.get(path)
+    response.raise_for_status()
+    return response.json()
+
 # ---------------------------------------------------------------------------
 # Public read API — chain detail, events, receipt, list
 # ---------------------------------------------------------------------------
@@ -484,33 +515,96 @@ async def get_chain_receipt(chain_id: str) -> ChainReceiptResponse:
 
 async def verify_receipt(receipt_id: str) -> ReceiptVerifyResponse:
     """
-    Verify a receipt's signature against the backend's signing key.
+    Deprecated compatibility helper for legacy public receipt verification.
 
-    Calls the public (no auth required) ``GET /v1/receipts/{id}/verify``
-    endpoint.  HMAC validation is performed server-side; the signing secret is
-    never shared with the SDK.
-
-    Parameters
-    ----------
-    receipt_id : str
-        The receipt's backend UUID.  Obtain it from the receipts list endpoint
-        (``GET /v1/receipts``) or from ``ChainReceiptResponse.id`` when the
-        backend chain-receipt endpoint exposes it.
-
-    Returns
-    -------
-    ReceiptVerifyResponse
-        ``valid=True`` means the receipt's structured_data matches the
-        server-side HMAC.  ``valid=False`` means tampering was detected.
-
-    Raises
-    ------
-    httpx.HTTPStatusError
-        On 404 (receipt not found) or other HTTP errors.
+    Calls the legacy public ``GET /v1/receipts/{id}/verify`` endpoint. HMAC
+    validation is performed server-side; the signing secret is never shared
+    with the SDK. Prefer ``verify_receipt_v2(receipt_id)`` for authenticated,
+    organization-scoped receipt verification.
     """
+    warnings.warn(
+        "proofrail.client.verify_receipt() uses the deprecated legacy receipt verifier; "
+        "use verify_receipt_v2() for authenticated v2 verification.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     data = await _get(f"/v1/receipts/{receipt_id}/verify")
     return ReceiptVerifyResponse.model_validate(data)
 
+
+async def verify_approval_v2(approval_id: str) -> AuthenticatedVerificationResponse:
+    """Verify an approval through the authenticated role-aware v2 contract."""
+    data = await _get(f"/v1/verification/v2/approvals/{approval_id}")
+    return AuthenticatedVerificationResponse.model_validate(data)
+
+
+async def verify_receipt_v2(receipt_id: str) -> AuthenticatedVerificationResponse:
+    """Verify a receipt through the authenticated role-aware v2 contract."""
+    data = await _get(f"/v1/verification/v2/receipts/{receipt_id}")
+    return AuthenticatedVerificationResponse.model_validate(data)
+
+
+async def list_public_verification_tokens(
+    limit: int = 50,
+    offset: int = 0,
+) -> PublicVerificationTokenListResponse:
+    """List public verification token metadata for the authenticated organization."""
+    params = {"limit": limit, "offset": offset}
+    data = await _get(f"/v1/public-verification-tokens?{urlencode(params)}")
+    return PublicVerificationTokenListResponse.model_validate(data)
+
+
+async def issue_public_verification_token(
+    artifact_type: str,
+    artifact_id: str,
+    expires_at: datetime | str | None = None,
+) -> PublicVerificationTokenCreateResponse:
+    """
+    Issue a tokenized public verification link.
+
+    The plaintext token is returned by the server once. This helper does not
+    retry automatically and does not log or persist the plaintext token.
+    """
+    body: dict = {"artifact_type": artifact_type, "artifact_id": artifact_id}
+    if expires_at is not None:
+        body["expires_at"] = expires_at.isoformat() if hasattr(expires_at, "isoformat") else expires_at
+    data = await _post_once("/v1/public-verification-tokens", body)
+    return PublicVerificationTokenCreateResponse.model_validate(data)
+
+
+async def revoke_public_verification_token(
+    token_id: str,
+    reason: str,
+) -> PublicVerificationTokenMetadata:
+    """Revoke a public verification token by metadata ID."""
+    data = await _post(f"/v1/public-verification-tokens/{token_id}/revoke", {"reason": reason})
+    return PublicVerificationTokenMetadata.model_validate(data)
+
+
+async def verify_public_token(token: str) -> PublicVerificationResponse:
+    """
+    Verify an opaque public token through the minimized public v2 contract.
+
+    Failure exceptions are sanitized so the opaque token is not included in
+    exception text.
+    """
+    try:
+        data = await _get_unauthenticated_json(f"/public/v2/verify/{token}")
+    except httpx.HTTPStatusError as exc:
+        reason_code = None
+        try:
+            payload = exc.response.json()
+            reason_code = payload.get("reason_code") or payload.get("detail")
+        except Exception:
+            reason_code = None
+        raise ProofRailVerificationError(
+            "public token verification failed",
+            status_code=exc.response.status_code,
+            reason_code=reason_code,
+        ) from None
+    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        raise ProofRailVerificationError("public token verification transport failed") from exc
+    return PublicVerificationResponse.model_validate(data)
 
 async def list_chains(
     limit: int = 50,

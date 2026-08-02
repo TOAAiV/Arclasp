@@ -559,24 +559,12 @@ class Chain:
 
     async def verify_receipt(self, receipt_id: str) -> ReceiptVerifyResponse:
         """
-        Verify this chain's audit receipt is genuine and untampered.
+        Deprecated compatibility helper for legacy public receipt verification.
 
-        Calls the backend's public ``GET /v1/receipts/{id}/verify`` endpoint,
-        which re-derives the HMAC server-side and reports whether the receipt's
-        ``structured_data`` is intact.
-
-        Parameters
-        ----------
-        receipt_id : str
-            The UUID of the receipt to verify.  Obtain it from the receipts
-            list (``GET /v1/receipts``) or from ``ChainReceiptResponse.id``
-            once the chain-receipt endpoint exposes that field.
-
-        Returns
-        -------
-        ReceiptVerifyResponse
-            ``valid=True`` means the receipt is untampered.
-            ``valid=False`` means tampering was detected.
+        Prefer ``proofrail.client.verify_receipt_v2(receipt_id)`` for
+        authenticated, organization-scoped receipt verification. This method
+        remains callable for compatibility and delegates to the legacy
+        server-attested receipt verifier.
 
         Raises
         ------
@@ -584,13 +572,6 @@ class Chain:
             If the chain has not been started yet.
         httpx.HTTPStatusError
             On 404 (receipt not found) or other HTTP errors.
-
-        Notes
-        -----
-        The current ``GET /v1/chains/{chain_id}/receipt`` endpoint does not
-        return the receipt UUID.  You can retrieve it from
-        ``GET /v1/receipts`` filtered by this chain's ID, or from the
-        ProofRail dashboard.
         """
         if self._chain_id is None:
             raise RuntimeError(

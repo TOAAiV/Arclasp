@@ -166,6 +166,21 @@ class BackendUnavailableError(Exception):
         super().__init__(f"{message} (fail_mode={fail_mode})")
 
 
+class ProofRailVerificationError(Exception):
+    """Raised when a verification request fails with sanitized context."""
+
+    def __init__(self, message: str, status_code: int | None = None, reason_code: str | None = None) -> None:
+        self.message = message
+        self.status_code = status_code
+        self.reason_code = reason_code
+        details = message
+        if status_code is not None:
+            details = f"{details} (status_code={status_code})"
+        if reason_code:
+            details = f"{details} (reason_code={reason_code})"
+        super().__init__(details)
+
+
 class ChainTimeoutError(Exception):
     """
     Raised when a chain exceeds the configured approval timeout without a

@@ -195,24 +195,25 @@ contains an HMAC computed by the backend over the receipt's `structured_data`.
 ```python
 receipt = await chain.receipt()
 if receipt and receipt.id:
-    result = await chain.verify_receipt(receipt.id)
-    assert result.valid, "Receipt tampering detected"
+    result = await proofrail.verify_receipt_v2(receipt.id)
+    assert result.verification.integrity.status == "valid"
 ```
 
-`chain.verify_receipt(receipt_id)` calls `GET /v1/receipts/{id}/verify` on
-the backend. The backend re-derives the HMAC server-side and returns
-`valid: bool`. A `True` response means the `structured_data` at the time of
-verification matches the originally signed content.
+`proofrail.verify_receipt_v2(receipt_id)` calls
+`GET /v1/verification/v2/receipts/{id}` on the backend. The backend re-derives
+HMAC integrity server-side and returns a role-aware verification envelope. This
+is server-attested integrity verification, not independent or offline proof.
 
-**Trust model:** The SDK trusts the backend's `valid` response. There is no
-independent client-side hash-chain verification — the SDK does not re-compute
-the HMAC locally. The security guarantee therefore depends on the integrity of
-the TLS connection to the backend and the backend's own tamper-resistance.
-*(Audit finding: SDK-S-12)*
+**Trust model:** The SDK trusts the backend's verification response. There is no
+independent client-side hash-chain verification; the SDK does not re-compute the
+HMAC locally and the backend does not expose the HMAC secret. The security
+guarantee therefore depends on the integrity of the TLS connection to the backend
+and the backend's own tamper-resistance. *(Audit finding: SDK-S-12)*
 
-An independent third-party verification path (computing the HMAC locally from
-a separately distributed signing key) is a post-launch goal. For pre-launch
-use cases, the server-side check is sufficient when TLS is in use.
+A future explicit admin evidence export may provide raw signatures,
+certificates, RFC3161 payloads, OpenTimestamps proofs, or full snapshots for
+separate offline analysis. That export is future work and is not part of the
+ordinary SDK verification JSON today.
 
 ---
 

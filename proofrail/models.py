@@ -254,9 +254,10 @@ class ReceiptVerifyResponse(BaseModel):
     """
     Response from the public GET /v1/receipts/{receipt_id}/verify endpoint.
 
-    ``valid`` is the authoritative answer: True means the receipt's
-    structured_data matches the server-side HMAC; False means tampering was
-    detected.  ``receipt_number`` and ``chain_id`` are included for display.
+    Deprecated compatibility response for the legacy public receipt verifier.
+
+    ``valid`` means the backend re-derived the server-side HMAC successfully.
+    It is not independent or offline verification.
     """
 
     valid: bool
@@ -264,6 +265,206 @@ class ReceiptVerifyResponse(BaseModel):
     chain_id: str
     generated_at: str
 
+
+class VerificationLayerStatus(BaseModel):
+    """Status for a single verification layer in v2 verification responses."""
+
+    status: str
+    reason_code: str | None = None
+
+
+class AsymmetricSignatureStatus(BaseModel):
+    """Approval signature status without raw signature or key material."""
+
+    status: str
+    key_status: str = "not_evaluated"
+    reason_code: str | None = None
+
+
+class TimestampAnchorStatuses(BaseModel):
+    """Timestamp-anchor status summaries without raw proof blobs."""
+
+    freetsa: VerificationLayerStatus
+    opentimestamps: VerificationLayerStatus
+
+
+class EvidenceChainStatus(BaseModel):
+    """Receipt-chain continuity status for v2 verification."""
+
+    status: str
+    reason_code: str | None = None
+
+
+class ChainMetadata(BaseModel):
+    """Safe chain metadata returned by authenticated v2 verification."""
+
+    id: str
+    external_id: str | None = None
+    name: str | None = None
+
+
+class VerificationArtifact(BaseModel):
+    """Safe artifact metadata returned by authenticated v2 verification."""
+
+    type: str
+    version: str
+    id: str
+    created_at: datetime | None = None
+    chain: ChainMetadata
+    receipt_id: str | None = None
+    receipt_number: str | None = None
+    generated_at: datetime | str | None = None
+
+
+class VerificationStatus(BaseModel):
+    """Role-aware v2 verification result without raw evidence fields."""
+
+    overall_status: str
+    integrity: VerificationLayerStatus
+    asymmetric_signature: AsymmetricSignatureStatus
+    timestamp_anchors: TimestampAnchorStatuses
+    evidence_chain: EvidenceChainStatus
+    verified_at: datetime
+
+
+class ApprovalDecisionContext(BaseModel):
+    """Member-visible approval decision summary."""
+
+    outcome: str | None = None
+    decided_at: datetime | str | None = None
+    reason_code: str | None = None
+
+
+class SafeActionContext(BaseModel):
+    """Member-visible action labels, excluding payloads."""
+
+    agent_name: str | None = None
+    action_type: str | None = None
+    action_name: str | None = None
+
+
+class MemberVerificationContext(BaseModel):
+    """Member-visible v2 verification context."""
+
+    approval_decision: ApprovalDecisionContext | None = None
+    action: SafeActionContext | None = None
+    receipt_integrity_semantics: str | None = None
+
+
+class AdminApproverContext(BaseModel):
+    """Admin-visible actor context returned by authenticated v2 verification."""
+
+    user_id: str | None = None
+    membership_id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    role: str | None = None
+
+
+class AdminPolicyContext(BaseModel):
+    """Admin-visible policy summary returned by authenticated v2 verification."""
+
+    policy_id: str | None = None
+    policy_name: str | None = None
+    policy_version: int | str | None = None
+    rule_id: str | None = None
+    reason: str | None = None
+
+
+class AdminReviewContext(BaseModel):
+    """Sanitized admin review context returned by authenticated v2 verification."""
+
+    source: str
+    reason: str | None = None
+    expires_at: datetime | str | None = None
+    action: SafeActionContext | None = None
+    money: dict = Field(default_factory=dict)
+
+
+class AdminVerificationContext(BaseModel):
+    """Admin-only allowlisted v2 verification context."""
+
+    approver: AdminApproverContext | None = None
+    decision_notes: str | None = None
+    review_context: AdminReviewContext | None = None
+    policy: AdminPolicyContext | None = None
+    audit_actor: AdminApproverContext | None = None
+
+
+class VerificationCapabilities(BaseModel):
+    """Capabilities attached to authenticated v2 verification responses."""
+
+    can_view_identity_context: bool
+    can_download_admin_evidence: bool
+    admin_downloads: dict = Field(default_factory=dict)
+
+
+class AuthenticatedVerificationResponse(BaseModel):
+    """Authenticated, organization-scoped v2 verification response."""
+
+    verification_version: str = "2"
+    artifact: VerificationArtifact
+    verification: VerificationStatus
+    context: MemberVerificationContext
+    capabilities: VerificationCapabilities
+    admin_context: AdminVerificationContext | None = None
+
+
+class PublicVerificationStatus(BaseModel):
+    """Minimized public v2 verification status."""
+
+    status: str
+    reason_code: str | None = None
+    key_status: str | None = None
+
+
+class PublicVerificationResponse(BaseModel):
+    """Minimized tokenized public verification response."""
+
+    verification_version: str
+    overall_status: str | None = None
+    artifact_type: str | None = None
+    artifact_version: str | None = None
+    integrity: PublicVerificationStatus | None = None
+    asymmetric_signature: PublicVerificationStatus | None = None
+    timestamp_anchors: dict | None = None
+    verified_at: datetime | str | None = None
+    reason_code: str | None = None
+
+
+class PublicVerificationTokenMetadata(BaseModel):
+    """Public verification token metadata; excludes plaintext token and hash."""
+
+    id: str
+    organization_id: str
+    artifact_type: str
+    artifact_id: str
+    status: str
+    created_at: datetime | str
+    created_by_user_id: str | None = None
+    created_by_membership_id: str | None = None
+    expires_at: datetime | str | None = None
+    revoked_at: datetime | str | None = None
+    revoked_by_user_id: str | None = None
+    revoked_by_membership_id: str | None = None
+    revocation_reason: str | None = None
+
+
+class PublicVerificationTokenCreateResponse(PublicVerificationTokenMetadata):
+    """Token issue response; plaintext token is returned exactly once."""
+
+    token: str
+    public_path: str
+
+
+class PublicVerificationTokenListResponse(BaseModel):
+    """Paginated public verification token list response."""
+
+    organization_id: str
+    tokens: list[PublicVerificationTokenMetadata]
+    total: int
+    limit: int
+    offset: int
 
 class ChainSummary(BaseModel):
     """Lightweight chain entry in the list returned by GET /v1/chains."""

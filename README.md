@@ -1,8 +1,8 @@
-ï»¿# ProofRail
+# ProofRail
 
 Governance for AI agent workflows.
 
-Track what your agents do â€” individually and together â€” apply policies to the whole workflow, route risky actions for human approval, and produce tamper-evident audit trails.
+Track what your agents do — individually and together — apply policies to the whole workflow, route risky actions for human approval, and produce tamper-evident audit trails.
 
 ## Why this exists
 
@@ -10,7 +10,7 @@ Most AI safety tools evaluate one tool call at a time. That misses the failure m
 
 A research agent looks up vendor pricing. A negotiation agent calculates an offer. An email agent drafts the message. A commitment agent records the deal. Each step passes its own per-call review, and the chain quietly hands a vendor `$50,000` with no human in the loop.
 
-ProofRail watches the whole chain. Cumulative spend, which agents have run, what external domains they've touched, how close the workflow is to its configured thresholds â€” that context goes into every policy decision. When a policy says a human needs to sign off, execution actually blocks until they do.
+ProofRail watches the whole chain. Cumulative spend, which agents have run, what external domains they've touched, how close the workflow is to its configured thresholds — that context goes into every policy decision. When a policy says a human needs to sign off, execution actually blocks until they do.
 
 This is built for people running real agents in real systems. Solo developers, small teams, and startups all qualify. You don't need to be at scale to want this; you need to be one chain of agent decisions away from a problem you can't take back.
 
@@ -33,7 +33,7 @@ pip install "proofrail[all]"         # everything
 **Python version notes:**
 
 - The base SDK and all adapters except CrewAI support Python 3.10+, including 3.14.
-- `proofrail[crewai]` requires **Python 3.10â€“3.13**. CrewAI's own dependencies are not yet compatible with Python 3.14. If you're on Python 3.14, use the other adapters or pin your CrewAI environment to Python 3.13.
+- `proofrail[crewai]` requires **Python 3.10–3.13**. CrewAI's own dependencies are not yet compatible with Python 3.14. If you're on Python 3.14, use the other adapters or pin your CrewAI environment to Python 3.13.
 
 ## Quick start
 
@@ -60,7 +60,7 @@ async with chain:
     #   "backend_evaluation" | "human_approval" | "local_fast_path"
 ```
 
-`add_financial_threshold()` sets a cumulative spend limit for *this chain only* â€” if your org already has a default via `proofrail.init(cumulative_financial_threshold_usd=...)`, this overrides it just for `checkout-flow`. See [Composing custom policies](#composing-custom-policies) below for the full per-chain configuration surface.
+`add_financial_threshold()` sets a cumulative spend limit for *this chain only* — if your org already has a default via `proofrail.init(cumulative_financial_threshold_usd=...)`, this overrides it just for `checkout-flow`. See [Composing custom policies](#composing-custom-policies) below for the full per-chain configuration surface.
 
 If a policy requires human approval, `record_agent_action` blocks until the reviewer responds. On approval the call returns with `decision_source="human_approval"`. On denial or timeout, it raises `ActionDeniedError`. If the chain itself exceeds its configured timeout, `ChainTimeoutError` raises.
 
@@ -68,7 +68,7 @@ That's the whole core surface. The framework adapters below wrap this same patte
 
 ## Documentation
 
-Full documentation â€” framework adapter guides, policy configuration, dashboard usage, cost tracking, kill switch, approval flows â€” is at **https://docs.proofrail.dev**.
+Full documentation — framework adapter guides, policy configuration, dashboard usage, cost tracking, kill switch, approval flows — is at **https://docs.proofrail.dev**.
 
 ## Framework adapters
 
@@ -123,7 +123,7 @@ See https://docs.proofrail.dev/frameworks/mcp for MCP integration details.
 
 ### CrewAI
 
-> **Python 3.14:** CrewAI's dependencies do not yet support Python 3.14. On Python 3.14, `proofrail[crewai]` installs the base SDK but skips CrewAI itself. Use Python 3.10â€“3.13 if you need CrewAI integration.
+> **Python 3.14:** CrewAI's dependencies do not yet support Python 3.14. On Python 3.14, `proofrail[crewai]` installs the base SDK but skips CrewAI itself. Use Python 3.10–3.13 if you need CrewAI integration.
 
 > **Note for Python 3.11 users:** If you see a `distutils_hack` assertion error when installing `proofrail[crewai]`, set `SETUPTOOLS_USE_DISTUTILS=stdlib` before running pip install. This is a CrewAI dependency packaging issue, not a ProofRail one.
 > ```bash
@@ -161,13 +161,13 @@ See https://docs.proofrail.dev/frameworks/langchain for LangChain integration de
 
 ### Chain-level governance
 
-Policies see cumulative state across the whole workflow, not just the single event in front of them. Total spend so far, which agents have been active, which external domains have been contacted, how many records have been modified â€” all of it goes into the decision. A `$3,000` charge looks fine in isolation. The same charge after nine prior `$300` charges â€” nine steps that each passed review â€” is the one that should require approval.
+Policies see cumulative state across the whole workflow, not just the single event in front of them. Total spend so far, which agents have been active, which external domains have been contacted, how many records have been modified — all of it goes into the decision. A `$3,000` charge looks fine in isolation. The same charge after nine prior `$300` charges — nine steps that each passed review — is the one that should require approval.
 
 This is the central design difference from per-call governance tools.
 
 ### Local fast-path evaluation
 
-Low-risk, non-financial actions resolve locally without a backend round-trip when `environment="development"` is set in `proofrail.init()`. The event is still sent to the backend asynchronously so the dashboard and audit log stay accurate. A typical agent workflow has many obviously-safe actions (reading a config, listing items, lookups) interleaved with the few that actually need scrutiny â€” fast-path means you don't pay network latency on the safe ones. Fast-path is disabled in `environment="production"` (the default) so the production backend is always authoritative.
+Low-risk, non-financial actions resolve locally without a backend round-trip when `environment="development"` is set in `proofrail.init()`. The event is still sent to the backend asynchronously so the dashboard and audit log stay accurate. A typical agent workflow has many obviously-safe actions (reading a config, listing items, lookups) interleaved with the few that actually need scrutiny — fast-path means you don't pay network latency on the safe ones. Fast-path is disabled in `environment="production"` (the default) so the production backend is always authoritative.
 
 ### Blocking human approval gate
 
@@ -177,13 +177,13 @@ Timeout, fallback approvers, and time-boxed exceptions are all configurable per 
 
 ### Tamper-evident audit receipts
 
-Every chain closes with an HMAC-SHA256 signed receipt. Receipts are hash-chained across an organization â€” each embeds the hash of the previous receipt. Anyone with a receipt ID can verify it through the public no-auth `/v1/receipts/{id}/verify` endpoint â€” no API key required.
+Every chain closes with an HMAC-SHA256 signed receipt. Receipts are hash-chained across an organization — each embeds the hash of the previous receipt. Prefer authenticated v2 receipt verification with `proofrail.verify_receipt_v2(receipt_id)` or tokenized public verification through `/public/v2/verify/{opaque_token}`. Legacy no-auth `/v1/receipts/{id}/verify` remains callable for compatibility and reports server-attested integrity only.
 
 Receipts are also hash-chained across an organization: each new receipt embeds the hash of the previous one. Tampering with any single receipt breaks the chain in a way that's publicly detectable. Delete a receipt entirely, and the gap shows up the same way.
 
 ### Parity-tested policy engine
 
-The local policy engine is the same algorithm that runs on the backend. They're verified against identical inputs on every test run. If they diverge, the build fails. The full algorithm is in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py) â€” read it before you install if you want to know exactly what rules your agents are subject to.
+The local policy engine is the same algorithm that runs on the backend. They're verified against identical inputs on every test run. If they diverge, the build fails. The full algorithm is in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py) — read it before you install if you want to know exactly what rules your agents are subject to.
 
 ### Per-action-class fail modes
 
@@ -194,7 +194,7 @@ proofrail.init(
     api_key="prail_...",
     fail_modes={
         "tool_call": "deny",       # block all tool calls when backend is unreachable
-        "llm_inference": "allow",  # allow LLM calls â€” no external side-effects
+        "llm_inference": "allow",  # allow LLM calls — no external side-effects
         "default": "allow",
     },
 )
@@ -206,14 +206,14 @@ Tool calls fail closed. Reads and drafts fail open. Velocity stays intact for th
 
 ## Composing custom policies
 
-`add_financial_threshold()` is a facade over a plain dict â€” `Chain.policy_config` â€” sent once in the chain-creation request and merged by the backend over your org's default config (chain value wins where set, org value fills the rest). There's no separate class hierarchy; the facade and the raw dict form produce byte-identical requests, so reach for whichever fits your code.
+`add_financial_threshold()` is a facade over a plain dict — `Chain.policy_config` — sent once in the chain-creation request and merged by the backend over your org's default config (chain value wins where set, org value fills the rest). There's no separate class hierarchy; the facade and the raw dict form produce byte-identical requests, so reach for whichever fits your code.
 
 ```python
-# Facade â€” covers the common case (one threshold, one notify list)
+# Facade — covers the common case (one threshold, one notify list)
 chain = proofrail.Chain("vendor-payouts")
 chain.add_financial_threshold(usd=10_000, notify=["finance@yourco.com"])
 
-# Equivalent raw dict â€” same wire format, useful when composing config
+# Equivalent raw dict — same wire format, useful when composing config
 # programmatically or setting fields the facade doesn't expose yet
 chain = proofrail.Chain(
     "vendor-payouts",
@@ -231,9 +231,9 @@ Recognised `policy_config` keys:
 | `cumulative_financial_threshold_usd` | `float` | Overrides the org's cumulative spend threshold for this chain only. |
 | `financial_approval_threshold_usd` | `float` | Overrides the org's single-transaction approval threshold for this chain only. |
 | `cumulative_financial_threshold_action` | `"pause_for_approval"` \| `"deny"` | What happens when the cumulative threshold crosses. Defaults to pausing for human approval; set `deny` (or pass `deny=True` to the facade) to hard-deny instead. |
-| `notify` | `list[str]` | Additional approver emails for this chain, unioned with `fallback_approvers` and deduplicated â€” does not replace them. |
+| `notify` | `list[str]` | Additional approver emails for this chain, unioned with `fallback_approvers` and deduplicated — does not replace them. |
 
-A chain with no `policy_config` (or `{}`) behaves exactly like one with no override at all â€” the org-wide config from `proofrail.init()` applies unchanged.
+A chain with no `policy_config` (or `{}`) behaves exactly like one with no override at all — the org-wide config from `proofrail.init()` applies unchanged.
 
 ## More features
 
@@ -241,18 +241,18 @@ Features marked **[SDK]** are available to every caller with an API key. Feature
 
 - **Payload sanitization** [SDK]. Default redaction patterns cover API keys, passwords, credit cards, SSNs, private keys via field-name matching, plus common token formats by value prefix (Stripe `sk_`/`pk_`, GitHub `ghp_`, Hugging Face `hf_`, AWS access key IDs `AKIA`, JWT `eyJ`). Extend with your own patterns. Raw payloads are never persisted.
 - **Per-action-class fail modes** [SDK]. Covered above; `fail_modes` per action type when the backend is unreachable. Note: per-class overrides apply to backend evaluation; global `fail_mode` governs offline-stub decisions.
-- **Offline buffer** [SDK]. When the backend is unreachable and `fail_mode="allow"`, actions resolve locally via `source=offline_stub`. These events are not sent to the backend after reconnect â€” they are absent from the audit trail. Use `fail_mode="deny"` if audit completeness is required.
+- **Offline buffer** [SDK]. When the backend is unreachable and `fail_mode="allow"`, actions resolve locally via `source=offline_stub`. These events are not sent to the backend after reconnect — they are absent from the audit trail. Use `fail_mode="deny"` if audit completeness is required.
 - **Cross-organization isolation** [SDK + Backend]. Every UUID-bearing endpoint enforces org scoping at the backend. Tests confirm one organization's API key can never access another organization's chains, events, or receipts.
 - **Policy shadow mode** [Dashboard]. Run new policies in observe-only mode against real traffic before flipping them to enforce. Shadow decisions are logged separately so you can calibrate without disruption. `evaluation_mode` and `shadow_decision` appear in SDK responses when active.
 - **Agent registry** [Dashboard]. Register every agent you expect to see via the dashboard. Unregistered agents that show up in chain events are flagged for review, surfacing shadow agents without blocking legitimate work. Note: `registered_agents=[...]` in `proofrail.init()` only affects the local fast-path evaluator and has no effect when `environment="production"` (the default).
 - **Cost tracking and budget alerts** [Dashboard]. Token usage and dollar cost tracked per chain, per agent, and per model. Alerts at 80% of monthly budget; auto-gate at 100%. Accessible via the dashboard; not exposed to API key auth.
-- **Org-wide kill switch** [Dashboard â€” admin only]. When something goes wrong, an admin can halt all agent activity with one click. The SDK raises `ProofRailKillSwitchError` so applications can distinguish a halt from a policy violation.
-- **Admin audit log** [Dashboard â€” admin only]. Every dashboard action â€” policy edits, kill switch toggles, approver changes, key rotations â€” is logged with before/after diff to an append-only table for compliance review.
+- **Org-wide kill switch** [Dashboard — admin only]. When something goes wrong, an admin can halt all agent activity with one click. The SDK raises `ProofRailKillSwitchError` so applications can distinguish a halt from a policy violation.
+- **Admin audit log** [Dashboard — admin only]. Every dashboard action — policy edits, kill switch toggles, approver changes, key rotations — is logged with before/after diff to an append-only table for compliance review.
 - **Time-boxed policy exceptions** [Dashboard]. Approvers can grant exceptions for a specific scope and duration (one hour, one day, one week, single use). Exceptions auto-expire; no permanent allow-lists by accident. Exceptions are created through the approval workflow, not directly via the SDK.
 
 ## How it works
 
-Two components: this SDK (open-source, Apache 2.0) and a hosted backend (closed, operated by us). The SDK handles chain lifecycle, payload sanitization, and a local fast-path for obviously-safe actions. Anything the fast-path won't evaluate â€” financial actions, high-risk agents, actions near a configured threshold â€” goes to the backend for an authoritative decision.
+Two components: this SDK (open-source, Apache 2.0) and a hosted backend (closed, operated by us). The SDK handles chain lifecycle, payload sanitization, and a local fast-path for obviously-safe actions. Anything the fast-path won't evaluate — financial actions, high-risk agents, actions near a configured threshold — goes to the backend for an authoritative decision.
 
 The reference policy that powers the fast-path lives in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py). The backend runs equivalent logic, and the parity tests in [`tests/test_policies_backend_parity.py`](https://github.com/TOAAiV/proofrail/blob/master/tests/test_policies_backend_parity.py) verify the two stay in sync.
 
@@ -280,7 +280,7 @@ What this release doesn't do, so you find out from us and not from production:
 - Email-only approval notifications. Slack and Teams integrations are planned, not shipped.
 
 - Approval emails may land in spam on first delivery. Add `notifications@proofrail.dev` to your contacts to avoid this.
-- First request after 15 minutes of inactivity may take 5â€“15 seconds due to backend cold start (free tier).
+- First request after 15 minutes of inactivity may take 5–15 seconds due to backend cold start (free tier).
 - On Python 3.11, installing `proofrail[crewai]` requires `SETUPTOOLS_USE_DISTUTILS=stdlib` set before pip. See the CrewAI section above.
 - `fail_modes` keys must match your `action_type` strings, not risk categories. Adapter users: use `"tool_call"` and `"llm_inference"` as keys.
 
@@ -290,13 +290,13 @@ If any of these is a blocker for your use case, file an issue. We'd rather tell 
 
 We're asking you to install a governance SDK and let it sit in the path of every agent action your product takes. That's a real ask, and the answer to "should I trust this?" shouldn't be "the marketing site says so."
 
-The whole SDK is in this repo. You can read every line of code that runs in your process. The fast-path that decides actions locally is in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py) â€” open it; that's the entire algorithm. The payload sanitizer that decides what leaves your machine is in [`proofrail/sanitization.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/sanitization.py). The HTTP client and every payload format the SDK sends are inspectable.
+The whole SDK is in this repo. You can read every line of code that runs in your process. The fast-path that decides actions locally is in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py) — open it; that's the entire algorithm. The payload sanitizer that decides what leaves your machine is in [`proofrail/sanitization.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/sanitization.py). The HTTP client and every payload format the SDK sends are inspectable.
 
 The backend isn't open-source. What we've done instead:
 
-- **Parity tests.** The SDK's local policy and the backend's policy run against identical inputs on every test run. If they diverge â€” if the backend decides something the open-source code wouldn't â€” the build fails. The tests are in [`tests/test_policies_backend_parity.py`](https://github.com/TOAAiV/proofrail/blob/master/tests/test_policies_backend_parity.py).
+- **Parity tests.** The SDK's local policy and the backend's policy run against identical inputs on every test run. If they diverge — if the backend decides something the open-source code wouldn't — the build fails. The tests are in [`tests/test_policies_backend_parity.py`](https://github.com/TOAAiV/proofrail/blob/master/tests/test_policies_backend_parity.py).
 - **Cross-organization isolation tests.** A dedicated test suite confirms one organization's API key cannot reach another organization's chains, events, or receipts. The application enforces org scoping on every UUID-bearing endpoint.
-- **Publicly verifiable receipts.** Audit receipts are HMAC-signed and hash-chained across an organization. Anyone with a receipt ID can verify it through the public no-auth `/v1/receipts/{id}/verify` endpoint. Tamper with one and the chain breaks publicly.
+- **Server-attested receipt integrity.** Audit receipts are HMAC-signed and hash-chained across an organization. Use authenticated v2 verification or tokenized public verification for first-party flows. Legacy receipt verification remains compatibility-only and is not independent or offline proof.
 - **Security audit complete.** Fifteen findings covering the SDK have been addressed; the full security policy is in [SECURITY.md](https://github.com/TOAAiV/proofrail/blob/master/SECURITY.md).
 
 Most agent governance tools ask you to trust a closed-source policy engine. ProofRail's policy engine is open. Read it before you install it.

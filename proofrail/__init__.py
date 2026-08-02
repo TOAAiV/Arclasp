@@ -16,7 +16,16 @@ Quick start:
 """
 
 from proofrail.chain import Chain
-from proofrail.client import init
+from proofrail.client import (
+    init,
+    issue_public_verification_token,
+    list_public_verification_tokens,
+    revoke_public_verification_token,
+    verify_approval_v2,
+    verify_public_token,
+    verify_receipt,
+    verify_receipt_v2,
+)
 from proofrail.exceptions import (
     ActionDeniedError,
     BackendUnavailableError,
@@ -24,12 +33,20 @@ from proofrail.exceptions import (
     ChainTimeoutError,
     PolicyViolationError,
     ProofRailKillSwitchError,
+    ProofRailVerificationError,
 )
 
 __version__ = "0.1.0a8"
 
 __all__ = [
     "init",
+    "issue_public_verification_token",
+    "list_public_verification_tokens",
+    "revoke_public_verification_token",
+    "verify_approval_v2",
+    "verify_public_token",
+    "verify_receipt",
+    "verify_receipt_v2",
     "Chain",
     "ActionDeniedError",
     "BackendUnavailableError",
@@ -37,5 +54,6 @@ __all__ = [
     "ChainTimeoutError",
     "PolicyViolationError",
     "ProofRailKillSwitchError",
+    "ProofRailVerificationError",
     "__version__",
 ]
