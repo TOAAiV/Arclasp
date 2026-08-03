@@ -51,8 +51,10 @@ Initial public release.
   Hugging Face, AWS, JWT). Raw payloads are never persisted.
 - Offline buffer with idempotency keys to prevent duplicate audit events on
   network retry.
-- Cost tracking and budget alerts: per-chain, per-agent, per-model token usage
-  and dollar cost, with email warnings at 80% of monthly budget.
+- Cost tracking and monthly budgets: recorded LLM token usage and estimated
+  dollar cost, with dashboard-configured UTC calendar month budgets. A governed
+  chain requires approval only after a newly recorded total is greater than the
+  configured budget; unknown model pricing is not counted as zero.
 - Cross-organization isolation enforced on every UUID-bearing endpoint, with a
   dedicated test suite verifying one organization's API key cannot reach
   another organization's data.
