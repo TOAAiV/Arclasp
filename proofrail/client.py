@@ -6,9 +6,11 @@ low-level HTTP transport to the ProofRail backend.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import warnings
 import weakref
+from contextvars import ContextVar
 from datetime import datetime
 from typing import NoReturn
 from urllib.parse import urlencode
@@ -58,6 +60,58 @@ _config: ChainConfig | None = None
 # ensures entries are removed automatically when a loop is garbage-collected, so
 # short-lived loops (e.g. asyncio.Runner()) never accumulate stale clients.
 _clients_by_loop: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+# ---------------------------------------------------------------------------
+# K0B internal benchmark hook (explicit opt-in only — not public SDK surface)
+#
+# Zero overhead for ordinary callers: the contextvar defaults to None, and
+# every recording site is a cheap `is not None` check. Only a caller that
+# explicitly enters `_benchmark_sample()` (e.g. the K0B verification script)
+# ever populates a sample. Records only low-cardinality transport metadata —
+# retry count, client created/reused, the Server-Timing header value if
+# present, and response status/exception category — never chain IDs,
+# payloads, or secrets.
+# ---------------------------------------------------------------------------
+
+_benchmark_ctx: ContextVar["_BenchmarkSample | None"] = ContextVar(
+    "_proofrail_benchmark_ctx", default=None
+)
+
+
+class _BenchmarkSample:
+    """Internal opt-in transport-metadata sample for one authoritative request.
+
+    Not part of the public SDK surface — never imported or documented outside
+    internal benchmark tooling.
+    """
+
+    __slots__ = (
+        "retries",
+        "client_created",
+        "server_timing_header",
+        "status_code",
+        "exception_category",
+    )
+
+    def __init__(self) -> None:
+        self.retries: int = 0
+        self.client_created: bool | None = None
+        self.server_timing_header: str | None = None
+        self.status_code: int | None = None
+        self.exception_category: str | None = None
+
+
+@contextlib.contextmanager
+def _benchmark_sample():
+    """Collect a `_BenchmarkSample` for the single authoritative request(s)
+    made while this context is active. Internal opt-in only."""
+    sample = _BenchmarkSample()
+    token = _benchmark_ctx.set(sample)
+    try:
+        yield sample
+    finally:
+        _benchmark_ctx.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +263,9 @@ def _get_client() -> httpx.AsyncClient:
             "proofrail has not been initialized. Call proofrail.init(api_key='prail_...') first."
         )
     loop = asyncio.get_running_loop()  # raises RuntimeError if no running loop
+    sample = _benchmark_ctx.get()
+    if sample is not None and sample.client_created is None:
+        sample.client_created = loop not in _clients_by_loop
     client = _clients_by_loop.get(loop)
     if client is None:
         client = httpx.AsyncClient(
@@ -273,6 +330,8 @@ async def _retry_with_backoff(
     Each retry attempt is logged at INFO level so developers can observe retry
     behaviour in their logs.
     """
+    sample = _benchmark_ctx.get()
+
     for attempt in range(max_retries + 1):
         try:
             response: httpx.Response = await coro_factory()
@@ -286,6 +345,8 @@ async def _retry_with_backoff(
                     backoff_ms,
                     exc,
                 )
+                if sample is not None:
+                    sample.retries += 1
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
             raise  # exhausted — let caller call _handle_backend_failure
@@ -300,6 +361,8 @@ async def _retry_with_backoff(
                     backoff_ms,
                     response.status_code,
                 )
+                if sample is not None:
+                    sample.retries += 1
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
             # Exhausted retries on 5xx — return for caller to handle via fail_mode.
@@ -315,6 +378,8 @@ async def _retry_with_backoff(
                     max_retries,
                     backoff_ms,
                 )
+                if sample is not None:
+                    sample.retries += 1
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
             # Exhausted retries on 429 — return for caller to handle via fail_mode.
@@ -347,6 +412,7 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     """
     config = get_config()
     client = _get_client()
+    sample = _benchmark_ctx.get()
 
     try:
         response = await _retry_with_backoff(
@@ -355,12 +421,18 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
             config.retry_backoff_base_ms,
         )
     except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        if sample is not None:
+            sample.exception_category = type(exc).__name__
         _handle_backend_failure(
             f"Backend request failed after {config.max_retries + 1} attempts "
             f"(POST {path}): {exc}",
             config,
             action_type,
         )
+
+    if sample is not None:
+        sample.status_code = response.status_code
+        sample.server_timing_header = response.headers.get("Server-Timing")
 
     if response.status_code in (500, 502, 503, 504, 429):
         _handle_backend_failure(
@@ -382,6 +454,7 @@ async def _get(path: str, action_type: str | None = None) -> dict:
     """
     config = get_config()
     client = _get_client()
+    sample = _benchmark_ctx.get()
 
     try:
         response = await _retry_with_backoff(
@@ -390,12 +463,18 @@ async def _get(path: str, action_type: str | None = None) -> dict:
             config.retry_backoff_base_ms,
         )
     except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        if sample is not None:
+            sample.exception_category = type(exc).__name__
         _handle_backend_failure(
             f"Backend request failed after {config.max_retries + 1} attempts "
             f"(GET {path}): {exc}",
             config,
             action_type,
         )
+
+    if sample is not None:
+        sample.status_code = response.status_code
+        sample.server_timing_header = response.headers.get("Server-Timing")
 
     if response.status_code in (500, 502, 503, 504, 429):
         _handle_backend_failure(
