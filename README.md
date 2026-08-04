@@ -56,8 +56,8 @@ async with chain:
     )
     # Execution reaches here only if the action was allowed.
     # If policy required human approval, that gate has already resolved.
-    # decision.decision_source is one of:
-    #   "backend_evaluation" | "human_approval" | "local_fast_path"
+    # decision.decision_source is normally:
+    #   "backend_evaluation" | "human_approval"
 ```
 
 `add_financial_threshold()` sets a cumulative spend limit for *this chain only* � if your org already has a default via `proofrail.init(cumulative_financial_threshold_usd=...)`, this overrides it just for `checkout-flow`. See [Composing custom policies](#composing-custom-policies) below for the full per-chain configuration surface.
@@ -240,11 +240,10 @@ A chain with no `policy_config` (or `{}`) behaves exactly like one with no overr
 Features marked **[SDK]** are available to every caller with an API key. Features marked **[Dashboard]** require the web dashboard (or Clerk JWT auth) and are intended for human operators.
 
 - **Payload sanitization** [SDK]. Default redaction patterns cover API keys, passwords, credit cards, SSNs, private keys via field-name matching, plus common token formats by value prefix (Stripe `sk_`/`pk_`, GitHub `ghp_`, Hugging Face `hf_`, AWS access key IDs `AKIA`, JWT `eyJ`). Extend with your own patterns. Raw payloads are never persisted.
-- **Per-action-class fail modes** [SDK]. Covered above; `fail_modes` per action type when the backend is unreachable. Note: per-class overrides apply to backend evaluation; global `fail_mode` governs offline-stub decisions.
-- **Offline buffer** [SDK]. When the backend is unreachable and `fail_mode="allow"`, actions resolve locally via `source=offline_stub`. These events are not sent to the backend after reconnect � they are absent from the audit trail. Use `fail_mode="deny"` if audit completeness is required.
+- **Backend-unavailable handling** [SDK]. Governed execution requires backend authority. If the backend is unreachable after retries, the SDK raises `BackendUnavailableError`. The legacy `fail_mode="allow"` and per-action `fail_modes` settings are accepted for compatibility but deprecated and do not allow governed actions to proceed offline.
 - **Cross-organization isolation** [SDK + Backend]. Every UUID-bearing endpoint enforces org scoping at the backend. Tests confirm one organization's API key can never access another organization's chains, events, or receipts.
 - **Policy shadow mode** [Dashboard]. Run new policies in observe-only mode against real traffic before flipping them to enforce. Shadow decisions are logged separately so you can calibrate without disruption. `evaluation_mode` and `shadow_decision` appear in SDK responses when active.
-- **Agent registry** [Dashboard]. Register every agent you expect to see via the dashboard. Unregistered agents that show up in chain events are flagged for review, surfacing shadow agents without blocking legitimate work. Note: `registered_agents=[...]` in `proofrail.init()` only affects the local fast-path evaluator and has no effect when `environment="production"` (the default).
+- **Agent registry** [Dashboard]. Register every agent you expect to see via the dashboard. Unregistered agents that show up in chain events are flagged for review, surfacing shadow agents without blocking legitimate work.
 - **Cost tracking and monthly budgets** [Dashboard]. Recorded LLM token usage and estimated dollar cost are tracked for supported model pricing. Organization admins can configure a UTC calendar month budget in the dashboard; organization members can view it. A just-recorded provider action may already have incurred cost, and governed chains require approval only when the newly recorded monthly total is greater than the configured budget. Unknown model pricing is not treated as zero and also requires approval. This is not a provider billing limit.
 - **Org-wide kill switch** [Dashboard � admin only]. When something goes wrong, an admin can halt all agent activity with one click. The SDK raises `ProofRailKillSwitchError` so applications can distinguish a halt from a policy violation.
 - **Admin audit log** [Dashboard � admin only]. Every dashboard action � policy edits, kill switch toggles, approver changes, key rotations � is logged with before/after diff to an append-only table for compliance review.
@@ -252,9 +251,9 @@ Features marked **[SDK]** are available to every caller with an API key. Feature
 
 ## How it works
 
-Two components: this SDK (open-source, Apache 2.0) and a hosted backend (closed, operated by us). The SDK handles chain lifecycle, payload sanitization, and a local fast-path for obviously-safe actions. Anything the fast-path won't evaluate � financial actions, high-risk agents, actions near a configured threshold � goes to the backend for an authoritative decision.
+Two components: this SDK (open-source, Apache 2.0) and a hosted backend (closed, operated by us). The SDK handles chain lifecycle, payload sanitization, framework adapter instrumentation, and transport. The backend is the authority for governed policy decisions, approvals, kill-switch state, audit persistence, and receipts.
 
-The reference policy that powers the fast-path lives in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py). The backend runs equivalent logic, and the parity tests in [`tests/test_policies_backend_parity.py`](https://github.com/TOAAiV/proofrail/blob/master/tests/test_policies_backend_parity.py) verify the two stay in sync.
+The reference policy model lives in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py), but public governed execution does not use local policy evaluation as an allow authority.
 
 The backend implementation itself is not open-source. The reasons are practical (operational complexity) rather than ideological, and we publish the policy algorithm in full so you can verify what the backend is doing.
 
@@ -274,7 +273,7 @@ For the framework-agnostic case (custom agent loops, untested frameworks, or you
 What this release doesn't do, so you find out from us and not from production:
 
 - Single region. The backend runs in AWS us-east-1 (Virginia). European and APAC users may see 100-150ms additional latency. Multi-region is on the roadmap.
-- Backend round-trip for most actions. The local fast-path handles obviously-safe cases; everything else hits the backend.
+- Backend round-trip for governed actions. Public Chain execution waits for backend authority before returning an allow decision.
 - CrewAI governance fires synchronously per task: on task start, governance evaluates before the task runs; on task end, it fires after the task completes. An `ActionDeniedError` propagates immediately through `kickoff_async`, halting the remaining crew. The task that was already running when governance fires cannot be retroactively prevented. See [proofrail/crewai/README.md](https://github.com/TOAAiV/proofrail/blob/master/proofrail/crewai/README.md) for details.
 - No SSO beyond what Clerk provides out of the box.
 - Email-only approval notifications. Slack and Teams integrations are planned, not shipped.

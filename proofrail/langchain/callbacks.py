@@ -24,6 +24,7 @@ from proofrail._constants import _ACTION_NAME_MAX
 from proofrail._utils import sanitize_log_field
 from proofrail.exceptions import (
     ActionDeniedError,
+    BackendUnavailableError,
     ChainAutoPausedError,
     ChainTimeoutError,
     ProofRailKillSwitchError,
@@ -243,6 +244,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,
@@ -283,6 +285,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,
@@ -325,6 +328,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,
@@ -380,6 +384,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,
@@ -423,6 +428,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,
@@ -464,6 +470,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,

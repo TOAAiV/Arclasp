@@ -81,7 +81,7 @@ class ProofRailPolicyError(Exception):
         Link to the relevant policy documentation.
     decision_source : str | None
         Where the decision originated: ``"backend_evaluation"``,
-        ``"local_fast_path"``, or ``"offline_stub"``.
+        legacy compatibility values.
     """
 
     def __init__(

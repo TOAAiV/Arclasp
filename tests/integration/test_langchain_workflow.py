@@ -163,35 +163,44 @@ async def test_backend_unreachable_fail_deny_langchain():
 
 
 # ===========================================================================
-# Scenario 5 — backend unreachable, fail_mode=allow (offline path)
+# Scenario 5 - backend unreachable, deprecated fail_mode=allow fails closed
 # ===========================================================================
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_langchain():
+    with pytest.warns(DeprecationWarning, match="fail_mode"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=False,
+            fail_mode="allow",
+        )
     mock_post, calls = make_mock_post(offline_signal=True)
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        result = await _govern().ainvoke({"input": "data"})
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            await _govern().ainvoke({"input": "data"})
 
-    assert result == {"output": "langchain_result"}
-    # No synchronous event POSTs — all buffered in offline mode
+    assert exc_info.value.fail_mode == "allow"
     assert count_event_calls(calls) == 0
 
 
 # ===========================================================================
-# Scenario 6 — fast-path engages for low-risk actions
+# Scenario 6 - deprecated deprecated fast-path flag still requires backend authority
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_fast_path_engages_langchain():
-    proofrail.init(
-        api_key="prail_test",
-        backend_url="http://localhost:9999",
-        environment="development",
-        enable_local_fast_path=True,
-        fail_mode="allow",
-    )
-    # Single safe tool: "get_record" → risk_score = 0, fast-path eligible
+async def test_fast_path_config_still_uses_backend_langchain():
+    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=True,
+            fail_mode="deny",
+        )
+    # Single safe tool: "get_record" → risk_score = 0, legacy-deprecated fast-path eligible
     governed = govern(_StubChain(tools=["get_record"]), chain_name="lc-fp")
     mock_post, calls = make_mock_post()
 
@@ -203,7 +212,7 @@ async def test_fast_path_engages_langchain():
     assert result == {"output": "langchain_result"}
     # Chain must have been started
     assert any(c["path"] == "/v1/chains" for c in calls)
-    # Workflow completed without exception — fast-path is engaged
+    # Workflow completed without exception — backend authority is used
     assert result is not None
 
 
@@ -570,3 +579,25 @@ async def test_strategy_b_populates_parent_agent_name_real():
             sys.modules["proofrail.langchain.callbacks"] = saved_cb_mod
         elif "proofrail.langchain.callbacks" in sys.modules:
             del sys.modules["proofrail.langchain.callbacks"]
+
+
+@pytest.mark.asyncio
+async def test_post_execution_recording_failure_propagates_langchain():
+    calls = []
+
+    async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+        calls.append({"path": path, "body": dict(body or {})})
+        if path == "/v1/chains":
+            return {"id": "chain-lc-post-fail"}
+        if path.endswith("/complete"):
+            return {}
+        if body.get("action_type") == "tool_result":
+            raise BackendUnavailableError("recording failed", fail_mode="deny")
+        return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        with pytest.raises(BackendUnavailableError):
+            await _govern(tools=["search_web"], chain_name="lc-post-fail").ainvoke({"input": "data"})
+
+    assert_event_recorded(calls, action_name="search_web", action_type="tool_call")
+    assert_event_recorded(calls, action_name="search_web:result", action_type="tool_result")

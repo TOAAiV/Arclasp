@@ -66,12 +66,10 @@ _clients_by_loop: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
 class _OfflineSignal(Exception):
-    """
-    Raised by _handle_backend_failure when the backend is unreachable and the
-    resolved fail_mode is "allow".  chain.py catches this in _start() and in
-    record_agent_action() to transition the chain to offline mode rather than
-    returning a synthetic dict that is missing fields callers expect (e.g.
-    the "id" key on a chain-create response).
+    """Legacy compatibility signal retained for older internal imports.
+
+    Governed SDK transport no longer emits this signal; backend unavailability
+    raises BackendUnavailableError regardless of fail_mode.
     """
 
     def __init__(self, message: str) -> None:
@@ -115,6 +113,25 @@ def init(**kwargs) -> ChainConfig:
             "api_key is required. Call proofrail.init(api_key='prail_...') before using the SDK."
         )
 
+    if kwargs.get("enable_local_fast_path") is True:
+        warnings.warn(
+            "enable_local_fast_path is deprecated and no longer enables local "
+            "governance decisions. Governed SDK execution now always requires "
+            "backend authority.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    if kwargs.get("fail_mode") == "allow" or "allow" in (
+        kwargs.get("fail_modes") or {}
+    ).values():
+        warnings.warn(
+            "fail_mode='allow' is deprecated and ineffective for governed "
+            "execution. Backend unavailability now raises BackendUnavailableError.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     _config = ChainConfig(**kwargs)
 
     # On re-init: gracefully close the current loop's client (if we're inside
@@ -148,16 +165,6 @@ def init(**kwargs) -> ChainConfig:
             "All audit data will be transmitted unencrypted. "
             "Switch to an https:// URL for non-local deployments.",
             _config.backend_url,
-        )
-
-    if _config.enable_local_fast_path:
-        logger.info(
-            "ProofRail SDK: enable_local_fast_path is True. Fast-path actions in "
-            "non-production environments bypass the backend kill switch — they "
-            "execute locally and only sync to backend asynchronously. For workflows "
-            "where kill-switch guarantees are critical (e.g. compliance-sensitive "
-            "agents), set enable_local_fast_path=False to route all actions through "
-            "the backend synchronously."
         )
 
     logger.debug("ProofRail SDK initialized (environment=%s)", _config.environment)
@@ -331,9 +338,9 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     ``NetworkError`` (connect / read / write failures), 5xx, and 429.
 
     After all retries are exhausted:
-    * Network/5xx/429 → ``fail_mode`` determines behaviour: ``"deny"`` raises
-      BackendUnavailableError; ``"allow"`` raises _OfflineSignal so chain.py
-      can transition to offline mode cleanly.
+    * Network/5xx/429 -> BackendUnavailableError. ``fail_mode="allow"`` is
+      accepted for compatibility but deprecated and ineffective for governed
+      execution.
 
     4xx responses are non-retryable and always re-raise ``HTTPStatusError``
     immediately — these are deterministic client errors where retry won't help.
@@ -647,20 +654,18 @@ def _handle_backend_failure(
     action_type: str | None = None,
 ) -> NoReturn:
     """
-    Apply the resolved fail_mode to a transport-level backend failure.
+    Apply fail-closed handling to a transport-level backend failure.
 
-    ``"allow"`` raises _OfflineSignal so the caller (chain.py) can transition
-    to offline mode without receiving a synthetic dict that is missing fields
-    (e.g. "id" on a chain-create response).
-    ``"deny"`` raises BackendUnavailableError.
+    ``fail_mode="allow"`` is retained as a deprecated configuration value for
+    signature compatibility, but governed execution never converts backend
+    unavailability into an allow or an offline chain.
     """
     effective = config.resolve_fail_mode(action_type)
     if effective == "allow":
         logger.warning(
-            "%s — fail_mode=allow (action_type=%s), transitioning to offline mode",
+            "%s - fail_mode=allow is deprecated for governed execution; failing closed "
+            "(action_type=%s)",
             message,
             action_type or "unspecified",
         )
-        raise _OfflineSignal(message)
-
     raise BackendUnavailableError(message=message, fail_mode=effective)

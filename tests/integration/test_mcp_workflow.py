@@ -163,11 +163,19 @@ async def test_backend_unreachable_fail_deny_mcp():
 
 
 # ===========================================================================
-# Scenario 5 — backend unreachable, fail_mode=allow (offline path)
+# Scenario 5 - backend unreachable, deprecated fail_mode=allow fails closed
 # ===========================================================================
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_mcp():
+    with pytest.warns(DeprecationWarning, match="fail_mode"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=False,
+            fail_mode="allow",
+        )
     mock_post, calls = make_mock_post(offline_signal=True)
     handler_calls: list[str] = []
 
@@ -176,33 +184,30 @@ async def test_backend_unreachable_fail_allow_mcp():
         return {"result": "ok"}
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        async with Chain("mcp-offline") as chain:
-            adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
-            await adapter.handle_tool_call("query_database", {}, tracking_handler)
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            async with Chain("mcp-offline") as chain:
+                adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
+                await adapter.handle_tool_call("query_database", {}, tracking_handler)
 
-    # Handler was called despite backend being offline
-    assert "query_database" in handler_calls
-    # No synchronous event call
+    assert exc_info.value.fail_mode == "allow"
+    assert handler_calls == []
     assert count_event_calls(calls) == 0
-    # Chain is in offline mode (regression guard)
-    assert chain._offline is True
-    # Event is buffered
-    assert len(chain._offline_buffer) == 1
 
 
 # ===========================================================================
-# Scenario 6 — fast-path engages for low-risk actions
+# Scenario 6 - deprecated deprecated fast-path flag still requires backend authority
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_fast_path_engages_mcp():
-    proofrail.init(
-        api_key="prail_test",
-        backend_url="http://localhost:9999",
-        environment="development",
-        enable_local_fast_path=True,
-        fail_mode="allow",
-    )
+async def test_fast_path_config_still_uses_backend_mcp():
+    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=True,
+            fail_mode="deny",
+        )
     mock_post, calls = make_mock_post()
     handler_called = []
 
@@ -213,7 +218,7 @@ async def test_fast_path_engages_mcp():
     with patch("proofrail.client._post", side_effect=mock_post):
         async with Chain("mcp-fp") as chain:
             adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
-            # "get_user_info" → risk_score = 0, fast-path eligible
+            # "get_user_info" → risk_score = 0, legacy-deprecated fast-path eligible
             await adapter.handle_tool_call("get_user_info", {}, tracking_handler)
             # Give drain task time to run
             await asyncio.sleep(0)
@@ -222,8 +227,7 @@ async def test_fast_path_engages_mcp():
     assert "get_user_info" in handler_called
     # Chain was started
     assert any(c["path"] == "/v1/chains" for c in calls)
-    # Fast-path event was buffered (available before drain runs)
-    # (buffer may be empty after drain; key check is no exception and handler ran)
+    assert count_event_calls(calls) == 1
 
 
 # ===========================================================================

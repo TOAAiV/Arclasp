@@ -303,37 +303,43 @@ async def test_backend_unreachable_fail_deny_crewai():
 
 
 # ===========================================================================
-# Scenario 5 — backend unreachable, fail_mode=allow (offline path)
+# Scenario 5 - backend unreachable, deprecated fail_mode=allow fails closed
 # ===========================================================================
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_crewai():
+    with pytest.warns(DeprecationWarning, match="fail_mode"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=False,
+            fail_mode="allow",
+        )
     mock_post, calls = make_mock_post(offline_signal=True)
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        result = await _govern_a().kickoff_async(inputs={"topic": "AI"})
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            await _govern_a().kickoff_async(inputs={"topic": "AI"})
 
-    assert len(result) == 2
-    # No synchronous event calls (chain is offline; fire-and-forget coroutines
-    # buffer in offline mode when they run)
+    assert exc_info.value.fail_mode == "allow"
     assert count_event_calls(calls) == 0
 
 
 # ===========================================================================
-# Scenario 6 — fast-path engages for low-risk actions
+# Scenario 6 - deprecated deprecated fast-path flag still requires backend authority
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_fast_path_engages_crewai():
-    proofrail.init(
-        api_key="prail_test",
-        backend_url="http://localhost:9999",
-        environment="development",
-        enable_local_fast_path=True,
-        fail_mode="allow",
-    )
+async def test_fast_path_config_still_uses_backend_crewai():
+    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=True,
+            fail_mode="deny",
+        )
     tasks = [_MockTask("Get config data")]   # safe name → risk_score = 0
     governed = govern(_StubCrewA(tasks=tasks), chain_name="crew-fp")
     mock_post, calls = make_mock_post()
@@ -344,8 +350,8 @@ async def test_fast_path_engages_crewai():
         await asyncio.sleep(0)
 
     assert len(result) == 1
-    # Chain was started; no error raised
     assert any(c["path"] == "/v1/chains" for c in calls)
+    assert count_event_calls(calls) == 2
 
 
 # ===========================================================================

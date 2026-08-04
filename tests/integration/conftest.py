@@ -93,8 +93,6 @@ if _lc_cb_mod._BaseCallbackHandler is object:
     _lc_cb_mod._BaseCallbackHandler = _StubBaseCallbackHandler
 
 from proofrail.exceptions import BackendUnavailableError  # noqa: E402
-from proofrail.client import _OfflineSignal  # noqa: E402
-
 import asyncio  # noqa: E402
 import pytest  # noqa: E402
 
@@ -137,7 +135,7 @@ def deny_resp(action_name: str = "") -> dict:
 def make_mock_post(
     deny_on:         str | None = None,
     flag_on:         str | None = None,
-    offline_signal:  bool = False,   # raises _OfflineSignal  (Scenario 5)
+    offline_signal:  bool = False,   # legacy name; now raises BackendUnavailableError
     unavailable:     bool = False,   # raises BackendUnavailableError (Scenario 4)
 ):
     """
@@ -157,7 +155,7 @@ def make_mock_post(
         if unavailable:
             raise BackendUnavailableError("backend down", fail_mode="deny")
         if offline_signal:
-            raise _OfflineSignal("backend down")
+            raise BackendUnavailableError("backend down", fail_mode="allow")
 
         if path == "/v1/chains":
             return {"id": CHAIN_ID}
@@ -226,16 +224,15 @@ def proofrail_dev():
     """
     Default SDK config for all integration tests.
 
-    fast-path is OFF so Scenarios 1–5 exercise synchronous backend calls
-    deterministically.  Scenario 6 overrides to enable_local_fast_path=True.
-    fail_mode is 'allow' (Scenario 4 overrides to 'deny').
+    Fast-path is off and fail-closed transport is the default. Tests that
+    intentionally cover deprecated compatibility knobs opt into them locally.
     """
     proofrail.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
         enable_local_fast_path=False,
-        fail_mode="allow",
+        fail_mode="deny",
     )
 
 

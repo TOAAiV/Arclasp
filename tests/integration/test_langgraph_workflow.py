@@ -161,7 +161,7 @@ async def test_backend_flags_action_langgraph():
 
 @pytest.mark.asyncio
 async def test_backend_denies_action_langgraph():
-    # "delete_records" contains "delete" → risk_score ≥ 40, not fast-path eligible
+    # "delete_records" contains "delete" → risk_score ≥ 40, not legacy-deprecated fast-path eligible
     governed = govern(
         _StubGraphA(nodes=["fetch_data", "delete_records"]),
         chain_name="lg-deny",
@@ -217,36 +217,43 @@ async def test_backend_unreachable_fail_deny_langgraph():
 
 
 # ===========================================================================
-# Scenario 5 — backend unreachable, fail_mode=allow (offline path)
+# Scenario 5 - backend unreachable, deprecated fail_mode=allow fails closed
 # ===========================================================================
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_langgraph():
-    # fail_mode=allow is already the default from proofrail_dev fixture
+    with pytest.warns(DeprecationWarning, match="fail_mode"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=False,
+            fail_mode="allow",
+        )
     mock_post, calls = make_mock_post(offline_signal=True)
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        result = await _govern_a().ainvoke({"input": "data"})
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            await _govern_a().ainvoke({"input": "data"})
 
-    # Workflow completes in offline mode
-    assert result == {"result": "workflow_complete"}
-    # Only the chain-start attempt appears (raises _OfflineSignal, captured in calls)
+    assert exc_info.value.fail_mode == "allow"
     assert count_event_calls(calls) == 0
 
 
 # ===========================================================================
-# Scenario 6 — fast-path engages for low-risk actions
+# Scenario 6 - deprecated deprecated fast-path flag still requires backend authority
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_fast_path_engages_langgraph():
-    proofrail.init(
-        api_key="prail_test",
-        backend_url="http://localhost:9999",
-        environment="development",
-        enable_local_fast_path=True,
-        fail_mode="allow",
-    )
+async def test_fast_path_config_still_uses_backend_langgraph():
+    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=True,
+            fail_mode="deny",
+        )
     # Single node with a clearly safe name (risk_score = 0)
     governed = govern(_StubGraphA(nodes=["get_config"]), chain_name="lg-fp")
     mock_post, calls = make_mock_post()
@@ -261,12 +268,12 @@ async def test_fast_path_engages_langgraph():
     # Chain was started (1 call) and completed (1 call) — those are always sync
     chain_start = [c for c in calls if c["path"] == "/v1/chains"]
     assert len(chain_start) == 1
-    # No SYNCHRONOUS /events calls happened during record_agent_action (fast-path)
+    # No SYNCHRONOUS /events calls happened during record_agent_action (deprecated fast-path)
     # Drain may have added async calls, but the decision is returned locally.
-    # We verify fast-path is wired by checking the cumulative event count is ≤ 2
+    # We verify deprecated fast-path is wired by checking the cumulative event count is ≤ 2
     # (chain start + complete only, or chain start + complete + drain events ≤ total nodes*2)
     # The key assertion: workflow completed without a backend error.
-    assert result is not None
+    assert count_event_calls(calls) == 2
 
 
 # ===========================================================================

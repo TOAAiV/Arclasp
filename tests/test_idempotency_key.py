@@ -12,23 +12,21 @@ Three tests:
        attempt, _retry_with_backoff retries using the same data dict.
        Both attempts carry the same idempotency_key.
 
-  3. test_idempotency_key_persists_through_offline_buffer_drain
-       When the backend signals offline (_OfflineSignal), the event is
-       buffered with its idempotency_key embedded.  When the drain later
-       sends that buffered event, it sends the same key.
+  3. test_idempotency_key_persists_until_exhausted_failure
+       When all transport retries fail, each wire attempt carries the same
+       idempotency_key and no offline buffer is created.
 """
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock, Mock, patch
 
 import httpx
 import pytest
 
 import proofrail
-from proofrail.chain import Chain, _drain_offline_buffer
-from proofrail.client import _OfflineSignal
+from proofrail.chain import Chain
+from proofrail.exceptions import BackendUnavailableError
 
 
 # ---------------------------------------------------------------------------
@@ -150,66 +148,49 @@ class TestIdempotencyKeyRetryPersistence:
         assert len(k1) == 32
 
 
-class TestIdempotencyKeyOfflineDrain:
+class TestIdempotencyKeyFailClosedFailure:
     @pytest.mark.asyncio
-    async def test_idempotency_key_persists_through_offline_buffer_drain(self):
+    async def test_idempotency_key_persists_until_exhausted_failure(self):
         """
-        The idempotency_key embedded in event_body when the event is buffered
-        offline is the same key sent during the drain.
+        The same idempotency_key is sent on every retry attempt, and a final
+        backend failure raises instead of buffering a local allow.
         """
         proofrail.init(
             api_key="prail_test",
             backend_url="http://test",
-            fail_mode="allow",
+            fail_mode="deny",
             enable_local_fast_path=False,
-            max_retries=0,
+            max_retries=1,
+            retry_backoff_base_ms=0,
         )
 
-        # Manually start chain in online state to get a real chain_id
-        chain = Chain("test")
-        chain._chain_id = "offline-drain-test"
-        chain._offline = False
+        event_post_bodies: list[dict] = []
 
-        # Step 1: trigger offline transition via _OfflineSignal
-        with patch("proofrail.client._post", side_effect=_OfflineSignal("backend down")):
-            result = await chain.record_agent_action(
-                agent_name="a", action_type="tool_call", action_name="drain_test"
-            )
+        async def fake_client_post(path, json=None, **kwargs):
+            if not path.endswith("/events"):
+                return _mock_response(201, _CHAIN_RESPONSE)
+            event_post_bodies.append(dict(json) if json else {})
+            raise httpx.TimeoutException("simulated exhausted timeout")
 
-        # Cancel the drain task created during the offline transition
-        # (it would fail and sleep because _post is still patched to raise)
-        if chain._drain_task and not chain._drain_task.done():
-            chain._drain_task.cancel()
-            try:
-                await chain._drain_task
-            except asyncio.CancelledError:
-                pass
+        with patch("proofrail.client._get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.post = fake_client_post
+            mock_get_client.return_value = mock_client
 
-        assert result.decision_source == "offline_stub"
-        assert len(chain._offline_buffer) == 1, (
-            f"Expected 1 buffered event, got {len(chain._offline_buffer)}"
-        )
+            chain = Chain("test")
+            await chain._start()
 
-        key_in_buffer = chain._offline_buffer[0].get("idempotency_key")
-        assert key_in_buffer is not None, "Buffered event must contain idempotency_key"
-        assert len(key_in_buffer) == 32, f"Key must be 32-char hex, len={len(key_in_buffer)}"
+            with pytest.raises(BackendUnavailableError):
+                await chain.record_agent_action(
+                    agent_name="a",
+                    action_type="tool_call",
+                    action_name="fail_closed_action",
+                )
 
-        # Step 2: drain with a working _post — capture what was sent
-        drain_bodies: list[dict] = []
-
-        async def capture_drain(path, data, action_type=None):
-            if "events" in path:
-                drain_bodies.append(dict(data))
-            return _ALLOW_DECISION
-
-        with patch("proofrail.client._post", side_effect=capture_drain):
-            chain._drain_task = asyncio.create_task(_drain_offline_buffer(chain))
-            await asyncio.wait_for(chain._drain_task, timeout=5.0)
-
-        assert len(drain_bodies) == 1, f"Expected 1 drain POST, got {len(drain_bodies)}"
-
-        key_in_drain = drain_bodies[0].get("idempotency_key")
-        assert key_in_drain == key_in_buffer, (
-            f"Drain key {key_in_drain!r} must match the key embedded at buffer time "
-            f"{key_in_buffer!r}"
-        )
+        assert len(event_post_bodies) == 2
+        keys = [body.get("idempotency_key") for body in event_post_bodies]
+        assert keys[0] is not None
+        assert keys[0] == keys[1]
+        assert len(keys[0]) == 32
+        assert chain._offline is False
+        assert chain._offline_buffer == []

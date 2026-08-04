@@ -19,6 +19,7 @@ from proofrail._constants import _ACTION_NAME_MAX
 from proofrail._utils import sanitize_log_field
 from proofrail.exceptions import (
     ActionDeniedError,
+    BackendUnavailableError,
     ChainAutoPausedError,
     ChainTimeoutError,
     ProofRailKillSwitchError,
@@ -289,6 +290,7 @@ def _make_on_chain_start():
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,
@@ -316,6 +318,7 @@ def _make_on_chain_end():
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,
@@ -343,6 +346,7 @@ def _make_on_chain_error():
             )
         except (
             ActionDeniedError,
+            BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
             ProofRailKillSwitchError,

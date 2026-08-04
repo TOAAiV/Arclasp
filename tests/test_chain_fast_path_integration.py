@@ -1,41 +1,35 @@
 """
-Integration tests for fast-path in Chain.record_agent_action.
+Regression tests for K1 backend-authoritative Chain.record_agent_action behavior.
 
-These tests mock the backend HTTP client and verify the fast-path integration:
-- Fast-path hit → no synchronous backend call, action allowed immediately.
-- Non-fast-path action → synchronous backend call is made.
-- Backend down + fast-path eligible → action still proceeds.
-- enable_local_fast_path=False → every action calls backend synchronously.
+The legacy local fast path remains as a compatibility module, but public governed
+Chain execution must always require an authoritative backend decision before an
+action is allowed to proceed.
 """
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 import proofrail
 from proofrail.chain import Chain
+from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
 def sdk_dev():
-    """SDK initialised with development environment and fast-path enabled."""
     proofrail.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=True,
-        fail_mode="allow",
+        enable_local_fast_path=False,
+        fail_mode="deny",
+        default_approval_timeout_hours=0,
     )
 
 
-def _chain_start_response(chain_id: str = "chain-fp-001"):
+def _chain_start_response(chain_id: str = "chain-k1-001"):
     return {"id": chain_id}
 
 
@@ -52,103 +46,70 @@ def _deny_response():
         "policy_decision": "deny",
         "decision_reason": "IAM/permission modification blocked",
         "decision_source": "backend_evaluation",
-        "policy_name": None,
+        "policy_name": "cumulative_financial_threshold",
     }
 
 
-# ---------------------------------------------------------------------------
-# Test 1: Fast-path hit — no synchronous backend event call
-# ---------------------------------------------------------------------------
+def _approval_required_response():
+    return {
+        "policy_decision": "require_approval",
+        "decision_reason": "Human approval required",
+        "decision_source": "backend_evaluation",
+        "policy_name": "cumulative_financial_threshold",
+    }
+
 
 @pytest.mark.asyncio
-async def test_fast_path_skips_sync_backend_event_call():
-    """An obviously-safe action uses fast-path; /events is never called sync."""
+async def test_development_default_safe_action_calls_backend_event():
     event_posts = []
 
     async def mock_post(path, body, action_type=None):
-        event_posts.append(path)
         if path == "/v1/chains":
             return _chain_start_response()
-        return _allow_response()
+        if "/events" in path:
+            event_posts.append((path, body, action_type))
+            return _allow_response()
+        return {}
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        async with Chain("test-fp") as chain:
-            before = len(event_posts)  # 1: /v1/chains call
-
+        async with Chain("k1-default") as chain:
             result = await chain.record_agent_action(
                 agent_name="agent",
                 action_type="tool_call",
-                action_name="get_data",    # low-risk, fast-path eligible
+                action_name="get_data",
                 payload={},
             )
 
-            # Synchronous part must not have called /events
-            sync_event_calls = [p for p in event_posts[before:] if "events" in p]
-            assert sync_event_calls == [], (
-                f"Expected no sync /events call; got {sync_event_calls}"
-            )
+    assert result.policy_decision == "allow"
+    assert result.decision_source == "backend_evaluation"
+    assert len(event_posts) == 1
+    assert event_posts[0][2] == "tool_call"
+    assert event_posts[0][1]["idempotency_key"]
 
-        # result should be a fast-path allow
-        assert result.policy_decision == "allow"
-        assert result.decision_source == "local_fast_path"
-
-
-# ---------------------------------------------------------------------------
-# Test 2: Non-fast-path action hits backend synchronously
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_deny_action_bypasses_fast_path_and_calls_backend():
-    """A clearly-deny action (IAM) skips fast-path and calls backend sync."""
-    event_posts = []
+async def test_explicit_enable_local_fast_path_warns_but_still_calls_backend():
+    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=True,
+            fail_mode="deny",
+        )
+
+    calls = []
 
     async def mock_post(path, body, action_type=None):
-        event_posts.append(path)
+        calls.append({"path": path, "body": dict(body or {})})
         if path == "/v1/chains":
-            return _chain_start_response()
-        return _deny_response()
-
-    from proofrail.exceptions import ActionDeniedError
+            return _chain_start_response("chain-k1-explicit")
+        if "/events" in path:
+            return _allow_response()
+        return {}
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        async with Chain("test-deny") as chain:
-            before = len(event_posts)
-
-            with pytest.raises(ActionDeniedError):
-                await chain.record_agent_action(
-                    agent_name="agent",
-                    action_type="tool_call",
-                    action_name="update_iam_policy",   # deny: iam in name
-                    payload={},
-                )
-
-            # Must have called /events synchronously
-            after = [p for p in event_posts[before:] if "events" in p]
-            assert len(after) == 1, f"Expected 1 sync /events call; got {after}"
-
-
-# ---------------------------------------------------------------------------
-# Test 3: Backend down + fast-path eligible → action proceeds
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_backend_down_fast_path_eligible_action_proceeds():
-    """When backend is down and action is fast-path eligible, allow proceeds."""
-    import httpx
-
-    call_log = []
-
-    async def mock_post(path, body, action_type=None):
-        call_log.append(path)
-        if path == "/v1/chains":
-            return {"id": "offline-chain-001"}
-        raise httpx.ConnectError("backend down")
-
-    with patch("proofrail.client._post", side_effect=mock_post):
-        # fail_mode=allow: chain starts offline if /v1/chains fails
-        # BUT we return a chain_id above, so chain starts online.
-        # Event submission fails — fast-path should have intercepted it first.
-        async with Chain("test-down") as chain:
+        async with Chain("k1-explicit-fast-path") as chain:
             result = await chain.record_agent_action(
                 agent_name="agent",
                 action_type="tool_call",
@@ -156,159 +117,108 @@ async def test_backend_down_fast_path_eligible_action_proceeds():
                 payload={},
             )
 
-    # Fast-path should have allowed it before the event POST was attempted
-    assert result.policy_decision == "allow"
-    assert result.decision_source == "local_fast_path"
-
-
-# ---------------------------------------------------------------------------
-# Test 4: enable_local_fast_path=False → backend called for every action
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_fast_path_disabled_forces_backend_call():
-    """With enable_local_fast_path=False, every action calls backend."""
-    proofrail.init(
-        api_key="prail_test",
-        backend_url="http://localhost:9999",
-        environment="development",
-        enable_local_fast_path=False,
-        fail_mode="allow",
-    )
-
-    event_posts = []
-
-    async def mock_post(path, body, action_type=None):
-        event_posts.append(path)
-        if path == "/v1/chains":
-            return _chain_start_response()
-        return _allow_response()
-
-    with patch("proofrail.client._post", side_effect=mock_post):
-        async with Chain("test-no-fp") as chain:
-            before = len(event_posts)
-
-            result = await chain.record_agent_action(
-                agent_name="agent",
-                action_type="tool_call",
-                action_name="get_data",
-                payload={},
-            )
-
-            after = [p for p in event_posts[before:] if "events" in p]
-            assert len(after) == 1, (
-                f"Expected 1 sync /events call with fast-path disabled; got {after}"
-            )
-
-    assert result.policy_decision == "allow"
-    # Source must come from backend response, not local_fast_path
     assert result.decision_source == "backend_evaluation"
+    assert [c["path"] for c in calls].count("/v1/chains") == 1
+    assert len([c for c in calls if "/events" in c["path"]]) == 1
+    assert result.decision_source != "local_fast_path"
 
-
-# ---------------------------------------------------------------------------
-# Test 5: Fast-path event is buffered for async drain
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_fast_path_event_buffered_for_async_drain():
-    """After a fast-path decision the event is queued in _offline_buffer."""
-    async def mock_post(path, body, action_type=None):
-        if path == "/v1/chains":
-            return _chain_start_response()
-        return _allow_response()
-
-    with patch("proofrail.client._post", side_effect=mock_post):
-        async with Chain("test-buf") as chain:
-            # Before the call: buffer should be empty
-            assert chain._offline_buffer == []
-
-            result = await chain.record_agent_action(
-                agent_name="agent",
-                action_type="tool_call",
-                action_name="get_data",
-                payload={},
-            )
-
-            if result.decision_source == "local_fast_path":
-                # Event was buffered immediately (before the drain task ran)
-                assert len(chain._offline_buffer) >= 0  # may already be drained
-                assert result.policy_decision == "allow"
-
-
-# ---------------------------------------------------------------------------
-# Test 6: Async drain sends buffered events to backend
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_concurrent_fast_path_no_duplicate_sends():
-    """
-    50 fast-path events fired in a tight loop must arrive at the backend
-    exactly once each — no duplicates, no drops (C-1 regression test).
-
-    Before the single-flight fix, each fast-path event spawned a new drain
-    task; concurrent tasks raced on _offline_buffer[0] causing duplicates and
-    dropped events.
-    """
-    sent_action_names: list[str] = []
+async def test_backend_down_with_fast_path_config_fails_closed_before_action():
+    with pytest.warns(DeprecationWarning):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://localhost:9999",
+            environment="development",
+            enable_local_fast_path=True,
+            fail_mode="allow",
+        )
 
     async def mock_post(path, body, action_type=None):
         if path == "/v1/chains":
-            return _chain_start_response("chain-race-001")
-        if "/events" in path:
-            sent_action_names.append(body.get("action_name", ""))
-            return _allow_response()
-        return {}  # /complete
+            return _chain_start_response("chain-k1-down")
+        raise BackendUnavailableError("backend down", fail_mode="allow")
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        async with Chain("race-test") as chain:
-            for i in range(50):
-                result = await chain.record_agent_action(
+        async with Chain("k1-down") as chain:
+            with pytest.raises(BackendUnavailableError) as exc_info:
+                await chain.record_agent_action(
                     agent_name="agent",
                     action_type="tool_call",
-                    action_name=f"action_{i}",
+                    action_name="get_config",
                     payload={},
                 )
-                assert result.policy_decision == "allow"
 
-            # Let the drain task(s) run to completion before chain exit.
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-
-    # After chain exit _complete awaits the drain — all 50 must be present.
-    assert len(sent_action_names) == 50, (
-        f"Expected 50 events, got {len(sent_action_names)}. "
-        f"Duplicates: {[n for n in sent_action_names if sent_action_names.count(n) > 1]}"
-    )
-    assert set(sent_action_names) == {f"action_{i}" for i in range(50)}, (
-        f"Missing: {set(f'action_{i}' for i in range(50)) - set(sent_action_names)}"
-    )
+    assert exc_info.value.fail_mode == "allow"
+    assert chain._offline is False
+    assert chain._offline_buffer == []
 
 
 @pytest.mark.asyncio
-async def test_async_drain_sends_buffered_events():
-    """The _drain_buffer_to_backend task empties the buffer after fast-path."""
-    event_paths = []
-
+async def test_backend_deny_is_returned_as_action_denied():
     async def mock_post(path, body, action_type=None):
-        event_paths.append(path)
         if path == "/v1/chains":
             return _chain_start_response()
-        return _allow_response()
+        if "/events" in path:
+            return _deny_response()
+        return {}
 
     with patch("proofrail.client._post", side_effect=mock_post):
-        async with Chain("test-drain") as chain:
+        async with Chain("k1-deny") as chain:
+            with pytest.raises(ActionDeniedError) as exc_info:
+                await chain.record_agent_action(
+                    agent_name="agent",
+                    action_type="tool_call",
+                    action_name="update_iam_policy",
+                    payload={},
+                )
+
+    assert exc_info.value.decision_source == "backend_evaluation"
+
+
+@pytest.mark.asyncio
+async def test_backend_require_approval_returns_human_approval_after_poll():
+    async def mock_post(path, body, action_type=None):
+        if path == "/v1/chains":
+            return _chain_start_response("chain-k1-approval")
+        if "/events" in path:
+            return _approval_required_response()
+        return {}
+
+    with patch("proofrail.client._post", side_effect=mock_post), patch.object(
+        Chain, "_poll_for_approval", new=AsyncMock(return_value="looks good")
+    ):
+        async with Chain("k1-approval") as chain:
+            result = await chain.record_agent_action(
+                agent_name="agent",
+                action_type="tool_call",
+                action_name="charge_card",
+                payload={"amount_usd": 9000},
+            )
+
+    assert result.policy_decision == "allow"
+    assert result.decision_source == "human_approval"
+    assert result.policy_name == "cumulative_financial_threshold"
+    assert "looks good" in (result.decision_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_no_fast_path_async_memory_buffer_is_used_for_public_execution():
+    async def mock_post(path, body, action_type=None):
+        if path == "/v1/chains":
+            return _chain_start_response()
+        if "/events" in path:
+            return _allow_response()
+        return {}
+
+    with patch("proofrail.client._post", side_effect=mock_post):
+        async with Chain("k1-no-buffer") as chain:
             result = await chain.record_agent_action(
                 agent_name="agent",
                 action_type="tool_call",
                 action_name="get_data",
                 payload={},
             )
-
-            if result.decision_source == "local_fast_path":
-                # Let the event loop tick so the drain task can run
-                await asyncio.sleep(0)
-                await asyncio.sleep(0)  # two ticks to be safe
-
-                # Buffer should now be empty (drain succeeded)
-                assert chain._offline_buffer == []
+            assert result.decision_source == "backend_evaluation"
+            assert chain._offline_buffer == []
+            assert chain._drain_task is None

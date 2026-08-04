@@ -28,7 +28,6 @@ from types import TracebackType
 import httpx
 
 from proofrail import client as _client
-from proofrail import fast_path as _fast_path
 from proofrail.exceptions import (
     ActionDeniedError,
     ChainAutoPausedError,
@@ -53,7 +52,7 @@ _ORG_ID_PLACEHOLDER = "00000000-0000-0000-0000-000000000001"
 
 
 # ---------------------------------------------------------------------------
-# Offline buffer helper
+# Legacy buffer helper
 # ---------------------------------------------------------------------------
 
 
@@ -68,8 +67,9 @@ def _buffer_event(buffer: list, event_body: dict, max_events: int) -> bool:
 
     Always returns True (the event is always accepted).
 
-    This is a standalone helper (not a Chain method) so the Phase-4 async
-    fast-path event sender can call it directly without a Chain reference.
+    This helper is retained for compatibility with legacy internal tests and
+    transitional drain code. Public governed execution no longer uses it to
+    convert backend unavailability into an allow.
     """
     if len(buffer) >= max_events:
         dropped = buffer.pop(0)
@@ -115,10 +115,12 @@ class Chain:
 
         self._chain_id: str | None = None
         self._sequence_number: int = 1
-        self._offline: bool = False  # True when backend unreachable + fail_mode=allow
+        # Legacy internal state retained for transitional drain helpers only.
+        # Public governed execution must be backed by an authoritative backend chain.
+        self._offline: bool = False
         self._offline_buffer: list[dict] = []
-        self._cumulative_metrics: dict = {}  # in-process snapshot for fast-path checks
-        # Single-flight drain task — at most one drain coroutine runs at a time.
+        self._cumulative_metrics: dict = {}
+        # Single-flight drain task - at most one drain coroutine runs at a time.
         self._drain_task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------
@@ -259,15 +261,13 @@ class Chain:
         Returns
         -------
         PolicyDecision
-            The resolved policy decision.  Three possible outcomes:
+            The resolved policy decision from the backend. Common allow outcomes:
 
-            * ``policy_decision="allow"`` — action permitted by policy.
-            * ``policy_decision="allow", decision_source="human_approval"`` —
+            * ``policy_decision="allow"`` - action permitted by backend policy.
+            * ``policy_decision="allow", decision_source="human_approval"`` -
               action was initially gated for human review and a reviewer approved
-              it.  ``decision_reason`` will contain the approver's notes when
+              it. ``decision_reason`` will contain the approver's notes when
               provided.
-            * ``policy_decision="allow", decision_source="offline_stub"`` —
-              backend was unreachable and ``fail_mode="allow"`` is configured.
 
         Raises
         ------
@@ -315,82 +315,19 @@ class Chain:
         }
 
         if self._offline:
-            # Backend unavailable and fail_mode=allow — buffer the event locally.
-            _buffer_event(
-                self._offline_buffer, event_body, config.offline_buffer_max_events
-            )
-            self._sequence_number += 1
-            logger.debug(
-                "Offline mode: buffered event for action '%s' (buffered=%d)",
-                action_name,
-                len(self._offline_buffer),
-            )
-            return PolicyDecision(
-                policy_decision="allow",
-                decision_reason="Offline — fail_mode=allow",
-                decision_source="offline_stub",
+            raise _client.BackendUnavailableError(
+                message=(
+                    "Chain is not backed by an authoritative backend session; "
+                    "governed actions cannot execute offline."
+                ),
+                fail_mode=config.resolve_fail_mode(action_type),
             )
 
-        # --- Fast-path evaluation (non-production + low-risk actions) ---
-        fast_decision = _fast_path.evaluate_fast_path(
+        response = await _client._post(
+            f"/v1/chains/{self._chain_id}/events",
+            event_body,
             action_type=action_type,
-            action_name=action_name,
-            payload=sanitized,
-            agent_name=agent_name,
-            cumulative_metrics=self._cumulative_metrics,
-            config=config,
         )
-        if fast_decision is not None:
-            # Update local cumulative metrics so the next fast-path eligibility
-            # check (criterion 4) uses accurate totals instead of the initial
-            # empty dict. Safe without a lock: no await exists between the
-            # read (passed to evaluate_fast_path above) and this write, so no
-            # other coroutine can preempt at this point. (SDK-S-2)
-            self._cumulative_metrics = fast_decision.pop(
-                "updated_cumulative_metrics", self._cumulative_metrics
-            )
-            # Buffer the event and drain asynchronously — agent is not blocked.
-            # Single-flight: only spawn a new drain task when no task is running.
-            # This prevents concurrent drain tasks from reading the same buffer
-            # entry and sending duplicate events (audit finding C-1).
-            _buffer_event(
-                self._offline_buffer, event_body, config.offline_buffer_max_events
-            )
-            if self._drain_task is None or self._drain_task.done():
-                self._drain_task = asyncio.create_task(_drain_buffer_to_backend(self))
-            self._sequence_number += 1
-            logger.debug(
-                "Fast-path allow for '%s' (chain=%s)", action_name, self._chain_id
-            )
-            return PolicyDecision.model_validate(fast_decision)
-
-        try:
-            response = await _client._post(
-                f"/v1/chains/{self._chain_id}/events",
-                event_body,
-                action_type=action_type,
-            )
-        except _client._OfflineSignal:
-            # Backend went offline mid-chain — transition to offline and buffer.
-            self._offline = True
-            _buffer_event(
-                self._offline_buffer, event_body, config.offline_buffer_max_events
-            )
-            self._sequence_number += 1
-            logger.warning(
-                "Backend went offline mid-chain (id=%s) — switching to offline mode",
-                self._chain_id,
-            )
-            # Start offline drain task (single-flight).  The drain task will
-            # attempt to flush buffered events immediately, then retry every
-            # 30 s until the buffer is empty or the chain exits.
-            if self._drain_task is None or self._drain_task.done():
-                self._drain_task = asyncio.create_task(_drain_offline_buffer(self))
-            return PolicyDecision(
-                policy_decision="allow",
-                decision_reason="Offline — fail_mode=allow",
-                decision_source="offline_stub",
-            )
 
         decision_obj = PolicyDecision.model_validate(response)
 
@@ -599,22 +536,10 @@ class Chain:
             "policy_config": self.policy_config,
         }
 
-        try:
-            response = await _client._post(
-                "/v1/chains", body, action_type="chain_create"
-            )
-            self._chain_id = response["id"]
-        except _client._OfflineSignal:
-            # Backend unreachable and fail_mode=allow — generate a local UUID
-            # so the chain can continue offline.  Events are buffered until
-            # connectivity is restored (replay is a future-phase feature).
-            self._chain_id = str(uuid.uuid4())
-            self._offline = True
-            logger.warning(
-                "Backend unreachable at chain start — running offline (id=%s name=%s)",
-                self._chain_id,
-                self.name,
-            )
+        response = await _client._post(
+            "/v1/chains", body, action_type="chain_create"
+        )
+        self._chain_id = response["id"]
 
         logger.debug(
             "Chain started (id=%s name=%s offline=%s)",
@@ -629,18 +554,17 @@ class Chain:
             return  # Never started (offline or error on entry) — nothing to close.
 
         if self._offline:
-            # Cancel any pending offline drain task to avoid dangling references.
+            # Transitional guard for pre-K1 internal state only. Public governed
+            # execution no longer creates offline chains.
             if self._drain_task is not None and not self._drain_task.done():
                 self._drain_task.cancel()
-            logger.debug(
-                "Offline mode: skipping chain completion for chain %s", self._chain_id
+            logger.warning(
+                "Skipping completion for non-authoritative offline chain %s",
+                self._chain_id,
             )
             return
 
-        # Flush any pending fast-path drain before marking the chain complete.
-        # Without this, fast-path events buffered near the end of the chain
-        # can be lost if the event loop shuts down before the drain task runs
-        # (audit finding I-6).
+        # Flush any transitional pending drain before marking the chain complete.
         if self._drain_task is not None and not self._drain_task.done():
             config = _client.get_config()
             buffer_size = len(self._offline_buffer)
@@ -806,7 +730,7 @@ def _build_action_denied(
 
 
 # ---------------------------------------------------------------------------
-# Fast-path async drain helper
+# Transitional async drain helper
 # ---------------------------------------------------------------------------
 
 
@@ -845,13 +769,13 @@ async def _drain_buffer_to_backend(chain: Chain) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Offline-mode buffer drain helper
+# Transitional offline-mode buffer drain helper
 # ---------------------------------------------------------------------------
 
 
 async def _drain_offline_buffer(chain: Chain) -> None:
     """
-    Drain the offline buffer to the backend, retrying every 30 s until
+    Drain a legacy offline buffer to the backend, retrying every 30 s until
     the buffer is empty or the chain is closed.
 
     The first drain attempt is made **immediately** (no initial sleep) so that

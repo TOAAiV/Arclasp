@@ -11,7 +11,7 @@ Five surfaces:
   4. RemoteProtocolError does NOT retry — confirms narrow NetworkError
      catch, not the broader TransportError parent.
   5. Exhausted retries on ReadError calls _handle_backend_failure so
-     fail_mode logic (offline transition / BackendUnavailableError) fires.
+     BackendUnavailableError fires even when fail_mode="allow".
 """
 
 from __future__ import annotations
@@ -69,15 +69,16 @@ def _init_deny() -> None:
 
 
 def _init_allow() -> None:
-    proofrail.init(
-        api_key="prail_test",
-        backend_url="http://test.invalid",
-        environment="development",
-        fail_mode="allow",
-        backend_timeout_seconds=5,
-        max_retries=3,
-        retry_backoff_base_ms=1,
-    )
+    with pytest.warns(DeprecationWarning, match="fail_mode"):
+        proofrail.init(
+            api_key="prail_test",
+            backend_url="http://test.invalid",
+            environment="development",
+            fail_mode="allow",
+            backend_timeout_seconds=5,
+            max_retries=3,
+            retry_backoff_base_ms=1,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -212,14 +213,11 @@ async def test_remote_protocol_error_does_not_retry():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_exhausted_read_error_retries_trigger_offline_on_allow():
+async def test_exhausted_read_error_retries_fail_closed_on_allow():
     """
-    When all retries are exhausted on ReadError and fail_mode='allow',
-    _post should transition through _handle_backend_failure → _OfflineSignal,
-    which chain.py catches to transition to offline mode.
-
-    Here we call _post directly and verify _OfflineSignal is raised
-    (the signal that chain.py uses to enter offline buffering mode).
+    When all retries are exhausted on ReadError and fail_mode='allow', _post
+    raises BackendUnavailableError. The allow setting is deprecated and must
+    not create an offline allow path.
     """
     _init_allow()
 
@@ -228,20 +226,20 @@ async def test_exhausted_read_error_retries_trigger_offline_on_allow():
     async def _always_fails(*args, **kwargs) -> httpx.Response:
         nonlocal call_count
         call_count += 1
-        raise httpx.ReadError("connection reset — all attempts")
+        raise httpx.ReadError("connection reset - all attempts")
 
     client_mock = MagicMock()
     client_mock.post = _always_fails
 
     with patch.object(_pc, "_get_client", return_value=client_mock):
-        with pytest.raises(_pc._OfflineSignal):
+        with pytest.raises(BackendUnavailableError) as exc_info:
             await _pc._post(
                 "/v1/chains/test-id/events",
                 {"action_type": "tool_call"},
                 action_type="tool_call",
             )
 
-    # max_retries=3 → 4 total attempts (1 initial + 3 retries)
+    assert exc_info.value.fail_mode == "allow"
     assert call_count == 4, (
         f"Expected 4 total attempts (max_retries=3), got {call_count}. "
         "ReadError must be retried the full configured count before giving up."
@@ -252,7 +250,7 @@ async def test_exhausted_read_error_retries_trigger_offline_on_allow():
 async def test_exhausted_read_error_retries_raise_backend_unavailable_on_deny():
     """
     Same exhausted-retry scenario with fail_mode='deny': BackendUnavailableError
-    should be raised (not _OfflineSignal and not bare ReadError).
+    should be raised, not a bare ReadError.
     """
     _init_deny()
 

@@ -36,77 +36,45 @@ audit trail of every governed action is transmitted to the backend.
 
 ---
 
-## 2. `fail_mode` security model
+## 2. Backend-unavailable handling
 
-When the ProofRail backend is unreachable (network failure, timeout,
-5xx error), the SDK must make a local decision for each governed action.
-This decision is controlled by `fail_mode`.
+Governed SDK execution requires an authoritative backend response before an
+action is allowed to proceed. When the backend is unreachable after configured
+retries (network failure, timeout, 5xx, or 429 exhaustion), the SDK raises
+`BackendUnavailableError`.
 
-| Setting | Behavior on backend failure | When to use |
-|---|---|---|
-| `"deny"` **(default)** | Action is blocked; `ActionDeniedError` is raised | Any action with irreversible external effects (financial, data deletion, external API calls) |
-| `"allow"` | Action proceeds; event is buffered for async sync | High-availability workflows where governance-induced downtime is unacceptable |
+The historical `fail_mode="allow"` and per-action `fail_modes` configuration
+values remain accepted for API compatibility, but they are deprecated and do
+not permit governed actions to execute offline. If one resolves to `"allow"`,
+the error reports that effective value while still failing closed.
 
-**Configuration:**
+**Configuration compatibility:**
 
 ```python
-# Global default — applied when no per-action-class override matches
+# Recommended and default: fail closed on backend failure.
 proofrail.init(fail_mode="deny")
 
-# Per-action-class overrides via fail_modes dict
-proofrail.init(
-    fail_mode="deny",
-    fail_modes={
-        "llm_inference": "allow",   # allow LLM calls when backend is down
-        "tool_call":     "deny",    # always block tool calls on backend failure
-    },
-)
+# Deprecated compatibility input. This still fails closed when backend authority
+# is unavailable, and emits a DeprecationWarning at init time.
+proofrail.init(fail_mode="allow")
 ```
 
-`fail_mode` affects only **backend-path** events. Fast-path events are
-evaluated locally and are never subject to `fail_mode` — see Section 3.
-
-**Recommendation:** Use `fail_mode="deny"` as the global default and selectively
-set `"allow"` for action types that are truly safe to proceed without governance.
-A global `fail_mode="allow"` means a network partition silently disables all
-governance. *(Audit finding: SDK-S-14)*
+A network partition must not silently disable governance or produce audit gaps.
 
 ---
 
-## 3. Fast-path security model
+## 3. Local fast-path compatibility
 
-The local fast-path evaluates low-risk actions without a backend round-trip.
-All five eligibility criteria must pass; the first failure routes to the
-backend synchronously.
+`enable_local_fast_path` is retained as a deprecated configuration field for
+older callers, and `proofrail.fast_path` remains importable for compatibility.
+Public governed execution no longer uses local fast-path decisions as allow
+authority. `Chain.record_agent_action()` records each action through the
+backend and waits for the backend decision before returning.
 
-**Eligibility criteria:**
-1. `enable_local_fast_path=True` (set explicitly — not production default).
-2. `environment != "production"` — production always uses the backend.
-3. Risk score < 40 AND no blocking categories (destructive, financial,
-   credential_exposure, exfiltration, privilege_escalation, financial_high).
-4. Cumulative `financial_exposure_usd` < 80 % of `cumulative_financial_threshold_usd`.
-5. Agent not in `high_risk_agents`.
-
-Fast-path decisions are queued for async backend logging (drain task) so the
-dashboard remains accurate. Criterion 4 is evaluated against a **local
-in-process metrics snapshot** that is updated after every fast-path allow —
-the snapshot is accurate within the current process lifetime but does not
-reflect decisions made in parallel processes or previous runs.
-
-**Kill-switch limitation (SDK-S-3 / SDK-S-15):** Fast-path currently hardcodes
-`kill_switch_active=False` (`sdk/proofrail/fast_path.py:185`). A
-backend-activated organisation kill switch is therefore not honoured by
-fast-path decisions — the action is evaluated locally and proceeds if the
-other four criteria pass. Backend-path decisions (when fast-path is ineligible
-or `enable_local_fast_path=False`) honour the kill switch correctly.
-
-**Mitigation:** For workflows where kill-switch enforcement is critical
-(compliance-sensitive agents, financial automation), set
-`enable_local_fast_path=False`. All actions are then routed to the backend
-synchronously and the kill switch is always checked.
-
-**Post-launch:** Background kill-switch polling (BACKLOG B-10) will close
-this gap by caching the organisation's kill-switch state with a short TTL.
+Explicitly passing `enable_local_fast_path=True` emits a `DeprecationWarning`
+and does not bypass backend evaluation. Backend-enforced controls such as the
+organization kill switch, human approval, monthly budgets, and audit recording
+therefore stay authoritative for governed SDK execution.
 
 ---
 
@@ -151,36 +119,16 @@ a key back in a tool result will have it redacted before transmission.
 
 ---
 
-## 6. Offline buffer limitations
+## 6. Transitional buffer limitations
 
-When the backend is unreachable, governed events are held in an **in-memory
-list** on the `Chain` instance (`_offline_buffer`). The drain task replays
-buffered events to the backend when connectivity is restored, or at chain
-completion.
+Public governed execution no longer creates offline or fast-path buffers. The
+`Chain` object still retains legacy internal buffer fields and drain helpers for
+compatibility with older state and focused tests, but backend unavailability at
+record time raises `BackendUnavailableError` instead of allowing the action.
 
-**Operators must understand the following constraints:** *(Audit finding: SDK-S-13)*
-
-- **Lost on process crash.** The buffer is not persisted to disk. If the
-  process crashes or is killed while the buffer holds events, those events are
-  permanently lost. There is no write-ahead log or durable queue.
-- **Bounded by `offline_buffer_max_events`** (default: 100 events). When the
-  buffer is full, the **oldest** event is evicted to make room for the newest —
-  keeping the audit trail as current as possible under pressure. Each eviction
-  logs a WARNING.
-- **Permanent backend errors discard events.** During drain, HTTP `4xx`
-  responses in `{400, 401, 403, 404, 422}` are classified as permanent: the
-  event is logged at WARNING and discarded. Transient errors (`429`, `5xx`)
-  retry with exponential backoff.
-- **`fail_mode` does not apply to drain failures.** `fail_mode` governs
-  whether an action *proceeds* when the backend is down at record time. Drain
-  failures are handled by the eviction and retry policies described above.
-
-For compliance workflows that cannot tolerate any event loss, set
-`fail_mode="deny"` globally (no per-action `"allow"` overrides). The SDK will
-then raise `ActionDeniedError` or `BackendUnavailableError` at record time when
-the backend is unreachable, so calling code can react immediately rather than
-continuing with degraded governance. Ensure your monitoring captures both
-exception types.
+If transitional internal buffer state exists, it remains in-memory only, bounded
+by `offline_buffer_max_events`, and best-effort drained. It must not be treated
+as a compliance-grade durable queue.
 
 ---
 

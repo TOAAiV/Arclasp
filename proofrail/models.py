@@ -40,7 +40,7 @@ class PolicyDecision(BaseModel):
     # Human-readable reason for the decision (empty string when not provided)
     decision_reason: str = ""
 
-    # Where the decision was made: backend_evaluation | local_fast_path | offline_stub
+    # Where the decision was made. Public governed paths use backend_evaluation or human_approval; legacy compatibility values may still parse.
     decision_source: str = "backend_evaluation"
 
     # Present when a specific named policy triggered the decision

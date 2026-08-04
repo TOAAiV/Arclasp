@@ -1,37 +1,10 @@
 """
-proofrail.fast_path — Low-latency local policy bypass for obviously-safe actions.
+Legacy local fast-path compatibility helpers.
 
-For agent actions that are clearly within policy (low risk score, no sensitive
-categories, far from any approval threshold), the SDK can decide locally without
-incurring a backend round-trip.  This is designed to handle the majority of
-low-risk actions locally, avoiding a network call entirely for those cases.
-
-How it works
-------------
-Before making a synchronous HTTP call to the backend, ``record_agent_action``
-calls :func:`evaluate_fast_path`.  If it returns a decision dict, that decision
-is used immediately — the agent is not blocked.  The event is still sent to the
-backend asynchronously (fire-and-forget) for logging and dashboard visibility.
-
-If :func:`evaluate_fast_path` returns ``None``, the call falls through to the
-normal synchronous backend round-trip.
-
-Eligibility criteria (ALL must be true)
------------------------------------------
-1. ``config.enable_local_fast_path`` is ``True``.
-2. ``config.environment != "production"`` — production always uses the backend.
-3. Risk score < 40 AND no dangerous categories present.
-4. Cumulative ``financial_exposure_usd`` < 80 % of the cumulative threshold.
-5. The agent is NOT in ``config.high_risk_agents``.
-
-Even when all five criteria pass, the local reference policy
-(:func:`proofrail.policies.process_action_local`) is run.  If it returns
-anything other than ``"allow"``, :func:`evaluate_fast_path` returns ``None``
-and the backend makes the authoritative decision.
-
-This module is purely an SDK-side optimisation — the backend has no concept of
-a fast path.  Every fast-path decision is also queued for async backend logging
-so the dashboard stays accurate.
+Public governed Chain execution no longer calls this module for allow
+authority. The functions remain importable for older callers and focused
+compatibility tests, but backend evaluation is authoritative for SDK-governed
+actions.
 """
 
 from __future__ import annotations
