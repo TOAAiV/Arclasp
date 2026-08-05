@@ -5,7 +5,7 @@ sdk/verify-scripts/k0b_latency_benchmark.py
 K0B authoritative governance latency benchmark.
 
 Measures SDK-side wall-clock duration, backend-reported Server-Timing
-duration (when the backend's dual opt-in is satisfied — see below), derived
+metrics (when the backend's dual opt-in is satisfied — see below), derived
 network/client overhead, retry counts, and SDK-client created/reused
 classification for the existing authoritative `POST /v1/chains`,
 `POST /v1/chains/{id}/events`, and `POST /v1/chains/{id}/complete` requests.
@@ -20,16 +20,23 @@ MEASUREMENT SEMANTICS AND LIMITATIONS (read before interpreting output)
   that layer. Never read "client_reused" as "connection reused", "TLS
   reused", or "keepalive confirmed".
 - "network_client_overhead_ms" (= total SDK wall time minus server-reported
-  application duration) is a residual, not a pure network measurement. It
-  may include network transit, DNS/TCP/TLS handshake time, httpx-internal
+  "app" application duration) is a residual, not a pure network measurement.
+  It may include network transit, DNS/TCP/TLS handshake time, httpx-internal
   processing, local asyncio scheduling delay, retry backoff sleep time (if
   the request retried), and response parsing. It is never labeled or
   reported as "network RTT".
-- The backend Server-Timing header (when both server and request opt-ins
-  are satisfied — see backend/app/main.py) reports only total application
-  processing time. It cannot be decomposed into database-transaction,
-  policy-engine, or other route-internal timings — that decomposition is
-  intentionally not exposed for privacy/safety reasons.
+- The backend Server-Timing header (when both server and request opt-ins are
+  satisfied — see backend/app/main.py) reports total application processing
+  time as "app", plus — since backend commit dc513f1 (K2A1) — up to six
+  additional narrower metrics on successful requests to the three governed
+  handlers: "auth", "dbacq", "lookup", "verify", "lastused", "handler". See
+  _K2A_NESTING_NOTE below (and backend/app/benchmark_timing.py) for exactly
+  what each one measures and how they nest inside "app" — they are NOT
+  independent, additive quantities; do not sum them or subtract them all
+  from "app". Detailed metrics are absent (by design, not error) on any
+  non-2xx response, any route other than the three governed ones, or an
+  older/unpatched deployment that only ever sends "app" — this script
+  tolerates all of those as normal, not as failures.
 - Requests that internally retried have inflated total_duration_ms (backoff
   sleep is real elapsed wall time for that sample) — see retries_total.
 
@@ -83,6 +90,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import pathlib
 import re
@@ -217,29 +225,149 @@ def _status_class(status_code: int | None) -> str | None:
     return f"{status_code // 100}xx"
 
 
-# Matches the "app" metric specifically (never an unrelated metric that a
-# proxy/CDN/load balancer might prepend or append, e.g. "cdn;dur=5,
-# app;dur=12.34"), tolerates an optional ";desc=..." suffix on the same
-# metric, and only ever extracts the FIRST "app" metric if the header value
-# is duplicated (e.g. two Server-Timing headers folded by httpx into one
-# comma-joined value). Absent header, no "app" metric present, or a
-# non-numeric dur value all safely resolve to None rather than a wrong or
-# misattributed number.
-_SERVER_TIMING_APP_RE = re.compile(
-    r"(?:^|,)\s*app\s*;[^,]*?\bdur\s*=\s*(?P<value>[0-9]+(?:\.[0-9]+)?)"
+# K2A1 (backend commit dc513f1) extended the backend's dual-opt-in
+# Server-Timing header from a single "app" metric to a fixed set of seven:
+# app, auth, dbacq, lookup, verify, lastused, handler. See
+# backend/app/benchmark_timing.py for their exact meaning and nesting —
+# summarized again in _K2A_NESTING_NOTE below, which is surfaced in both this
+# script's JSON and text output so a reader of either never has to go find
+# that module to avoid double-counting nested spans.
+#
+# _K2A_METRIC_FIELD_MAP is the fixed allowlist: only these seven metric
+# names are ever recognized. Every other metric name (e.g. a CDN/proxy/load
+# balancer prepending its own "cdn;dur=5" entry) is ignored — never stored
+# under any key, never surfaced in output. The dict values are the sample
+# field names this script writes into (see _timed_call) — "app" keeps the
+# pre-existing "server_duration_ms" name for backward compatibility; nothing
+# that existed before this extension was renamed.
+_K2A_METRIC_FIELD_MAP: dict[str, str] = {
+    "app": "server_duration_ms",
+    "auth": "auth_duration_ms",
+    "dbacq": "db_connection_acquire_ms",
+    "lookup": "api_key_lookup_ms",
+    "verify": "api_key_hash_verify_ms",
+    "lastused": "last_used_update_ms",
+    "handler": "handler_duration_ms",
+}
+
+# Short display label (matches the wire metric name) for each sample field,
+# used only for compact text-summary output — never for parsing.
+_K2A_FIELD_TO_LABEL: dict[str, str] = {v: k for k, v in _K2A_METRIC_FIELD_MAP.items()}
+
+_K2A_NESTING_NOTE = (
+    "Nesting: lookup, verify, and lastused are nested inside auth. dbacq is "
+    "normally nested inside lookup (the first query on the request's "
+    "session). handler is separate from auth, not a child of it. app is the "
+    "outermost measurement and contains all other metrics. Do not sum these "
+    "metrics together, and do not derive a residual by subtracting all of "
+    "them from app -- dbacq is already counted inside lookup, and "
+    "lookup/verify/lastused are already counted inside auth, so naive "
+    "addition or subtraction double-counts nested spans."
 )
+
+# Matches one Server-Timing "term": a metric name, optionally followed by
+# ";param=value" attributes. Applied to each comma-separated segment of the
+# header individually (Server-Timing entries never legally contain a comma
+# inside a value here — dur is always a bare number). Metric names are
+# matched case-insensitively (re.IGNORECASE) per K2A2 spec; group(1) is
+# lower-cased again explicitly at the call site as defense in depth.
+_TERM_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]*)\s*(?:;(.*))?$")
+
+# Extracts a `dur` parameter's raw value from a term's ";"-prefixed
+# parameter string. Tolerates optional whitespace around '=', and tolerates
+# `dur` appearing anywhere among other attributes (e.g.
+# ";desc=\"Application\";dur=12.34" or ";dur=12.34;desc=\"Application\"").
+_DUR_VALUE_RE = re.compile(r"(?:^|;)\s*dur\s*=\s*(?P<value>[^;]+)", re.IGNORECASE)
+
+
+def _parse_dur_value(raw: str) -> float | None:
+    """
+    Parse one dur= value. Returns None (never raises) for anything that
+    isn't a plain finite non-negative number: non-numeric text, NaN,
+    +/-Infinity, and negative values are all rejected here rather than
+    silently coerced into a plausible-looking duration.
+    """
+    candidate = raw.strip().strip('"')
+    try:
+        value = float(candidate)
+    except (ValueError, TypeError):
+        return None
+    if not math.isfinite(value):
+        return None
+    if value < 0:
+        return None
+    return value
+
+
+def _parse_server_timing_metrics(server_timing_header: str | None) -> dict[str, float | None]:
+    """
+    Parse a Server-Timing header into the fixed K2A metric allowlist.
+
+    Returns a dict with exactly the seven keys in _K2A_METRIC_FIELD_MAP's
+    values (server_duration_ms, auth_duration_ms, db_connection_acquire_ms,
+    api_key_lookup_ms, api_key_hash_verify_ms, last_used_update_ms,
+    handler_duration_ms), each either a float (milliseconds, unrounded here
+    — callers round when building output) or None if that metric was never
+    validly present.
+
+    Rules (documented, deterministic):
+      - Metric names are matched case-insensitively.
+      - Whitespace around names, ';', and '=' is tolerated.
+      - Metrics may appear in any order.
+      - Any metric name outside the fixed allowlist is ignored entirely —
+        it is never stored under any key and never appears in the result,
+        by construction (the result dict's keys are fixed up front and
+        never grown from input).
+      - A term with no parseable, finite, non-negative `dur` value is
+        skipped silently — it can never raise, and never produces a
+        fabricated 0.0 or a stale/previous value.
+      - Duplicate recognized metrics: first VALID occurrence wins. A later
+        duplicate (whether valid or malformed) never overwrites an already-
+        recorded value. This matches the pre-existing "app;dur" duplicate
+        rule this function replaces (see historical
+        test_server_duration_ms_parsing case "app;dur=12.3, app;dur=45.6").
+      - The raw header string itself is never retained in the return value
+        or as a side effect of this function.
+    """
+    result: dict[str, float | None] = {field: None for field in _K2A_METRIC_FIELD_MAP.values()}
+    if not server_timing_header:
+        return result
+
+    for raw_term in server_timing_header.split(","):
+        term_match = _TERM_RE.match(raw_term)
+        if term_match is None:
+            continue
+
+        name = term_match.group(1).lower()
+        field = _K2A_METRIC_FIELD_MAP.get(name)
+        if field is None:
+            continue  # unrelated/unknown metric -- ignored, never stored
+
+        if result[field] is not None:
+            continue  # duplicate -- first valid occurrence already won
+
+        params = term_match.group(2) or ""
+        if not params:
+            continue  # e.g. bare "app" with no ";dur=..." at all
+        dur_match = _DUR_VALUE_RE.search(";" + params)
+        if dur_match is None:
+            continue
+        value = _parse_dur_value(dur_match.group("value"))
+        if value is None:
+            continue
+        result[field] = value
+
+    return result
 
 
 def _server_duration_ms(server_timing_header: str | None) -> float | None:
-    if not server_timing_header:
-        return None
-    match = _SERVER_TIMING_APP_RE.search(server_timing_header)
-    if match is None:
-        return None
-    try:
-        return float(match.group("value"))
-    except (ValueError, TypeError):
-        return None
+    """Backward-compatible accessor: the "app" metric only, unrounded. Kept
+    for any existing caller/test that only ever wanted this one value —
+    behaves identically to before this function was reimplemented on top of
+    _parse_server_timing_metrics, including the case-insensitive metric-name
+    matching newly required by K2A2 (see the module's test suite for the
+    documented change from the prior case-sensitive behavior)."""
+    return _parse_server_timing_metrics(server_timing_header)["server_duration_ms"]
 
 
 async def _timed_call(coro_factory, operation: str, event_count: int, region_label: str | None) -> dict:
@@ -269,7 +397,15 @@ async def _timed_call(coro_factory, operation: str, event_count: int, region_lab
             raise
     total_ms = (time.perf_counter() - start) * 1000
 
-    server_ms = _server_duration_ms(sample.server_timing_header)
+    # K2A2: parse the full fixed metric allowlist in one pass rather than
+    # just "app". Every value here is independently optional — a non-2xx
+    # response, a route other than the three governed ones, or an older
+    # deployment that only ever sends "app" all produce None for the six
+    # detailed fields without that being treated as any kind of failure
+    # (see the module docstring's "Successful governed request expectation"
+    # note and this script's tests for the tolerance this requires).
+    metrics = _parse_server_timing_metrics(sample.server_timing_header)
+    server_ms = metrics["server_duration_ms"]
     overhead_ms: float | None = None
     overhead_negative = False
     if server_ms is not None:
@@ -292,6 +428,12 @@ async def _timed_call(coro_factory, operation: str, event_count: int, region_lab
         "response_status_class": _status_class(sample.status_code),
         "total_duration_ms": round(total_ms, 3),
         "server_duration_ms": round(server_ms, 3) if server_ms is not None else None,
+        "auth_duration_ms": round(metrics["auth_duration_ms"], 3) if metrics["auth_duration_ms"] is not None else None,
+        "db_connection_acquire_ms": round(metrics["db_connection_acquire_ms"], 3) if metrics["db_connection_acquire_ms"] is not None else None,
+        "api_key_lookup_ms": round(metrics["api_key_lookup_ms"], 3) if metrics["api_key_lookup_ms"] is not None else None,
+        "api_key_hash_verify_ms": round(metrics["api_key_hash_verify_ms"], 3) if metrics["api_key_hash_verify_ms"] is not None else None,
+        "last_used_update_ms": round(metrics["last_used_update_ms"], 3) if metrics["last_used_update_ms"] is not None else None,
+        "handler_duration_ms": round(metrics["handler_duration_ms"], 3) if metrics["handler_duration_ms"] is not None else None,
         "network_client_overhead_ms": overhead_ms,
         "network_client_overhead_ms_negative": overhead_negative,
         "exception_category": exception_category or sample.exception_category,
@@ -417,6 +559,24 @@ def _percentiles(values: list[float]) -> dict:
     }
 
 
+# The seven K2A sample fields to summarize, in the fixed display/nesting
+# order used throughout this script (app, then its sub-spans, then the
+# sibling handler metric). Percentile structures are produced only for
+# fields that have at least one non-None sample in a given group — a metric
+# never observed for that group (non-2xx responses, a non-governed route, or
+# an older deployment reporting only "app") is omitted entirely rather than
+# reported as a fabricated all-zero percentile block.
+_K2A_SUMMARY_FIELDS: tuple[str, ...] = (
+    "server_duration_ms",
+    "auth_duration_ms",
+    "db_connection_acquire_ms",
+    "api_key_lookup_ms",
+    "api_key_hash_verify_ms",
+    "last_used_update_ms",
+    "handler_duration_ms",
+)
+
+
 def _summarize(samples: list[dict]) -> dict:
     groups: dict[tuple, list[dict]] = {}
     for s in samples:
@@ -426,24 +586,28 @@ def _summarize(samples: list[dict]) -> dict:
     summary = []
     for (operation, event_count, sdk_client_state), group in sorted(groups.items()):
         total_durations = [g["total_duration_ms"] for g in group]
-        server_durations = [g["server_duration_ms"] for g in group if g["server_duration_ms"] is not None]
         network_overheads = [g["network_client_overhead_ms"] for g in group if g["network_client_overhead_ms"] is not None]
         retries_total = sum(g["retries"] for g in group)
         negative_overhead_count = sum(1 for g in group if g["network_client_overhead_ms_negative"])
-        summary.append(
-            {
-                "operation": operation,
-                "event_count_requested": event_count,
-                "sdk_client_state": sdk_client_state,
-                "sample_count": len(group),
-                "total_duration_ms": _percentiles(total_durations),
-                "server_duration_ms": _percentiles(server_durations) if server_durations else None,
-                "network_client_overhead_ms": _percentiles(network_overheads) if network_overheads else None,
-                "network_client_overhead_ms_negative_count": negative_overhead_count,
-                "retries_total": retries_total,
-            }
+
+        entry = {
+            "operation": operation,
+            "event_count_requested": event_count,
+            "sdk_client_state": sdk_client_state,
+            "sample_count": len(group),
+            "total_duration_ms": _percentiles(total_durations),
+        }
+        for field in _K2A_SUMMARY_FIELDS:
+            values = [g[field] for g in group if g[field] is not None]
+            entry[field] = _percentiles(values) if values else None
+        entry["network_client_overhead_ms"] = (
+            _percentiles(network_overheads) if network_overheads else None
         )
-    return {"groups": summary}
+        entry["network_client_overhead_ms_negative_count"] = negative_overhead_count
+        entry["retries_total"] = retries_total
+        summary.append(entry)
+
+    return {"groups": summary, "k2a_nesting_note": _K2A_NESTING_NOTE}
 
 
 # ---------------------------------------------------------------------------
@@ -576,15 +740,35 @@ def main() -> int:
             "scheduling, retry backoff, and response parsing — not pure "
             "network RTT.\n\n"
         )
+        f.write("K2A " + _K2A_NESTING_NOTE + "\n\n")
+        f.write(
+            "K2A detailed metrics (auth/dbacq/lookup/verify/lastused/handler) "
+            "are only ever populated for successful (2xx) requests to the "
+            "three governed handlers (chain_start, event_record, "
+            "chain_complete); absent detailed metrics on any other request "
+            "(non-2xx response, an older deployment, or a route other than "
+            "those three) are expected and are not reported as a failure.\n\n"
+        )
         for group in summary["groups"]:
             f.write(
                 f"{group['operation']:14s} events={group['event_count_requested']:>2} "
-                f"{group['sdk_client_state']:14s} n={group['sample_count']:>3} "
-                f"total_ms p50/p95/p99={group['total_duration_ms']['p50']}/"
+                f"{group['sdk_client_state']:14s} n={group['sample_count']:>3}\n"
+            )
+            f.write(
+                f"  total p50/p95/p99={group['total_duration_ms']['p50']}/"
                 f"{group['total_duration_ms']['p95']}/{group['total_duration_ms']['p99']} "
                 f"retries_total={group['retries_total']} "
                 f"negative_overhead_count={group['network_client_overhead_ms_negative_count']}\n"
             )
+            for field in _K2A_SUMMARY_FIELDS:
+                pct = group[field]
+                if pct is None:
+                    continue
+                label = _K2A_FIELD_TO_LABEL[field]
+                f.write(
+                    f"  {label} p50={pct['p50']} p95={pct['p95']} "
+                    f"p99={pct['p99']} n={pct['n']}\n"
+                )
 
     print(f"Wrote {json_path}")
     print(f"Wrote {txt_path}")
