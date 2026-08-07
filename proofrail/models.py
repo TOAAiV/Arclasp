@@ -25,6 +25,36 @@ class AgentAction(BaseModel):
     executed_at: datetime | None = None
 
 
+class RemediationAction(BaseModel):
+    """One bounded, customer-safe next step within a RemediationV1 snapshot."""
+
+    code: str
+    summary: str
+
+
+class RemediationV1(BaseModel):
+    """
+    Structured, versioned remediation guidance snapshot (REM1 schema v1).
+
+    Mirrors the backend's ``app.schemas.remediation.RemediationV1``. Guidance
+    only — describes what compliant next step is available after a policy
+    decision; never alters the decision itself and grants no authority.
+
+    Populated only when the backend sends the ``remediation_v1`` field on a
+    ChainEvent response (added by the REM1 backend batch). Older backends
+    that don't send this field leave ``PolicyDecision.remediation_v1`` as
+    ``None`` — see PolicyDecision.remediation for this SDK's pre-existing,
+    unrelated plain-string remediation fallback.
+    """
+
+    schema_version: int
+    outcome: str
+    retryable: bool
+    requires_human: bool
+    actions: list[RemediationAction] = Field(default_factory=list)
+    details: dict = Field(default_factory=dict)
+
+
 class PolicyDecision(BaseModel):
     """
     The governance decision returned by the backend for an agent action.
@@ -53,6 +83,12 @@ class PolicyDecision(BaseModel):
     # Optional remediation guidance returned by the backend
     remediation: str | None = None
     docs_url: str | None = None
+
+    # Structured, versioned remediation guidance (REM1 schema v1). Additive
+    # and independent of the plain-string `remediation`/`docs_url` fields
+    # above — None for backends that don't send it yet and for decisions
+    # where remediation is trivially absent (e.g. a plain "allow").
+    remediation_v1: RemediationV1 | None = None
 
     # Shadow-mode fields — populated when the org is running in shadow mode.
     # evaluation_mode: "enforce" | "shadow" | "disabled" | None (pre-feature events)
