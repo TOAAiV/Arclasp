@@ -76,6 +76,9 @@ class TestIdempotencyKeyGeneration:
         async def fake_post(path, data, action_type=None):
             if "events" in path:
                 captured.append(data.get("idempotency_key"))
+                return _ALLOW_DECISION
+            if path.endswith("/complete"):
+                return {"status": "completed"}
             return _ALLOW_DECISION if "events" in path else _CHAIN_RESPONSE
 
         with patch("proofrail.client._post", side_effect=fake_post):

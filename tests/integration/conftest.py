@@ -160,7 +160,7 @@ def make_mock_post(
         if path == "/v1/chains":
             return {"id": CHAIN_ID}
         if path.endswith("/complete"):
-            return {}
+            return {"id": CHAIN_ID, "status": "completed"}
 
         # /v1/chains/{id}/events
         action_name = (body or {}).get("action_name", "")

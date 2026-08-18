@@ -63,6 +63,8 @@ async def test_langchain_tool_name_truncated_in_action_name():
     async def mock_post(path, body, action_type=None):
         if path == "/v1/chains":
             return _chain_start_response()
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         recorded.append(body)
         return _allow_response()
 
@@ -100,6 +102,8 @@ async def test_langchain_model_name_truncated_in_action_name():
     async def mock_post(path, body, action_type=None):
         if path == "/v1/chains":
             return _chain_start_response()
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         recorded.append(body)
         return _allow_response()
 
@@ -137,6 +141,8 @@ async def test_langgraph_node_name_truncated_in_action_name():
     async def mock_post(path, body, action_type=None):
         if path == "/v1/chains":
             return _chain_start_response()
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         recorded.append(body)
         return _allow_response()
 
@@ -155,6 +161,8 @@ async def test_langgraph_node_name_truncated_in_action_name():
     async def mock_post2(path, body, action_type=None):
         if path == "/v1/chains":
             return _chain_start_response()
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         recorded_bridge.append(body)
         return _allow_response()
 

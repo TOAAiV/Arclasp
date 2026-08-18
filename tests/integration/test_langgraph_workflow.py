@@ -376,7 +376,7 @@ async def test_bug_lg_01_aclose_race_preserves_policy_exception():
         if path == "/v1/chains":
             return {"id": CHAIN_ID}
         if path.endswith("/complete"):
-            return {}
+            return {"id": CHAIN_ID, "status": "completed"}
         action_name = (body or {}).get("action_name", "")
         if action_name == "payment_node:result":
             return require_approval_resp
@@ -460,7 +460,7 @@ async def test_bug_lg_02_strategy_b_propagates_policy_exception():
         if path == "/v1/chains":
             return {"id": CHAIN_ID}
         if path.endswith("/complete"):
-            return {}
+            return {"id": CHAIN_ID, "status": "completed"}
         action_name = (body or {}).get("action_name", "")
         if action_name == "deny_node":
             return require_approval_resp
@@ -524,7 +524,7 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
             if path == "/v1/chains":
                 return {"id": CHAIN_ID}
             if path.endswith("/complete"):
-                return {}
+                return {"id": CHAIN_ID, "status": "completed"}
             action_name = (body or {}).get("action_name", "")
             if action_name == "real_lc_node":
                 return require_approval_resp

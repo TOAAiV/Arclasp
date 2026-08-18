@@ -69,7 +69,7 @@ async def test_development_default_safe_action_calls_backend_event():
         if "/events" in path:
             event_posts.append((path, body, action_type))
             return _allow_response()
-        return {}
+        return {"status": "completed"}
 
     with patch("proofrail.client._post", side_effect=mock_post):
         async with Chain("k1-default") as chain:
@@ -106,7 +106,7 @@ async def test_explicit_enable_local_fast_path_warns_but_still_calls_backend():
             return _chain_start_response("chain-k1-explicit")
         if "/events" in path:
             return _allow_response()
-        return {}
+        return {"status": "completed"}
 
     with patch("proofrail.client._post", side_effect=mock_post):
         async with Chain("k1-explicit-fast-path") as chain:
@@ -137,6 +137,8 @@ async def test_backend_down_with_fast_path_config_fails_closed_before_action():
     async def mock_post(path, body, action_type=None):
         if path == "/v1/chains":
             return _chain_start_response("chain-k1-down")
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         raise BackendUnavailableError("backend down", fail_mode="allow")
 
     with patch("proofrail.client._post", side_effect=mock_post):
@@ -161,7 +163,7 @@ async def test_backend_deny_is_returned_as_action_denied():
             return _chain_start_response()
         if "/events" in path:
             return _deny_response()
-        return {}
+        return {"status": "completed"}
 
     with patch("proofrail.client._post", side_effect=mock_post):
         async with Chain("k1-deny") as chain:
@@ -183,7 +185,7 @@ async def test_backend_require_approval_returns_human_approval_after_poll():
             return _chain_start_response("chain-k1-approval")
         if "/events" in path:
             return _approval_required_response()
-        return {}
+        return {"status": "completed"}
 
     with patch("proofrail.client._post", side_effect=mock_post), patch.object(
         Chain, "_poll_for_approval", new=AsyncMock(return_value="looks good")
@@ -209,7 +211,7 @@ async def test_no_fast_path_async_memory_buffer_is_used_for_public_execution():
             return _chain_start_response()
         if "/events" in path:
             return _allow_response()
-        return {}
+        return {"status": "completed"}
 
     with patch("proofrail.client._post", side_effect=mock_post):
         async with Chain("k1-no-buffer") as chain:

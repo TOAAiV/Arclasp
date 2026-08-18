@@ -129,6 +129,8 @@ class TestChainCreationBody:
             if path == "/v1/chains":
                 captured.update(data)
                 return _CHAIN_RESPONSE
+            if path.endswith("/complete"):
+                return {"status": "completed"}
             return {"policy_decision": "allow"}
 
         with patch("proofrail.client._post", side_effect=fake_post):
@@ -150,6 +152,8 @@ class TestChainCreationBody:
             if path == "/v1/chains":
                 captured.update(data)
                 return _CHAIN_RESPONSE
+            if path.endswith("/complete"):
+                return {"status": "completed"}
             return {"policy_decision": "allow"}
 
         raw_config = {"cumulative_financial_threshold_usd": 50_000}
@@ -169,6 +173,8 @@ class TestChainCreationBody:
             if path == "/v1/chains":
                 captured.update(data)
                 return _CHAIN_RESPONSE
+            if path.endswith("/complete"):
+                return {"status": "completed"}
             return {"policy_decision": "allow"}
 
         with patch("proofrail.client._post", side_effect=fake_post):
@@ -191,6 +197,8 @@ class TestChainCreationBody:
             if path == "/v1/chains":
                 bodies.append(data["policy_config"])
                 return _CHAIN_RESPONSE
+            if path.endswith("/complete"):
+                return {"status": "completed"}
             return {"policy_decision": "allow"}
 
         with patch("proofrail.client._post", side_effect=fake_post):

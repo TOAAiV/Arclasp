@@ -51,7 +51,7 @@ async def test_drain_timeout_scales_with_buffer_size():
         raise asyncio.TimeoutError
 
     async def complete_post(path: str, body: dict, action_type: str | None = None) -> dict:
-        return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
+        return {"status": "completed"}
 
     with patch("proofrail.chain.asyncio.wait_for", side_effect=spy_wait_for):
         with patch("proofrail.client._post", side_effect=complete_post):
@@ -73,7 +73,7 @@ async def test_drain_timeout_drop_count_logged(caplog):
         raise asyncio.TimeoutError
 
     async def complete_post(path: str, body: dict, action_type: str | None = None) -> dict:
-        return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
+        return {"status": "completed"}
 
     with caplog.at_level(logging.WARNING, logger="proofrail.chain"):
         with patch("proofrail.chain.asyncio.wait_for", side_effect=spy_wait_for):
@@ -100,7 +100,7 @@ async def test_drain_timeout_config_override():
         raise asyncio.TimeoutError
 
     async def complete_post(path: str, body: dict, action_type: str | None = None) -> dict:
-        return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
+        return {"status": "completed"}
 
     with patch("proofrail.chain.asyncio.wait_for", side_effect=spy_wait_for):
         with patch("proofrail.client._post", side_effect=complete_post):

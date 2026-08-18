@@ -166,6 +166,15 @@ class BackendUnavailableError(Exception):
         super().__init__(f"{message} (fail_mode={fail_mode})")
 
 
+class ChainCompletionError(Exception):
+    """Raised when authoritative chain completion could not be confirmed."""
+
+    def __init__(self, chain_id: str, message: str = "Chain completion failed") -> None:
+        self.chain_id = chain_id
+        self.message = message
+        super().__init__(f"{message} (chain_id={chain_id})")
+
+
 class ProofRailVerificationError(Exception):
     """Raised when a verification request fails with sanitized context."""
 

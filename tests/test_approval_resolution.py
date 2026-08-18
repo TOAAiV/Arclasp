@@ -43,10 +43,11 @@ def _make_require_approval_response(policy_name: str = "cumulative_financial_thr
 def _make_approval_status_response(
     approval_status: str,
     reason: str | None = None,
+    decision_notes: str | None = None,
 ) -> dict:
     approvals = []
     if approval_status in ("approved", "denied"):
-        approvals = [{"reason": reason, "status": approval_status}]
+        approvals = [{"reason": reason, "decision_notes": decision_notes, "status": approval_status}]
     return {
         "chain_id": "chain-approval-001",
         "chain_status": "pending_approval",
@@ -82,7 +83,11 @@ class TestApprovalResolution:
         with the approver's notes in decision_reason.
         """
         require_resp = _make_require_approval_response()
-        approved_resp = _make_approval_status_response("approved", reason="Looks good, approved.")
+        approved_resp = _make_approval_status_response(
+            "approved",
+            reason="policy-required-approval",
+            decision_notes="Looks good, approved.",
+        )
 
         post_call_count = 0
 
@@ -91,6 +96,8 @@ class TestApprovalResolution:
             post_call_count += 1
             if path == "/v1/chains":
                 return _make_chain_start_response()
+            if path.endswith("/complete"):
+                return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
         async def fake_get(path):
@@ -112,6 +119,7 @@ class TestApprovalResolution:
         assert decision.decision_source == "human_approval"
         assert "Approved by human reviewer" in decision.decision_reason
         assert "Looks good, approved." in decision.decision_reason
+        assert "policy-required-approval" not in decision.decision_reason
 
     @pytest.mark.asyncio
     async def test_approved_without_notes_returns_resolved_decision(self):
@@ -125,6 +133,8 @@ class TestApprovalResolution:
         async def fake_post(path, data, action_type=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
+            if path.endswith("/complete"):
+                return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
         async def fake_get(path):
@@ -154,12 +164,16 @@ class TestApprovalResolution:
         """
         require_resp = _make_require_approval_response()
         denied_resp = _make_approval_status_response(
-            "denied", reason="Too risky for this client."
+            "denied",
+            reason="policy-required-approval",
+            decision_notes="Too risky for this client.",
         )
 
         async def fake_post(path, data, action_type=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
+            if path.endswith("/complete"):
+                return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
         async def fake_get(path):
@@ -198,6 +212,8 @@ class TestApprovalResolution:
         async def fake_post(path, data, action_type=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
+            if path.endswith("/complete"):
+                return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
         async def fake_get(path):

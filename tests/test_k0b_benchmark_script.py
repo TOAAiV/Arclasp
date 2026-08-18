@@ -506,6 +506,8 @@ def test_full_run_writes_k2a_metrics_and_nesting_note_to_output(tmp_path):
     async def _post_mock(url, *args, **kwargs) -> httpx.Response:
         if url.endswith("/events"):
             body = {"policy_decision": "allow", "decision_reason": "", "decision_source": "x"}
+        elif url.endswith("/complete"):
+            body = {"status": "completed"}
         else:
             body = {"id": "fake-chain-id"}
         return httpx.Response(

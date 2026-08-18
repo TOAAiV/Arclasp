@@ -65,6 +65,66 @@ def _verification_payload(artifact_type: str, artifact_id: str) -> dict:
     }
 
 
+def _layers() -> dict:
+    valid = {"status": "valid", "reason_code": None}
+    na = {"status": "not_applicable", "reason_code": None}
+    return {
+        "compatibility_integrity": valid,
+        "compatibility_chain": valid,
+        "compatibility_binding": na,
+        "v2_payload_shape": valid,
+        "v2_artifact_hash": valid,
+        "asymmetric_signature": {"status": "valid", "key_status": "trusted", "reason_code": None},
+        "v2_evidence_chain": valid,
+        "issuance_provenance": valid,
+        "cutover_manifest": na,
+        "recovery_authorization": na,
+        "receipt_ordering": valid,
+        "historical_state": {"status": "none", "reason_code": None},
+    }
+
+
+def _evidence_status(
+    *,
+    status_proof: str,
+    reason_code: str,
+    reliance_status: str = "active",
+    dispute_status: str = "none",
+    correction_status: str = "none",
+) -> dict:
+    return {
+        "status_proof": status_proof,
+        "reason_code": reason_code,
+        "projection_status": "current",
+        "projection_reason_code": None,
+        "history_count": 1 if reason_code != "no_status_history" else 0,
+        "current_status": None
+        if reason_code == "no_status_history"
+        else {
+            "reliance_status": reliance_status,
+            "dispute_status": dispute_status,
+            "correction_status": correction_status,
+            "correction_count": 1 if correction_status == "corrected" else 0,
+        },
+        "current_facts": {
+            "revocation": {
+                "action": "revoke",
+                "reason_code": "superseded",
+                "public_summary": "Revoked by policy",
+                "issued_at": _NOW,
+                "status_sequence": 1,
+                "artifact_hash_sha256": "a" * 64,
+                "signing_key_id": "evidence-key-1",
+            }
+            if reliance_status == "revoked"
+            else None,
+            "open_dispute": None,
+            "latest_dispute_resolution": None,
+            "latest_correction": None,
+        },
+    }
+
+
 _TOKEN_METADATA = {
     "id": _TOKEN_ID,
     "organization_id": "dddddddd-eeee-ffff-0000-111111111111",
@@ -138,6 +198,74 @@ async def test_verify_receipt_v2_url_and_typed_response():
     _assert_no_raw_v2_fields(result)
 
 
+def test_authenticated_verification_preserves_governance_and_layers():
+    payload = _verification_payload("chain_record", _RECEIPT_ID)
+    payload["artifact"]["issuance_mode"] = "historical_recovery"
+    payload["verification"]["reason_code"] = None
+    payload["verification"]["layers"] = _layers()
+    payload["verification"]["legacy_hmac_diagnostic"] = {
+        "status": "match",
+        "authoritative": False,
+        "reason_code": None,
+    }
+    payload["evidence_status"] = _evidence_status(
+        status_proof="valid",
+        reason_code="revoked",
+        reliance_status="revoked",
+    )
+    payload["future_non_critical_field"] = {"still": "ignored"}
+
+    result = AuthenticatedVerificationResponse.model_validate(payload)
+
+    assert result.artifact.issuance_mode == "historical_recovery"
+    assert result.verification.layers is not None
+    assert result.verification.layers.asymmetric_signature.key_status == "trusted"
+    assert result.verification.legacy_hmac_diagnostic is not None
+    assert result.verification.legacy_hmac_diagnostic.authoritative is False
+    assert result.evidence_status is not None
+    assert result.evidence_status.status_proof == "valid"
+    assert result.evidence_status.current_status is not None
+    assert result.evidence_status.current_status.reliance_status == "revoked"
+    assert result.verification.overall_status == "verified"
+
+
+@pytest.mark.parametrize(
+    ("reason_code", "status_proof", "current_status"),
+    [
+        ("no_status_history", "not_applicable", None),
+        ("open_dispute", "valid", {"reliance_status": "active", "dispute_status": "open", "correction_status": "none", "correction_count": 0}),
+        ("corrected", "valid", {"reliance_status": "active", "dispute_status": "none", "correction_status": "corrected", "correction_count": 1}),
+        ("signing_key_untrusted", "indeterminate", None),
+    ],
+)
+def test_authenticated_evidence_status_governance_states(reason_code, status_proof, current_status):
+    payload = _verification_payload("approval_certificate", _APPROVAL_ID)
+    payload["evidence_status"] = {
+        "status_proof": status_proof,
+        "reason_code": reason_code,
+        "projection_status": "current",
+        "projection_reason_code": None,
+        "history_count": 0 if current_status is None else 1,
+        "current_status": current_status,
+        "current_facts": {
+            "revocation": None,
+            "open_dispute": None,
+            "latest_dispute_resolution": None,
+            "latest_correction": None,
+        },
+    }
+
+    result = AuthenticatedVerificationResponse.model_validate(payload)
+
+    assert result.verification.overall_status == "verified"
+    assert result.evidence_status is not None
+    assert result.evidence_status.reason_code == reason_code
+    if current_status is None:
+        assert result.evidence_status.current_status is None
+    else:
+        assert result.evidence_status.current_status.dispute_status == current_status["dispute_status"]
+
+
 @pytest.mark.asyncio
 async def test_token_list_issue_revoke_urls_and_types():
     with _mock_get({"organization_id": _TOKEN_METADATA["organization_id"], "tokens": [_TOKEN_METADATA], "total": 1, "limit": 10, "offset": 5}) as mock_get:
@@ -204,6 +332,57 @@ async def test_public_token_verify_uses_public_v2_and_sanitizes_error_text():
             await _client.verify_public_token(_PUBLIC_TOKEN)
     assert _PUBLIC_TOKEN not in str(exc_info.value)
     assert exc_info.value.reason_code == "not_publicly_verifiable"
+
+
+def test_public_verification_preserves_public_governance_fields():
+    payload = {
+        "verification_version": "2",
+        "artifact_type": "chain_record",
+        "artifact_version": "2",
+        "issuance_mode": "forward",
+        "overall_status": "verified",
+        "integrity": {"status": "valid", "reason_code": None},
+        "asymmetric_signature": {"status": "valid", "key_status": "trusted", "reason_code": None},
+        "layers": {
+            "compatibility_integrity": {"status": "valid", "reason_code": None},
+            "asymmetric_signature": {"status": "valid", "key_status": "trusted", "reason_code": None},
+        },
+        "legacy_hmac_diagnostic": {
+            "status": "missing",
+            "authoritative": False,
+            "reason_code": "legacy_hmac_missing",
+        },
+        "evidence_status": {
+            "status_proof": "valid",
+            "reason_code": "open_dispute",
+            "history_count": 1,
+            "current_status": {
+                "reliance_status": "active",
+                "dispute_status": "open",
+                "correction_status": "none",
+                "correction_count": 0,
+            },
+            "current_facts": {
+                "revocation": None,
+                "open_dispute": None,
+                "latest_dispute_resolution": None,
+                "latest_correction": None,
+            },
+        },
+        "verified_at": _NOW,
+        "unknown_future_field": True,
+    }
+
+    result = PublicVerificationResponse.model_validate(payload)
+
+    assert result.issuance_mode == "forward"
+    assert result.layers is not None
+    assert result.layers["asymmetric_signature"].key_status == "trusted"
+    assert result.legacy_hmac_diagnostic is not None
+    assert result.legacy_hmac_diagnostic.authoritative is False
+    assert result.evidence_status is not None
+    assert result.evidence_status.current_status is not None
+    assert result.evidence_status.current_status.dispute_status == "open"
 
 
 @pytest.mark.asyncio

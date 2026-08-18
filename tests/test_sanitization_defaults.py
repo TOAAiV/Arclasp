@@ -229,6 +229,8 @@ async def test_chain_metadata_api_key_redacted_in_post():
         if path == "/v1/chains":
             captured["body"] = body
             return {"id": "chain-sec-001"}
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         return {
             "policy_decision": "allow",
             "decision_reason": "",
@@ -259,6 +261,8 @@ async def test_chain_metadata_value_prefix_redacted_in_post():
         if path == "/v1/chains":
             captured["body"] = body
             return {"id": "chain-sec-002"}
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         return {
             "policy_decision": "allow",
             "decision_reason": "",
@@ -293,6 +297,8 @@ async def test_chain_metadata_nested_dict_sanitized():
         if path == "/v1/chains":
             captured["body"] = body
             return {"id": "chain-sec-003"}
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         return {
             "policy_decision": "allow",
             "decision_reason": "",

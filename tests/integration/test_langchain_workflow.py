@@ -287,7 +287,7 @@ async def test_bug_lc_02_strategy_b_propagates_policy_exception():
         if path == "/v1/chains":
             return {"id": "chain-lc02-swallow"}
         if path.endswith("/complete"):
-            return {}
+            return {"id": "chain-lc02-swallow", "status": "completed"}
         action_name = (body or {}).get("action_name", "")
         if action_name == "deny_tool":
             return require_approval_resp
@@ -359,7 +359,7 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
             if path == "/v1/chains":
                 return {"id": "chain-lc02-real"}
             if path.endswith("/complete"):
-                return {}
+                return {"id": "chain-lc02-real", "status": "completed"}
             action_name = (body or {}).get("action_name", "")
             if action_name == "real_lc_tool":
                 return require_approval_resp
@@ -513,7 +513,7 @@ async def test_strategy_b_populates_parent_agent_name_real():
             if path == "/v1/chains":
                 return {"id": "chain-parent-real"}
             if path.endswith("/complete"):
-                return {}
+                return {"id": "chain-parent-real", "status": "completed"}
             return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
 
         with patch("proofrail.client._post", side_effect=mock_post) as mock_p:
@@ -590,7 +590,7 @@ async def test_post_execution_recording_failure_propagates_langchain():
         if path == "/v1/chains":
             return {"id": "chain-lc-post-fail"}
         if path.endswith("/complete"):
-            return {}
+            return {"id": "chain-lc-post-fail", "status": "completed"}
         if body.get("action_type") == "tool_result":
             raise BackendUnavailableError("recording failed", fail_mode="deny")
         return {"policy_decision": "allow", "decision_source": "backend_evaluation"}

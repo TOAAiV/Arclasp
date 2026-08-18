@@ -331,6 +331,85 @@ class EvidenceChainStatus(BaseModel):
     reason_code: str | None = None
 
 
+class HistoricalStateStatus(BaseModel):
+    """Historical-recovery/adjudication context for composed verification."""
+
+    status: str
+    reason_code: str | None = None
+
+
+class VerificationLayers(BaseModel):
+    """Detailed v2 verification layer breakdown when the backend exposes it."""
+
+    compatibility_integrity: VerificationLayerStatus
+    compatibility_chain: VerificationLayerStatus
+    compatibility_binding: VerificationLayerStatus
+    v2_payload_shape: VerificationLayerStatus
+    v2_artifact_hash: VerificationLayerStatus
+    asymmetric_signature: AsymmetricSignatureStatus
+    v2_evidence_chain: VerificationLayerStatus
+    issuance_provenance: VerificationLayerStatus
+    cutover_manifest: VerificationLayerStatus
+    recovery_authorization: VerificationLayerStatus
+    receipt_ordering: VerificationLayerStatus
+    historical_state: HistoricalStateStatus
+
+
+class LegacyHmacDiagnostic(BaseModel):
+    """Non-authoritative HMAC compatibility diagnostic for approval evidence."""
+
+    status: str
+    authoritative: bool = False
+    reason_code: str | None = None
+
+
+class EvidenceStatusFact(BaseModel):
+    """Public-safe post-issuance governance fact."""
+
+    action: str
+    reason_code: str
+    public_summary: str | None = None
+    issued_at: datetime | str
+    status_sequence: int
+    artifact_hash_sha256: str
+    signing_key_id: str
+
+
+class EvidenceStatusCurrentStatus(BaseModel):
+    """Current governance state independent of cryptographic verification."""
+
+    reliance_status: str
+    dispute_status: str
+    correction_status: str
+    correction_count: int
+
+
+class EvidenceStatusCurrentFacts(BaseModel):
+    """Current bounded governance facts exposed by verification responses."""
+
+    revocation: EvidenceStatusFact | None = None
+    open_dispute: EvidenceStatusFact | None = None
+    latest_dispute_resolution: EvidenceStatusFact | None = None
+    latest_correction: EvidenceStatusFact | None = None
+
+
+class PublicEvidenceStatus(BaseModel):
+    """Public-token post-issuance governance status."""
+
+    status_proof: str
+    reason_code: str
+    history_count: int
+    current_status: EvidenceStatusCurrentStatus | None = None
+    current_facts: EvidenceStatusCurrentFacts
+
+
+class AuthenticatedEvidenceStatus(PublicEvidenceStatus):
+    """Authenticated governance status with projection health diagnostics."""
+
+    projection_status: str
+    projection_reason_code: str | None = None
+
+
 class ChainMetadata(BaseModel):
     """Safe chain metadata returned by authenticated v2 verification."""
 
@@ -350,17 +429,21 @@ class VerificationArtifact(BaseModel):
     receipt_id: str | None = None
     receipt_number: str | None = None
     generated_at: datetime | str | None = None
+    issuance_mode: str | None = None
 
 
 class VerificationStatus(BaseModel):
     """Role-aware v2 verification result without raw evidence fields."""
 
     overall_status: str
+    reason_code: str | None = None
     integrity: VerificationLayerStatus
     asymmetric_signature: AsymmetricSignatureStatus
     timestamp_anchors: TimestampAnchorStatuses
     evidence_chain: EvidenceChainStatus
     verified_at: datetime
+    layers: VerificationLayers | None = None
+    legacy_hmac_diagnostic: LegacyHmacDiagnostic | None = None
 
 
 class ApprovalDecisionContext(BaseModel):
@@ -444,6 +527,7 @@ class AuthenticatedVerificationResponse(BaseModel):
     context: MemberVerificationContext
     capabilities: VerificationCapabilities
     admin_context: AdminVerificationContext | None = None
+    evidence_status: AuthenticatedEvidenceStatus | None = None
 
 
 class PublicVerificationStatus(BaseModel):
@@ -461,11 +545,15 @@ class PublicVerificationResponse(BaseModel):
     overall_status: str | None = None
     artifact_type: str | None = None
     artifact_version: str | None = None
+    issuance_mode: str | None = None
     integrity: PublicVerificationStatus | None = None
     asymmetric_signature: PublicVerificationStatus | None = None
+    layers: dict[str, PublicVerificationStatus] | None = None
     timestamp_anchors: dict | None = None
     verified_at: datetime | str | None = None
     reason_code: str | None = None
+    legacy_hmac_diagnostic: LegacyHmacDiagnostic | None = None
+    evidence_status: PublicEvidenceStatus | None = None
 
 
 class PublicVerificationTokenMetadata(BaseModel):

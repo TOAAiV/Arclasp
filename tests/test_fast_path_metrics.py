@@ -44,6 +44,8 @@ def _init_deprecated_fast_path(cumulative_threshold_usd: float = 10_000.0) -> No
 async def _mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
     if path == "/v1/chains":
         return _chain_start_response()
+    if path.endswith("/complete"):
+        return {"status": "completed"}
     return _allow_response()
 
 
@@ -90,6 +92,8 @@ async def test_public_chain_does_not_update_local_fast_path_metrics():
     async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
         if path == "/v1/chains":
             return _chain_start_response()
+        if path.endswith("/complete"):
+            return {"status": "completed"}
         if "/events" in path:
             event_bodies.append(dict(body))
         return _allow_response()

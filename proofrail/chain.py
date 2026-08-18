@@ -31,6 +31,7 @@ from proofrail import client as _client
 from proofrail.exceptions import (
     ActionDeniedError,
     ChainAutoPausedError,
+    ChainCompletionError,
     ChainTimeoutError,
     ProofRailKillSwitchError,
     _POLICY_REMEDIATION,
@@ -146,7 +147,7 @@ class Chain:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        await self._complete()
+        await self._complete(raise_on_failure=exc_type is None)
         return False  # do not suppress exceptions
 
     # ------------------------------------------------------------------
@@ -175,7 +176,7 @@ class Chain:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        asyncio.run(self._complete())
+        asyncio.run(self._complete(raise_on_failure=exc_type is None))
         return False
 
     # ------------------------------------------------------------------
@@ -548,7 +549,7 @@ class Chain:
             self._offline,
         )
 
-    async def _complete(self) -> None:
+    async def _complete(self, *, raise_on_failure: bool = True) -> None:
         """Mark the chain as completed on the backend."""
         if self._chain_id is None:
             return  # Never started (offline or error on entry) — nothing to close.
@@ -590,14 +591,19 @@ class Chain:
                 )
 
         try:
-            await _client._post(f"/v1/chains/{self._chain_id}/complete", {})
+            response = await _client._post(f"/v1/chains/{self._chain_id}/complete", {})
+            if not isinstance(response, dict) or response.get("status") != "completed":
+                raise ValueError("completion response did not confirm completed status")
             logger.debug("Chain completed (id=%s)", self._chain_id)
         except Exception as exc:
-            # Completing a chain is best-effort — log but do not mask any
-            # exception that is already propagating from the with-block body.
             logger.warning(
                 "Failed to mark chain %s as completed: %s", self._chain_id, exc
             )
+            if raise_on_failure:
+                raise ChainCompletionError(
+                    self._chain_id,
+                    "Authoritative chain completion could not be confirmed",
+                ) from exc
 
     async def _poll_for_approval(self) -> str | None:
         """
@@ -644,7 +650,7 @@ class Chain:
             approver_notes: str | None = None
             approvals_list = status_response.get("approvals", [])
             if approvals_list:
-                approver_notes = approvals_list[0].get("reason") or None
+                approver_notes = approvals_list[0].get("decision_notes") or None
 
             if approval_status == "approved":
                 logger.info("Approval granted for chain %s", self._chain_id)
