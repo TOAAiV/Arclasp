@@ -22,7 +22,7 @@ times out) — are enforced transparently without changes to your crew definitio
 ## Installation
 
 ```bash
-pip install "proofrail[crewai]"
+pip install "arclasp[crewai]"
 ```
 
 ---

@@ -17,23 +17,27 @@ This is built for people running real agents in real systems. Solo developers, s
 ## Install
 
 ```bash
-pip install proofrail
+pip install arclasp
 ```
+
+> **Note:** the PyPI distribution is `arclasp`, but the Python import namespace
+> stays `proofrail` during the Arclasp transition — you still write
+> `import proofrail` after installing.
 
 Framework adapters are optional extras:
 
 ```bash
-pip install "proofrail[langgraph]"   # LangGraph
-pip install "proofrail[langchain]"   # LangChain
-pip install "proofrail[crewai]"      # CrewAI
-pip install "proofrail[mcp]"         # MCP servers
-pip install "proofrail[all]"         # everything
+pip install "arclasp[langgraph]"   # LangGraph
+pip install "arclasp[langchain]"   # LangChain
+pip install "arclasp[crewai]"      # CrewAI
+pip install "arclasp[mcp]"         # MCP servers
+pip install "arclasp[all]"         # everything
 ```
 
 **Python version notes:**
 
 - The base SDK and all adapters except CrewAI support Python 3.10+, including 3.14.
-- `proofrail[crewai]` requires **Python 3.10�3.13**. CrewAI's own dependencies are not yet compatible with Python 3.14. If you're on Python 3.14, use the other adapters or pin your CrewAI environment to Python 3.13.
+- `arclasp[crewai]` requires **Python 3.10�3.13**. CrewAI's own dependencies are not yet compatible with Python 3.14. If you're on Python 3.14, use the other adapters or pin your CrewAI environment to Python 3.13.
 
 ## Quick start
 
@@ -123,13 +127,13 @@ See https://docs.proofrail.dev/frameworks/mcp for MCP integration details.
 
 ### CrewAI
 
-> **Python 3.14:** CrewAI's dependencies do not yet support Python 3.14. On Python 3.14, `proofrail[crewai]` installs the base SDK but skips CrewAI itself. Use Python 3.10�3.13 if you need CrewAI integration.
+> **Python 3.14:** CrewAI's dependencies do not yet support Python 3.14. On Python 3.14, `arclasp[crewai]` installs the base SDK but skips CrewAI itself. Use Python 3.10�3.13 if you need CrewAI integration.
 
-> **Note for Python 3.11 users:** If you see a `distutils_hack` assertion error when installing `proofrail[crewai]`, set `SETUPTOOLS_USE_DISTUTILS=stdlib` before running pip install. This is a CrewAI dependency packaging issue, not a ProofRail one.
+> **Note for Python 3.11 users:** If you see a `distutils_hack` assertion error when installing `arclasp[crewai]`, set `SETUPTOOLS_USE_DISTUTILS=stdlib` before running pip install. This is a CrewAI dependency packaging issue, not a ProofRail one.
 > ```bash
-> SETUPTOOLS_USE_DISTUTILS=stdlib pip install "proofrail[crewai]"
+> SETUPTOOLS_USE_DISTUTILS=stdlib pip install "arclasp[crewai]"
 > ```
-> On Windows: `$env:SETUPTOOLS_USE_DISTUTILS="stdlib"; pip install "proofrail[crewai]"`
+> On Windows: `$env:SETUPTOOLS_USE_DISTUTILS="stdlib"; pip install "arclasp[crewai]"`
 
 ```python
 import proofrail
@@ -280,7 +284,7 @@ What this release doesn't do, so you find out from us and not from production:
 
 - Approval emails may land in spam on first delivery. Add `notifications@proofrail.dev` to your contacts to avoid this.
 - First request after 15 minutes of inactivity may take 5�15 seconds due to backend cold start (free tier).
-- On Python 3.11, installing `proofrail[crewai]` requires `SETUPTOOLS_USE_DISTUTILS=stdlib` set before pip. See the CrewAI section above.
+- On Python 3.11, installing `arclasp[crewai]` requires `SETUPTOOLS_USE_DISTUTILS=stdlib` set before pip. See the CrewAI section above.
 - `fail_modes` keys must match your `action_type` strings, not risk categories. Adapter users: use `"tool_call"` and `"llm_inference"` as keys.
 
 If any of these is a blocker for your use case, file an issue. We'd rather tell you honestly whether to wait than have you discover the limitation in production.

@@ -7,7 +7,7 @@ before the underlying tool handler executes.
 
 Requires the ``mcp`` extra::
 
-    pip install proofrail[mcp]
+    pip install arclasp[mcp]
 
 Usage::
 

@@ -15,7 +15,7 @@ automatically recorded as a governed event in ProofRail.
 ## Installation
 
 ```bash
-pip install proofrail langgraph
+pip install arclasp langgraph
 ```
 
 ---

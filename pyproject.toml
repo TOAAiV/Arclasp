@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "proofrail"
+name = "arclasp"
 version = "0.1.0a9"
 description = "Runtime governance for AI agent chains."
 readme = "README.md"
