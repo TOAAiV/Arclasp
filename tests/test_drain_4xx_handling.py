@@ -26,8 +26,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-import proofrail
-from proofrail.chain import Chain, _drain_offline_buffer
+import arclasp
+from arclasp.chain import Chain, _drain_offline_buffer
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ def _buffered_event(i: int) -> dict:
 
 @pytest.fixture(autouse=True)
 def sdk_init():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://test",
         fail_mode="allow",
@@ -103,8 +103,8 @@ class TestDrainPermanent4xx:
                 raise _make_http_error(422, "Unprocessable entity")
             return _ALLOW_DECISION
 
-        with caplog.at_level(logging.WARNING, logger="proofrail.chain"), \
-             patch("proofrail.client._post", side_effect=mock_post):
+        with caplog.at_level(logging.WARNING, logger="arclasp.chain"), \
+             patch("arclasp.client._post", side_effect=mock_post):
             chain._drain_task = asyncio.create_task(_drain_offline_buffer(chain))
             await asyncio.wait_for(chain._drain_task, timeout=5.0)
 
@@ -153,7 +153,7 @@ class TestDrainTransientRetry:
                 raise _make_http_error(503, "Service unavailable")
             return _ALLOW_DECISION
 
-        with patch("proofrail.client._post", side_effect=mock_post), \
+        with patch("arclasp.client._post", side_effect=mock_post), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             chain._drain_task = asyncio.create_task(_drain_offline_buffer(chain))
             await asyncio.wait_for(chain._drain_task, timeout=5.0)
@@ -191,7 +191,7 @@ class TestDrainTransientRetry:
                 raise _make_http_error(429, "Too many requests")
             return _ALLOW_DECISION
 
-        with patch("proofrail.client._post", side_effect=mock_post), \
+        with patch("arclasp.client._post", side_effect=mock_post), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             chain._drain_task = asyncio.create_task(_drain_offline_buffer(chain))
             await asyncio.wait_for(chain._drain_task, timeout=5.0)

@@ -1,5 +1,5 @@
 """
-Integration tests for proofrail.crewai.adapter (GovernedCrew).
+Integration tests for arclasp.crewai.adapter (GovernedCrew).
 
 Strategy A (native before_task_callback / task_callback hooks) is exercised
 in the 6 core scenarios.  An extra test forces Strategy B (monkey-patch
@@ -25,9 +25,9 @@ from typing import Any
 
 import pytest
 
-import proofrail
-from proofrail.crewai.adapter import govern
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
+import arclasp
+from arclasp.crewai.adapter import govern
+from arclasp.exceptions import ActionDeniedError, BackendUnavailableError
 
 from .conftest import (
     make_mock_post,
@@ -209,7 +209,7 @@ def _govern_a(tasks=None, chain_name="crew-test"):
 @pytest.mark.asyncio
 async def test_happy_path_crewai():
     mock_post, calls = make_mock_post()
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await _govern_a().kickoff_async(inputs={"topic": "AI"})
         # Give fire-and-forget coroutines time to run
         await asyncio.sleep(0)
@@ -232,7 +232,7 @@ async def test_happy_path_crewai():
 @pytest.mark.asyncio
 async def test_backend_flags_action_crewai():
     mock_post, calls = make_mock_post(flag_on="Research the market")
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await _govern_a().kickoff_async(inputs={"topic": "AI"})
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -259,7 +259,7 @@ async def test_backend_denies_action_crewai():
     # "Delete old records" → action_name[:100] = "Delete old records"
     mock_post, calls = make_mock_post(deny_on="Delete old records")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         # ActionDeniedError now propagates — synchronous _fire() fix
         with pytest.raises(ActionDeniedError):
             await governed.kickoff_async(inputs={"topic": "test"})
@@ -286,7 +286,7 @@ async def test_backend_denies_action_crewai():
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_deny_crewai():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -295,7 +295,7 @@ async def test_backend_unreachable_fail_deny_crewai():
     )
     mock_post, calls = make_mock_post(unavailable=True)
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError):
             await _govern_a().kickoff_async(inputs={"topic": "AI"})
 
@@ -309,7 +309,7 @@ async def test_backend_unreachable_fail_deny_crewai():
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_crewai():
     with pytest.warns(DeprecationWarning, match="fail_mode"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -318,7 +318,7 @@ async def test_backend_unreachable_fail_allow_crewai():
         )
     mock_post, calls = make_mock_post(offline_signal=True)
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError) as exc_info:
             await _govern_a().kickoff_async(inputs={"topic": "AI"})
 
@@ -333,7 +333,7 @@ async def test_backend_unreachable_fail_allow_crewai():
 @pytest.mark.asyncio
 async def test_fast_path_config_still_uses_backend_crewai():
     with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -344,7 +344,7 @@ async def test_fast_path_config_still_uses_backend_crewai():
     governed = govern(_StubCrewA(tasks=tasks), chain_name="crew-fp")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await governed.kickoff_async(inputs={"topic": "config"})
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -371,7 +371,7 @@ async def test_strategy_b_fallback_crewai():
     governed = govern(crew, chain_name="crew-b")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         # _StubCrewB dispatches via asyncio.to_thread; the patched execute_task
         # fires governance coroutines synchronously on the main event loop via
         # run_coroutine_threadsafe + fut.result().
@@ -421,7 +421,7 @@ async def test_mixed_callback_no_double_firing():
     governed = govern(crew, chain_name="crew-mixed-b6")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await governed.kickoff_async(inputs={"topic": "test"})
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -480,7 +480,7 @@ async def test_parent_agent_name_strategy_b():
     governed = govern(crew, chain_name="crew-b-cr01")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         await governed.kickoff_async(inputs={"topic": "data"})
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -521,7 +521,7 @@ async def test_parent_agent_name_strategy_a_mixed():
     governed = govern(crew, chain_name="crew-mixed-cr01")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         await governed.kickoff_async(inputs={"topic": "test"})
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -577,7 +577,7 @@ async def test_deny_propagates_through_strategy_b_execute_task():
     governed = govern(crew, chain_name="crew-deny-b-regression")
     mock_post, calls = make_mock_post(deny_on="Analyse the data")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(ActionDeniedError):
             await governed.kickoff_async(inputs={"topic": "test"})
 

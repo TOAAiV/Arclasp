@@ -1,12 +1,12 @@
 """
-proofrail.langgraph.adapter — Governance wrapper for compiled LangGraph graphs.
+arclasp.langgraph.adapter — Governance wrapper for compiled LangGraph graphs.
 
 Quick start
 -----------
-    import proofrail
-    from proofrail.langgraph import govern
+    import arclasp
+    from arclasp.langgraph import govern
 
-    proofrail.init(api_key="prail_...")
+    arclasp.init(api_key="prail_...")
     governed = govern(compiled_graph, chain_name="my-workflow")
 
     # Drop-in replacement — same interface as the original graph:
@@ -16,14 +16,14 @@ How it works
 ------------
 1.  ``govern()`` wraps the compiled graph in a ``GovernedGraph`` instance that
     has identical ``.invoke`` / ``.ainvoke`` signatures.
-2.  On every invocation, a ProofRail ``Chain`` context manager is opened so the
+2.  On every invocation, a Arclasp ``Chain`` context manager is opened so the
     full workflow appears as a single governed chain in the dashboard.
 3.  Node-level events are captured via one of two strategies, tried in order:
 
     Strategy A — ``astream_events`` (LangGraph >= 0.1, preferred)
         ``astream_events(version="v2")`` yields structured events with
         ``metadata["langgraph_node"]`` identifying each node.  We consume the
-        stream, fire ``ProofRailLangGraphCallback.on_node_start`` / ``on_node_end``
+        stream, fire ``ArclaspLangGraphCallback.on_node_start`` / ``on_node_end``
         for each real node, and collect the graph's final output from the
         root-level ``on_chain_end`` event.
 
@@ -36,7 +36,7 @@ How it works
 
 Policy enforcement
 ------------------
-``record_agent_action`` is called for every node.  If the ProofRail backend
+``record_agent_action`` is called for every node.  If the Arclasp backend
 returns a ``"deny"`` decision, ``ActionDeniedError`` propagates out of
 ``ainvoke`` / ``invoke`` — the graph execution is halted at that node.
 """
@@ -47,17 +47,17 @@ import asyncio
 import logging
 from typing import Any
 
-from proofrail import client as _proofrail_client
-from proofrail._utils import _merge_config
-from proofrail.chain import Chain
-from proofrail.exceptions import (
+from arclasp import client as _arclasp_client
+from arclasp._utils import _merge_config
+from arclasp.chain import Chain
+from arclasp.exceptions import (
     ActionDeniedError,
     ChainAutoPausedError,
     ChainTimeoutError,
-    ProofRailKillSwitchError,
+    ArclaspKillSwitchError,
 )
-from proofrail.langgraph.callbacks import (
-    ProofRailLangGraphCallback,
+from arclasp.langgraph.callbacks import (
+    ArclaspLangGraphCallback,
     _INTERNAL_NODES,
     _StrategyBPolicyBreak,
 )
@@ -76,7 +76,7 @@ def govern(
     metadata: dict | None = None,
 ) -> "GovernedGraph":
     """
-    Wrap a compiled LangGraph graph with ProofRail governance.
+    Wrap a compiled LangGraph graph with Arclasp governance.
 
     Parameters
     ----------
@@ -85,7 +85,7 @@ def govern(
         ``.ainvoke`` methods (typically the result of
         ``StateGraph.compile()``).
     chain_name : str
-        Name recorded in the ProofRail dashboard for each invocation of this
+        Name recorded in the Arclasp dashboard for each invocation of this
         graph.  Defaults to ``"langgraph_workflow"``.
     metadata : dict, optional
         Extra key/value pairs attached to every chain created by this
@@ -100,7 +100,7 @@ def govern(
     Raises
     ------
     RuntimeError
-        If ``proofrail.init()`` has not been called before ``govern()`` is
+        If ``arclasp.init()`` has not been called before ``govern()`` is
         used to invoke the graph.
     ImportError
         If ``langgraph`` is not installed in the current environment.
@@ -134,7 +134,7 @@ def govern(
 class GovernedGraph:
     """
     Drop-in replacement for a compiled LangGraph graph that wraps every
-    invocation in a ProofRail governance chain.
+    invocation in a Arclasp governance chain.
 
     Do not instantiate directly — use :func:`govern`.
     """
@@ -162,32 +162,32 @@ class GovernedGraph:
         """
         Async-invoke the governed graph.
 
-        Opens a ProofRail chain, records every node execution, enforces policy
+        Opens a Arclasp chain, records every node execution, enforces policy
         decisions, then closes the chain.  Returns the graph's final output
         unchanged.
 
         Raises
         ------
         RuntimeError
-            If ``proofrail.init()`` has not been called.
+            If ``arclasp.init()`` has not been called.
         ActionDeniedError
-            If any node's action is denied by the ProofRail policy engine.
+            If any node's action is denied by the Arclasp policy engine.
         """
         # Fail fast with a clear message if the SDK was never initialised.
-        _proofrail_client.get_config()
+        _arclasp_client.get_config()
 
         async with Chain(
             self._chain_name, metadata=self._chain_metadata
-        ) as proofrail_chain:
-            callback = ProofRailLangGraphCallback(proofrail_chain)
+        ) as arclasp_chain:
+            callback = ArclaspLangGraphCallback(arclasp_chain)
 
             if hasattr(self._graph, "astream_events"):
                 return await self._ainvoke_via_streaming(
-                    proofrail_chain, callback, state, config, **kwargs
+                    arclasp_chain, callback, state, config, **kwargs
                 )
             else:
                 return await self._ainvoke_via_callbacks(
-                    proofrail_chain, callback, state, config, **kwargs
+                    arclasp_chain, callback, state, config, **kwargs
                 )
 
     # ------------------------------------------------------------------
@@ -226,8 +226,8 @@ class GovernedGraph:
 
     async def _ainvoke_via_streaming(
         self,
-        proofrail_chain: Chain,
-        callback: ProofRailLangGraphCallback,
+        arclasp_chain: Chain,
+        callback: ArclaspLangGraphCallback,
         state: Any,
         config: dict | None,
         **kwargs: Any,
@@ -315,7 +315,7 @@ class GovernedGraph:
                     ChainTimeoutError,
                     ActionDeniedError,
                     ChainAutoPausedError,
-                    ProofRailKillSwitchError,
+                    ArclaspKillSwitchError,
                 ) as exc:
                     _policy_exc = exc
                     break  # triggers aclose(); cleanup exc caught by outer except
@@ -347,8 +347,8 @@ class GovernedGraph:
 
     async def _ainvoke_via_callbacks(
         self,
-        proofrail_chain: Chain,
-        callback: ProofRailLangGraphCallback,
+        arclasp_chain: Chain,
+        callback: ArclaspLangGraphCallback,
         state: Any,
         config: dict | None,
         **kwargs: Any,
@@ -360,7 +360,7 @@ class GovernedGraph:
         LangGraph routes node execution through LangChain's callback system;
         ``_AsLangChainCallback`` listens for ``on_chain_start`` /
         ``on_chain_end`` events that carry ``metadata["langgraph_node"]`` and
-        delegates them to the :class:`ProofRailLangGraphCallback`.
+        delegates them to the :class:`ArclaspLangGraphCallback`.
 
         Falls back to plain ``ainvoke`` with no node tracking if
         ``langchain_core`` is not available, logging a warning.
@@ -369,7 +369,7 @@ class GovernedGraph:
             lc_callback = callback.as_langchain_callback()
         except ImportError as exc:
             logger.warning(
-                "proofrail: langchain_core not available (%s). "
+                "arclasp: langchain_core not available (%s). "
                 "Node-level events will not be recorded — only the chain "
                 "open/close will be tracked.  Install langchain-core or use "
                 "a LangGraph version that supports astream_events.",

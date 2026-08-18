@@ -4,7 +4,7 @@ End-to-end demo: CrewAI 4-agent vendor purchase workflow.
 Same scenario as the LangGraph demo — 7 agent actions accumulating to $12,000
 against a $10,000 threshold — but exercised through the CrewAI adapter.
 
-How ProofRail hooks in:
+How Arclasp hooks in:
     govern(crew, chain_name=...) wraps any CrewAI Crew.
     The adapter uses the "mixed" strategy (CrewAI 1.x shape):
       - Strategy B monkey-patches each agent's execute_task method to fire
@@ -35,8 +35,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-import proofrail
-from proofrail.crewai.adapter import govern
+import arclasp
+from arclasp.crewai.adapter import govern
 
 ARTIFACT_DIR = Path("verification-artifacts/demos")
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -227,8 +227,8 @@ async def _run_vendor_workflow() -> tuple[str, list[dict]]:
                                 "demo_run": True})
 
     with (
-        patch("proofrail.client._post", side_effect=_mock_post),
-        patch("proofrail.client._get",  side_effect=_mock_get),
+        patch("arclasp.client._post", side_effect=_mock_post),
+        patch("arclasp.client._get",  side_effect=_mock_get),
         patch("asyncio.sleep",          new=AsyncMock(return_value=None)),
     ):
         results = await governed.kickoff_async(inputs={"topic": "vendor purchase"})
@@ -263,10 +263,10 @@ async def _run_vendor_workflow() -> tuple[str, list[dict]]:
 
 async def main() -> int:
     print("=" * 65)
-    print("  ProofRail -- CrewAI 4-Agent Vendor Purchase Demo")
+    print("  Arclasp -- CrewAI 4-Agent Vendor Purchase Demo")
     print("=" * 65)
     print()
-    print("  Adapter   : proofrail.crewai.adapter.govern()")
+    print("  Adapter   : arclasp.crewai.adapter.govern()")
     print("  Agents    : pricing-researcher -> offer-calculator ->")
     print("              communications-manager -> commitment-recorder (x4)")
     print("  Strategy  : Mixed (CrewAI 1.x) — Strategy B fires task_execution")
@@ -277,7 +277,7 @@ async def main() -> int:
     print("              chain completes with signed receipt.")
     print()
 
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test_demo00000000000000000000000000000000000000000",
         backend_url="http://mock-backend.local",
         environment="development",

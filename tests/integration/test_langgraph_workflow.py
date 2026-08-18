@@ -1,5 +1,5 @@
 """
-Integration tests for proofrail.langgraph.adapter (GovernedGraph).
+Integration tests for arclasp.langgraph.adapter (GovernedGraph).
 
 Strategy A (astream_events) is exercised in the 6 core scenarios.
 An extra test forces Strategy B (callback fallback) by providing a graph
@@ -19,9 +19,9 @@ from typing import AsyncIterator, Any
 import httpx
 import pytest
 
-import proofrail
-from proofrail.langgraph.adapter import govern
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError, ChainTimeoutError
+import arclasp
+from arclasp.langgraph.adapter import govern
+from arclasp.exceptions import ActionDeniedError, BackendUnavailableError, ChainTimeoutError
 
 from .conftest import (
     ALLOW_RESP,
@@ -83,7 +83,7 @@ class _StubGraphB:
     """
     Graph stub WITHOUT astream_events — forces Strategy B (callback path).
     ainvoke manually fires on_chain_start / on_chain_end on injected callbacks
-    so the ProofRail LangChain bridge receives events.
+    so the Arclasp LangChain bridge receives events.
     """
 
     def __init__(self) -> None:
@@ -122,7 +122,7 @@ def _govern_a(nodes=None, chain_name="lg-test"):
 @pytest.mark.asyncio
 async def test_happy_path_langgraph():
     mock_post, calls = make_mock_post()
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await _govern_a().ainvoke({"input": "hello"})
 
     assert result == {"result": "workflow_complete"}
@@ -145,7 +145,7 @@ async def test_happy_path_langgraph():
 @pytest.mark.asyncio
 async def test_backend_flags_action_langgraph():
     mock_post, calls = make_mock_post(flag_on="summarize")
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await _govern_a().ainvoke({"input": "hello"})
 
     # Workflow still completes; flag is not an error
@@ -168,7 +168,7 @@ async def test_backend_denies_action_langgraph():
     )
     mock_post, calls = make_mock_post(deny_on="delete_records")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(ActionDeniedError) as exc_info:
             await governed.ainvoke({"input": "data"})
 
@@ -197,7 +197,7 @@ async def test_backend_denies_action_langgraph():
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_deny_langgraph():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -206,7 +206,7 @@ async def test_backend_unreachable_fail_deny_langgraph():
     )
     mock_post, calls = make_mock_post(unavailable=True)
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError):
             await _govern_a().ainvoke({"input": "data"})
 
@@ -223,7 +223,7 @@ async def test_backend_unreachable_fail_deny_langgraph():
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_langgraph():
     with pytest.warns(DeprecationWarning, match="fail_mode"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -232,7 +232,7 @@ async def test_backend_unreachable_fail_allow_langgraph():
         )
     mock_post, calls = make_mock_post(offline_signal=True)
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError) as exc_info:
             await _govern_a().ainvoke({"input": "data"})
 
@@ -247,7 +247,7 @@ async def test_backend_unreachable_fail_allow_langgraph():
 @pytest.mark.asyncio
 async def test_fast_path_config_still_uses_backend_langgraph():
     with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -258,7 +258,7 @@ async def test_fast_path_config_still_uses_backend_langgraph():
     governed = govern(_StubGraphA(nodes=["get_config"]), chain_name="lg-fp")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await governed.ainvoke({"input": "data"})
         # Yield to let any drain tasks run
         await asyncio.sleep(0)
@@ -357,7 +357,7 @@ async def test_bug_lg_01_aclose_race_preserves_policy_exception():
     event race).  The fix must discard this cleanup exception and re-raise
     the original ChainTimeoutError so the caller receives the correct signal.
     """
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -384,7 +384,7 @@ async def test_bug_lg_01_aclose_race_preserves_policy_exception():
 
     governed = govern(_GraphWithAcloseRace(), chain_name="bug-lg-01")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         # The fix: ChainTimeoutError must propagate, not HTTPStatusError(409)
         with pytest.raises(ChainTimeoutError):
             await governed.ainvoke({"amount": 7500})
@@ -441,7 +441,7 @@ async def test_bug_lg_02_strategy_b_propagates_policy_exception():
     try/except Exception: pass.  Without the fix the caller sees no error.
     With the fix ChainTimeoutError propagates intact.
     """
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -468,7 +468,7 @@ async def test_bug_lg_02_strategy_b_propagates_policy_exception():
 
     governed = govern(_StubGraphBWithSwallow(), chain_name="bug-lg-02")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(ChainTimeoutError):
             await governed.ainvoke({"input": "test"})
 
@@ -494,7 +494,7 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
     import sys
     import uuid as _uuid
 
-    from proofrail.langgraph.callbacks import ProofRailLangGraphCallback, _StrategyBPolicyBreak
+    from arclasp.langgraph.callbacks import ArclaspLangGraphCallback, _StrategyBPolicyBreak
 
     # Temporarily remove conftest stubs so _build_langchain_base() picks up the
     # real langchain-core 1.4.0 installed in the environment.
@@ -505,7 +505,7 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler
 
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -530,9 +530,9 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
                 return require_approval_resp
             return ALLOW_RESP
 
-        with patch("proofrail.client._post", side_effect=mock_post):
-            async with proofrail.Chain(name="real-lc-test") as chain:
-                pr_callback = ProofRailLangGraphCallback(chain)
+        with patch("arclasp.client._post", side_effect=mock_post):
+            async with arclasp.Chain(name="real-lc-test") as chain:
+                pr_callback = ArclaspLangGraphCallback(chain)
                 # _build_langchain_base() now imports real AsyncCallbackHandler
                 # because stubs are removed from sys.modules
                 lc_callback = pr_callback.as_langchain_callback()
@@ -661,7 +661,7 @@ async def test_strategy_a_populates_parent_agent_name():
     governed = govern(_StubGraphAParent(), chain_name="lg-parent-a")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         await governed.ainvoke({"input": "test"})
 
     event_calls = [c for c in calls if "events" in c["path"]]
@@ -691,7 +691,7 @@ async def test_strategy_b_populates_parent_agent_name():
     governed = govern(_StubGraphBParent(), chain_name="lg-parent-b")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         await governed.ainvoke({"input": "test"})
 
     event_calls = [c for c in calls if "events" in c["path"]]
@@ -719,14 +719,14 @@ async def test_strategy_b_populates_parent_agent_name():
 async def test_strategy_b_fallback_langgraph():
     """
     Force the LangChain-callback fallback path by providing a graph that has
-    ainvoke but no astream_events.  The ProofRail callback bridge must be
+    ainvoke but no astream_events.  The Arclasp callback bridge must be
     injected and fire governance events when the stub calls on_chain_start /
     on_chain_end.
     """
     governed = govern(_StubGraphB(), chain_name="lg-b")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await governed.ainvoke({"input": "test"})
 
     assert result == {"result": "b_done"}

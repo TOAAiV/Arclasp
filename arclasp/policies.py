@@ -1,8 +1,8 @@
 """
-proofrail.policies — Reference implementation of the ProofRail policy engine.
+arclasp.policies — Reference implementation of the Arclasp policy engine.
 
 This module is the open-source reference implementation of the algorithm
-currently running in the closed-source ProofRail backend, extracted for
+currently running in the closed-source Arclasp backend, extracted for
 transparency and local testing.  It is intended to be read alongside
 ``backend/app/services/policy_engine.py`` — the two must stay in sync.
 
@@ -18,14 +18,14 @@ sending a patch — we decide together which side is authoritative.
 
 Audience
 --------
-External developers evaluating ProofRail can audit this file to understand
+External developers evaluating Arclasp can audit this file to understand
 exactly what rules their agents are subject to.  Operators building custom
 tooling (e.g. local CI policy checks, dashboard integrations) can call these
 functions directly without spinning up the full backend.
 
 Usage
 -----
-    from proofrail.policies import (
+    from arclasp.policies import (
         classify_risk,
         update_chain_metrics_local,
         evaluate_policy,
@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import logging
 
-from proofrail._constants import DEFAULT_SENSITIVE_FIELD_PATTERNS
+from arclasp._constants import DEFAULT_SENSITIVE_FIELD_PATTERNS
 
 logger = logging.getLogger(__name__)
 

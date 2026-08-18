@@ -20,13 +20,13 @@ from unittest.mock import patch
 
 import pytest
 
-import proofrail
-from proofrail._constants import (
+import arclasp
+from arclasp._constants import (
     DEFAULT_SENSITIVE_FIELD_PATTERNS,
     DEFAULT_SENSITIVE_VALUE_PATTERNS,
 )
-from proofrail.sanitization import sanitize_payload
-from proofrail.models import ChainConfig
+from arclasp.sanitization import sanitize_payload
+from arclasp.models import ChainConfig
 
 
 # ---------------------------------------------------------------------------
@@ -185,11 +185,11 @@ def test_policies_engine_uses_same_constants():
     This test fails if someone adds a pattern to one place and forgets the
     other — catching the exact drift documented in audit finding M-7.
     """
-    from proofrail.policies import _SENSITIVE_PATTERNS
+    from arclasp.policies import _SENSITIVE_PATTERNS
     assert set(_SENSITIVE_PATTERNS) == set(DEFAULT_SENSITIVE_FIELD_PATTERNS), (
         "Drift detected between policies._SENSITIVE_PATTERNS and "
         "sanitization.DEFAULT_SENSITIVE_FIELD_PATTERNS. "
-        "Update proofrail/_constants.py — both sets derive from there."
+        "Update arclasp/_constants.py — both sets derive from there."
     )
 
 
@@ -221,7 +221,7 @@ async def test_chain_metadata_api_key_redacted_in_post():
     Field-name path: api_key in Chain metadata must arrive at the backend as
     [REDACTED], not the raw value.  Non-sensitive fields pass through unchanged.
     """
-    from proofrail.chain import Chain
+    from arclasp.chain import Chain
 
     captured: dict = {}
 
@@ -237,8 +237,8 @@ async def test_chain_metadata_api_key_redacted_in_post():
             "decision_source": "backend_evaluation",
         }
 
-    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
-    with patch("proofrail.client._post", side_effect=mock_post):
+    arclasp.init(api_key="prail_test", backend_url="http://localhost:9999")
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("test", metadata={"api_key": "sk_live_abc123", "order_id": "999"}):
             pass
 
@@ -253,7 +253,7 @@ async def test_chain_metadata_value_prefix_redacted_in_post():
     Value-prefix path: a GitHub token stored under a benign key name (github_token)
     must be redacted because the value starts with 'ghp_', regardless of the key.
     """
-    from proofrail.chain import Chain
+    from arclasp.chain import Chain
 
     captured: dict = {}
 
@@ -269,8 +269,8 @@ async def test_chain_metadata_value_prefix_redacted_in_post():
             "decision_source": "backend_evaluation",
         }
 
-    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
-    with patch("proofrail.client._post", side_effect=mock_post):
+    arclasp.init(api_key="prail_test", backend_url="http://localhost:9999")
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain(
             "test",
             metadata={"github_token": "ghp_abc123XYZ", "env": "staging"},
@@ -289,7 +289,7 @@ async def test_chain_metadata_nested_dict_sanitized():
     still be redacted.  Verifies that sanitize_payload's recursive traversal
     applies through the metadata channel.
     """
-    from proofrail.chain import Chain
+    from arclasp.chain import Chain
 
     captured: dict = {}
 
@@ -305,8 +305,8 @@ async def test_chain_metadata_nested_dict_sanitized():
             "decision_source": "backend_evaluation",
         }
 
-    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
-    with patch("proofrail.client._post", side_effect=mock_post):
+    arclasp.init(api_key="prail_test", backend_url="http://localhost:9999")
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain(
             "test",
             metadata={"customer": {"name": "Acme", "secret_key": "sk_live_xyz"}},
@@ -319,7 +319,7 @@ async def test_chain_metadata_nested_dict_sanitized():
 
 
 # ---------------------------------------------------------------------------
-# 8. Expanded value-prefix patterns: JWT, AWS access keys, ProofRail keys
+# 8. Expanded value-prefix patterns: JWT, AWS access keys, Arclasp keys
 #    (SDK-S-8 regression)
 # ---------------------------------------------------------------------------
 
@@ -337,8 +337,8 @@ def test_aws_access_key_prefix_redacted():
     assert result["aws_id"] == "[REDACTED]"
 
 
-def test_proofrail_key_prefix_redacted():
-    """prail_ prefix redacts ProofRail API keys appearing in customer payloads."""
+def test_arclasp_key_prefix_redacted():
+    """prail_ prefix redacts Arclasp API keys appearing in customer payloads."""
     cfg = _config()
     result = sanitize_payload({"service_key": "prail_sk_live_abc123"}, cfg)
     assert result["service_key"] == "[REDACTED]"

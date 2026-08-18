@@ -1,5 +1,5 @@
 """
-Integration test support for ProofRail framework adapter tests.
+Integration test support for Arclasp framework adapter tests.
 
 IMPORTANT: sys.modules stubs for langchain_core / langgraph / crewai are seeded
 at module import time (before any test-file imports) so that the adapters'
@@ -78,21 +78,21 @@ for _name, _mod in [
 
 # ============================================================
 # 3.  Import adapters now (stubs already in sys.modules).
-#     Safety-net: if proofrail.langchain.callbacks was already
+#     Safety-net: if arclasp.langchain.callbacks was already
 #     cached with _BaseCallbackHandler=object, patch it so that
 #     govern()'s "is object" guard passes.
 # ============================================================
 
-import proofrail  # noqa: E402
-import proofrail.langchain.callbacks as _lc_cb_mod  # noqa: E402
-import proofrail.langchain.adapter as _lc_adapt_mod  # noqa: E402
+import arclasp  # noqa: E402
+import arclasp.langchain.callbacks as _lc_cb_mod  # noqa: E402
+import arclasp.langchain.adapter as _lc_adapt_mod  # noqa: E402
 
 if _lc_adapt_mod._BaseCallbackHandler is object:
     _lc_adapt_mod._BaseCallbackHandler = _StubBaseCallbackHandler
 if _lc_cb_mod._BaseCallbackHandler is object:
     _lc_cb_mod._BaseCallbackHandler = _StubBaseCallbackHandler
 
-from proofrail.exceptions import BackendUnavailableError  # noqa: E402
+from arclasp.exceptions import BackendUnavailableError  # noqa: E402
 import asyncio  # noqa: E402
 import pytest  # noqa: E402
 
@@ -141,7 +141,7 @@ def make_mock_post(
     """
     Return (async_mock_post, calls_list).
 
-    The returned coroutine replaces proofrail.client._post.  Every call is
+    The returned coroutine replaces arclasp.client._post.  Every call is
     appended to calls_list as {"path": str, "body": dict}.
 
     Failure modes are mutually exclusive and applied to ALL requests so that
@@ -220,14 +220,14 @@ def count_event_calls(calls: list[dict]) -> int:
 # ============================================================
 
 @pytest.fixture(autouse=True)
-def proofrail_dev():
+def arclasp_dev():
     """
     Default SDK config for all integration tests.
 
     Fast-path is off and fail-closed transport is the default. Tests that
     intentionally cover deprecated compatibility knobs opt into them locally.
     """
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",

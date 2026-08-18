@@ -1,7 +1,7 @@
-# ProofRail CrewAI Adapter
+# Arclasp CrewAI Adapter
 
 This adapter wraps a CrewAI `Crew` so that every task execution is automatically
-recorded as a governed event in ProofRail. Policies — including `deny` (which halts
+recorded as a governed event in Arclasp. Policies — including `deny` (which halts
 the crew immediately) and `require_approval` (which blocks until a human approves or
 times out) — are enforced transparently without changes to your crew definition.
 
@@ -30,10 +30,10 @@ pip install "arclasp[crewai]"
 ## Basic usage
 
 ```python
-import proofrail
-from proofrail.crewai import govern
+import arclasp
+from arclasp.crewai import govern
 
-proofrail.init(api_key="prail_...")
+arclasp.init(api_key="prail_...")
 
 governed = govern(crew, chain_name="research-crew")
 
@@ -45,7 +45,7 @@ result = await governed.kickoff_async(inputs={"topic": "AI safety"})
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `chain_name` | `"crewai_workflow"` | Name shown in the ProofRail dashboard for each run |
+| `chain_name` | `"crewai_workflow"` | Name shown in the Arclasp dashboard for each run |
 | `metadata` | `{}` | Extra key/value pairs attached to every chain (e.g. version, team) |
 
 ---
@@ -75,7 +75,7 @@ Each task appears in the audit trail with:
 - `agent_name` = the task description (the governed action)
 - `parent_agent_name` = the agent's `role` (the owner)
 
-This preserves the Crew → Agent → Task hierarchy across ProofRail audit views,
+This preserves the Crew → Agent → Task hierarchy across Arclasp audit views,
 consistent with the LangGraph and LangChain adapters.
 
 ---
@@ -106,7 +106,7 @@ no configuration required.
 - `GovernedCrew.kickoff()` (sync) raises `RuntimeError` if called from inside a running
   event loop. Use `kickoff_async()` for governed execution in async contexts.
 - The default backend timeout is 5 s. If event POST latencies are slow (e.g. free-tier
-  Supabase), set `backend_timeout_seconds=15` in `proofrail.init()`.
+  Supabase), set `backend_timeout_seconds=15` in `arclasp.init()`.
 - Do not call `agent.execute_task` or set `crew.task_callback` directly while a governed
   run is in progress — the adapter manages these for the duration of the run and restores
   them in a `finally` block.
@@ -116,11 +116,11 @@ no configuration required.
 ## Example: deny halts execution
 
 ```python
-import proofrail
-from proofrail.crewai import govern
-from proofrail.exceptions import ActionDeniedError
+import arclasp
+from arclasp.crewai import govern
+from arclasp.exceptions import ActionDeniedError
 
-proofrail.init(api_key="prail_...", backend_url="https://your-backend")
+arclasp.init(api_key="prail_...", backend_url="https://your-backend")
 governed = govern(crew, chain_name="sensitive-ops")
 
 try:
@@ -138,11 +138,11 @@ decision, so auditors can see exactly where and why the crew stopped.
 ## Example: approval gate
 
 ```python
-import proofrail
-from proofrail.crewai import govern
-from proofrail.exceptions import ActionDeniedError, ChainTimeoutError
+import arclasp
+from arclasp.crewai import govern
+from arclasp.exceptions import ActionDeniedError, ChainTimeoutError
 
-proofrail.init(api_key="prail_...", backend_url="https://your-backend")
+arclasp.init(api_key="prail_...", backend_url="https://your-backend")
 governed = govern(crew, chain_name="finance-crew")
 
 try:
@@ -153,7 +153,7 @@ except ActionDeniedError as exc:
     print(f"Approval denied: {exc.policy_name}")
 ```
 
-Approve or deny via the ProofRail dashboard. A denial raises `ActionDeniedError`
+Approve or deny via the Arclasp dashboard. A denial raises `ActionDeniedError`
 at the pending task; an approval resumes execution.
 
 ---

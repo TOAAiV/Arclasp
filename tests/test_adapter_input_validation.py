@@ -17,9 +17,9 @@ from uuid import uuid4
 
 import pytest
 
-import proofrail
-from proofrail._constants import _ACTION_NAME_MAX
-from proofrail._utils import sanitize_log_field
+import arclasp
+from arclasp._constants import _ACTION_NAME_MAX
+from arclasp._utils import sanitize_log_field
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ from proofrail._utils import sanitize_log_field
 # ---------------------------------------------------------------------------
 
 def _init() -> None:
-    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
+    arclasp.init(api_key="prail_test", backend_url="http://localhost:9999")
 
 
 def _chain_start_response(chain_id: str = "test-chain-id") -> dict:
@@ -52,8 +52,8 @@ async def test_langchain_tool_name_truncated_in_action_name():
     A 150-char tool_name from LangChain must arrive at record_agent_action
     as action_name with length ≤ _ACTION_NAME_MAX (100).
     """
-    from proofrail.langchain.callbacks import ProofRailLangChainCallback
-    from proofrail.chain import Chain
+    from arclasp.langchain.callbacks import ArclaspLangChainCallback
+    from arclasp.chain import Chain
 
     _init()
     long_name = "x" * 150
@@ -68,9 +68,9 @@ async def test_langchain_tool_name_truncated_in_action_name():
         recorded.append(body)
         return _allow_response()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("test") as chain:
-            cb = ProofRailLangChainCallback(chain)
+            cb = ArclaspLangChainCallback(chain)
             run_id = uuid4()
             await cb.on_tool_start(
                 {"name": long_name},
@@ -91,8 +91,8 @@ async def test_langchain_model_name_truncated_in_action_name():
     A 150-char model_name from LangChain must arrive at record_agent_action
     as action_name with length ≤ _ACTION_NAME_MAX (100).
     """
-    from proofrail.langchain.callbacks import ProofRailLangChainCallback
-    from proofrail.chain import Chain
+    from arclasp.langchain.callbacks import ArclaspLangChainCallback
+    from arclasp.chain import Chain
 
     _init()
     long_name = "m" * 150
@@ -107,9 +107,9 @@ async def test_langchain_model_name_truncated_in_action_name():
         recorded.append(body)
         return _allow_response()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("test") as chain:
-            cb = ProofRailLangChainCallback(chain)
+            cb = ArclaspLangChainCallback(chain)
             run_id = uuid4()
             await cb.on_llm_start(
                 {"name": long_name},
@@ -130,8 +130,8 @@ async def test_langgraph_node_name_truncated_in_action_name():
     A 150-char langgraph_node metadata value must arrive at record_agent_action
     as action_name with length ≤ _ACTION_NAME_MAX (100).
     """
-    from proofrail.langgraph.callbacks import ProofRailLangGraphCallback
-    from proofrail.chain import Chain
+    from arclasp.langgraph.callbacks import ArclaspLangGraphCallback
+    from arclasp.chain import Chain
 
     _init()
     long_name = "n" * 150
@@ -146,9 +146,9 @@ async def test_langgraph_node_name_truncated_in_action_name():
         recorded.append(body)
         return _allow_response()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("test") as chain:
-            cb = ProofRailLangGraphCallback(chain)
+            cb = ArclaspLangGraphCallback(chain)
             await cb.on_node_start(
                 long_name[:_ACTION_NAME_MAX - 7],  # simulate post-truncation (truncation happens in closure)
                 {},
@@ -166,13 +166,13 @@ async def test_langgraph_node_name_truncated_in_action_name():
         recorded_bridge.append(body)
         return _allow_response()
 
-    with patch("proofrail.client._post", side_effect=mock_post2):
+    with patch("arclasp.client._post", side_effect=mock_post2):
         async with Chain("test") as chain:
-            from proofrail.langgraph.callbacks import _make_on_chain_start
+            from arclasp.langgraph.callbacks import _make_on_chain_start
 
             # Build a minimal handler object that mimics _AsLangChainCallback internals
             handler = MagicMock()
-            handler._proofrail = ProofRailLangGraphCallback(chain)
+            handler._arclasp = ArclaspLangGraphCallback(chain)
             handler._node_runs = {}
             handler._all_nodes = {}
             handler._node_parents = {}

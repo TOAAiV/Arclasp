@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import logging
 
-from proofrail.models import ChainConfig
-from proofrail.policies import classify_risk, process_action_local
+from arclasp.models import ChainConfig
+from arclasp.policies import classify_risk, process_action_local
 
 logger = logging.getLogger(__name__)
 

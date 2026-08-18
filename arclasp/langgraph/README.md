@@ -1,7 +1,7 @@
-# ProofRail LangGraph Adapter
+# Arclasp LangGraph Adapter
 
 This adapter wraps a compiled LangGraph graph so that every node execution is
-automatically recorded as a governed event in ProofRail.
+automatically recorded as a governed event in Arclasp.
 
 ## Contents
 
@@ -23,10 +23,10 @@ pip install arclasp langgraph
 ## Basic usage
 
 ```python
-import proofrail
-from proofrail.langgraph import govern
+import arclasp
+from arclasp.langgraph import govern
 
-proofrail.init(api_key="prail_...")
+arclasp.init(api_key="prail_...")
 
 governed = govern(compiled_graph, chain_name="my-workflow")
 
@@ -38,14 +38,14 @@ result = await governed.ainvoke({"messages": [...]})
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `chain_name` | `"langgraph_workflow"` | Name shown in the ProofRail dashboard for each run |
+| `chain_name` | `"langgraph_workflow"` | Name shown in the Arclasp dashboard for each run |
 | `metadata` | `{}` | Extra key/value pairs attached to every chain (e.g. version, team) |
 
 ---
 
 ## Node naming affects policy enforcement
 
-ProofRail's LangGraph adapter uses your node names as the `action_name`
+Arclasp's LangGraph adapter uses your node names as the `action_name`
 field in policy events. The backend's risk classifier scans these names
 for keywords that may trigger policy rules:
 

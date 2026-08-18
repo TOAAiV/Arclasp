@@ -24,9 +24,9 @@ from unittest.mock import MagicMock, Mock, patch
 import httpx
 import pytest
 
-import proofrail
-from proofrail.chain import Chain
-from proofrail.exceptions import BackendUnavailableError
+import arclasp
+from arclasp.chain import Chain
+from arclasp.exceptions import BackendUnavailableError
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ _CHAIN_RESPONSE = {"id": "test-chain-001"}
 
 @pytest.fixture(autouse=True)
 def sdk_init():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://test",
         fail_mode="deny",
@@ -81,7 +81,7 @@ class TestIdempotencyKeyGeneration:
                 return {"status": "completed"}
             return _ALLOW_DECISION if "events" in path else _CHAIN_RESPONSE
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             async with Chain("test") as chain:
                 await chain.record_agent_action(
                     agent_name="a", action_type="tool_call", action_name="action_1"
@@ -122,7 +122,7 @@ class TestIdempotencyKeyRetryPersistence:
                 raise httpx.TimeoutException("simulated first-attempt timeout")
             return _mock_response(201, _ALLOW_DECISION)
 
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.post = fake_client_post
             mock_get_client.return_value = mock_client
@@ -158,7 +158,7 @@ class TestIdempotencyKeyFailClosedFailure:
         The same idempotency_key is sent on every retry attempt, and a final
         backend failure raises instead of buffering a local allow.
         """
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://test",
             fail_mode="deny",
@@ -175,7 +175,7 @@ class TestIdempotencyKeyFailClosedFailure:
             event_post_bodies.append(dict(json) if json else {})
             raise httpx.TimeoutException("simulated exhausted timeout")
 
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.post = fake_client_post
             mock_get_client.return_value = mock_client

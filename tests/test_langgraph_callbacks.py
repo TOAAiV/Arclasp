@@ -1,5 +1,5 @@
 """
-Tests for proofrail.langgraph.callbacks._state_to_dict.
+Tests for arclasp.langgraph.callbacks._state_to_dict.
 """
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from proofrail.langgraph.callbacks import _state_to_dict
+from arclasp.langgraph.callbacks import _state_to_dict
 
 
 def test_state_to_dict_normalizes_nonjson_values_recursively():

@@ -2,7 +2,7 @@
 Production end-to-end demo: MCP 4-agent vendor purchase workflow.
 
 Same scenario as the LangGraph demo but exercised through the MCP adapter
-(ProofRailMcpAdapter.handle_tool_call).  7 tool calls fire 7 recorded
+(ArclaspMcpAdapter.handle_tool_call).  7 tool calls fire 7 recorded
 events; the 7th call (vendor-d, cumulative $12,000) crosses the $10,000
 threshold and triggers require_approval.
 
@@ -11,7 +11,7 @@ Usage (from repo root):
     python demos/production/mcp_demo_prod.py
 
 Requires:
-    PROOFRAIL_API_KEY  — production API key (prail_...)
+    ARCLASP_API_KEY  — production API key (prail_...)
 
 Artifacts written to verification-artifacts/demos/production/mcp/:
     chain-trace.json
@@ -41,10 +41,10 @@ class _NoVerifyAsyncClient(_OrigAsyncClient):
         super().__init__(*args, **kwargs)
 _httpx.AsyncClient = _NoVerifyAsyncClient
 
-import proofrail
-import proofrail.client as _pr_client
-from proofrail import Chain
-from proofrail.mcp import ProofRailMcpAdapter
+import arclasp
+import arclasp.client as _pr_client
+from arclasp import Chain
+from arclasp.mcp import ArclaspMcpAdapter
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -143,7 +143,7 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
         print(f"  Chain started  →  id={cid}")
         print()
 
-        adapter = ProofRailMcpAdapter(
+        adapter = ArclaspMcpAdapter(
             chain=chain,
             agent_name="mcp-vendor-agent",
         )
@@ -184,17 +184,17 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
 
 
 async def main() -> int:
-    api_key = os.environ.get("PROOFRAIL_API_KEY", "")
+    api_key = os.environ.get("ARCLASP_API_KEY", "")
     if not api_key:
-        print("ERROR: PROOFRAIL_API_KEY environment variable is not set.")
+        print("ERROR: ARCLASP_API_KEY environment variable is not set.")
         return 1
 
     print("=" * 65)
-    print("  ProofRail — MCP Production Demo")
+    print("  Arclasp — MCP Production Demo")
     print("=" * 65)
     print()
     print("  Backend   : https://api.proofrail.dev")
-    print("  Adapter   : proofrail.mcp.ProofRailMcpAdapter")
+    print("  Adapter   : arclasp.mcp.ArclaspMcpAdapter")
     print("  Agent     : mcp-vendor-agent")
     print("  Tools     : search_web -> calculate_offer -> send_email ->")
     print("              record_commitment (x4 vendors)")
@@ -203,7 +203,7 @@ async def main() -> int:
     print("              Crosses threshold -> require_approval -> owner approves.")
     print()
 
-    proofrail.init(
+    arclasp.init(
         api_key=api_key,
         backend_url="https://api.proofrail.dev",
         environment="production",

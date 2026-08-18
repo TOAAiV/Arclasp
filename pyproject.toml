@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arclasp"
-version = "0.1.0a9"
+version = "0.1.0a10"
 description = "Runtime governance for AI agent chains."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -92,7 +92,7 @@ markers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["proofrail"]
+packages = ["arclasp"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [

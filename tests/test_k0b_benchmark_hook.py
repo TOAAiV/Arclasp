@@ -1,7 +1,7 @@
 """
 sdk/tests/test_k0b_benchmark_hook.py
 =====================================
-K0B internal opt-in benchmark instrumentation (proofrail.client._benchmark_sample).
+K0B internal opt-in benchmark instrumentation (arclasp.client._benchmark_sample).
 
 Covers:
   1. Retry count is recorded inside an active benchmark sample.
@@ -24,9 +24,9 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-import proofrail
-from proofrail import client as _pc
-from proofrail.exceptions import BackendUnavailableError
+import arclasp
+from arclasp import client as _pc
+from arclasp.exceptions import BackendUnavailableError
 
 _DUMMY_REQUEST = httpx.Request("POST", "http://test.invalid/v1/test")
 
@@ -45,7 +45,7 @@ def _allow_response(headers: dict | None = None) -> httpx.Response:
 
 
 def _init_deny() -> None:
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://test.invalid",
         environment="development",

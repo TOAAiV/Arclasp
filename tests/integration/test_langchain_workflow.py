@@ -1,7 +1,7 @@
 """
-Integration tests for proofrail.langchain.adapter (GovernedChain).
+Integration tests for arclasp.langchain.adapter (GovernedChain).
 
-The stub chain manually calls the ProofRail callback methods that would
+The stub chain manually calls the Arclasp callback methods that would
 normally be called by LangChain's event system (on_tool_start, on_tool_end,
 on_llm_start, on_llm_end).  This lets us test the full governance path
 without a real LLM or real tools.
@@ -19,9 +19,9 @@ from typing import Any
 
 import pytest
 
-import proofrail
-from proofrail.langchain.adapter import govern
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError, ChainTimeoutError
+import arclasp
+from arclasp.langchain.adapter import govern
+from arclasp.exceptions import ActionDeniedError, BackendUnavailableError, ChainTimeoutError
 
 from .conftest import (
     make_mock_post,
@@ -40,7 +40,7 @@ class _StubChain:
     Minimal LangChain-like Runnable stub.
 
     ainvoke accepts a LangChain config dict and manually fires governance
-    callbacks so that ProofRailLangChainCallback records events.  The tool
+    callbacks so that ArclaspLangChainCallback records events.  The tool
     list is configurable; denial tests inject a sensitive tool name.
     """
 
@@ -75,7 +75,7 @@ def _govern(tools=None, chain_name="lc-test"):
 @pytest.mark.asyncio
 async def test_happy_path_langchain():
     mock_post, calls = make_mock_post()
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await _govern().ainvoke({"input": "hello"})
 
     assert result == {"output": "langchain_result"}
@@ -97,7 +97,7 @@ async def test_happy_path_langchain():
 @pytest.mark.asyncio
 async def test_backend_flags_action_langchain():
     mock_post, calls = make_mock_post(flag_on="format_output")
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await _govern().ainvoke({"input": "hello"})
 
     assert result == {"output": "langchain_result"}
@@ -117,7 +117,7 @@ async def test_backend_denies_action_langchain():
     )
     mock_post, calls = make_mock_post(deny_on="send_email_tool")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(ActionDeniedError) as exc_info:
             await governed.ainvoke({"input": "data"})
 
@@ -146,7 +146,7 @@ async def test_backend_denies_action_langchain():
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_deny_langchain():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -155,7 +155,7 @@ async def test_backend_unreachable_fail_deny_langchain():
     )
     mock_post, calls = make_mock_post(unavailable=True)
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError):
             await _govern().ainvoke({"input": "data"})
 
@@ -169,7 +169,7 @@ async def test_backend_unreachable_fail_deny_langchain():
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_langchain():
     with pytest.warns(DeprecationWarning, match="fail_mode"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -178,7 +178,7 @@ async def test_backend_unreachable_fail_allow_langchain():
         )
     mock_post, calls = make_mock_post(offline_signal=True)
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError) as exc_info:
             await _govern().ainvoke({"input": "data"})
 
@@ -193,7 +193,7 @@ async def test_backend_unreachable_fail_allow_langchain():
 @pytest.mark.asyncio
 async def test_fast_path_config_still_uses_backend_langchain():
     with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -204,7 +204,7 @@ async def test_fast_path_config_still_uses_backend_langchain():
     governed = govern(_StubChain(tools=["get_record"]), chain_name="lc-fp")
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await governed.ainvoke({"input": "data"})
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -268,7 +268,7 @@ async def test_bug_lc_02_strategy_b_propagates_policy_exception():
     With the fix ChainTimeoutError propagates intact.
     """
 
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -295,7 +295,7 @@ async def test_bug_lc_02_strategy_b_propagates_policy_exception():
 
     governed = govern(_StubChainWithSwallow(), chain_name="bug-lc-02")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(ChainTimeoutError):
             await governed.ainvoke({"input": "test"})
 
@@ -312,7 +312,7 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
     test_bug_lc_02_strategy_b_propagates_policy_exception uses a hand-written
     try/except Exception: pass wrapper to simulate LangChain's callback manager.
     This test invokes langchain-core's REAL _ahandle_event_for_handler with our
-    actual ProofRailLangChainCallback (which inherits real BaseCallbackHandler).
+    actual ArclaspLangChainCallback (which inherits real BaseCallbackHandler).
 
     Verifies that _StrategyBPolicyBreak(BaseException) escapes langchain-core's
     ``except Exception`` clause intact — if langchain-core ever adds
@@ -333,14 +333,14 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
 
         # Reload our callbacks module so _BaseCallbackHandler becomes the real
         # langchain_core.callbacks.base.BaseCallbackHandler (not the stub).
-        saved_cb_mod = sys.modules.pop("proofrail.langchain.callbacks", None)
-        import proofrail.langchain.callbacks as _fresh_cb_mod
+        saved_cb_mod = sys.modules.pop("arclasp.langchain.callbacks", None)
+        import arclasp.langchain.callbacks as _fresh_cb_mod
         importlib.reload(_fresh_cb_mod)
 
-        FreshCallback = _fresh_cb_mod.ProofRailLangChainCallback
+        FreshCallback = _fresh_cb_mod.ArclaspLangChainCallback
         FreshStrategyBPolicyBreak = _fresh_cb_mod._StrategyBPolicyBreak
 
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -365,8 +365,8 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
                 return require_approval_resp
             return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
 
-        with patch("proofrail.client._post", side_effect=mock_post):
-            async with proofrail.Chain(name="real-lc-test") as chain:
+        with patch("arclasp.client._post", side_effect=mock_post):
+            async with arclasp.Chain(name="real-lc-test") as chain:
                 callback = FreshCallback(chain, agent_name="test_agent")
                 run_id = _uuid.uuid4()
 
@@ -393,9 +393,9 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
         sys.modules.update(saved_lc)
         # Restore original callbacks module so other tests see stub base class
         if saved_cb_mod is not None:
-            sys.modules["proofrail.langchain.callbacks"] = saved_cb_mod
-        elif "proofrail.langchain.callbacks" in sys.modules:
-            del sys.modules["proofrail.langchain.callbacks"]
+            sys.modules["arclasp.langchain.callbacks"] = saved_cb_mod
+        elif "arclasp.langchain.callbacks" in sys.modules:
+            del sys.modules["arclasp.langchain.callbacks"]
 
 
 # ===========================================================================
@@ -453,7 +453,7 @@ async def test_strategy_b_populates_parent_agent_name_simulated():
     mock_post, calls = make_mock_post()
     governed = govern(_StubChainWithParentIds(), chain_name="lc-parent-sim")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         result = await governed.ainvoke({"input": "test"})
 
     assert result == {"output": "lc_parent_sim"}
@@ -495,13 +495,13 @@ async def test_strategy_b_populates_parent_agent_name_real():
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler
 
-        saved_cb_mod = sys.modules.pop("proofrail.langchain.callbacks", None)
-        import proofrail.langchain.callbacks as _fresh_cb_mod
+        saved_cb_mod = sys.modules.pop("arclasp.langchain.callbacks", None)
+        import arclasp.langchain.callbacks as _fresh_cb_mod
         importlib.reload(_fresh_cb_mod)
 
-        FreshCallback = _fresh_cb_mod.ProofRailLangChainCallback
+        FreshCallback = _fresh_cb_mod.ArclaspLangChainCallback
 
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -516,8 +516,8 @@ async def test_strategy_b_populates_parent_agent_name_real():
                 return {"id": "chain-parent-real", "status": "completed"}
             return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
 
-        with patch("proofrail.client._post", side_effect=mock_post) as mock_p:
-            async with proofrail.Chain(name="real-parent-test") as chain:
+        with patch("arclasp.client._post", side_effect=mock_post) as mock_p:
+            async with arclasp.Chain(name="real-parent-test") as chain:
                 callback = FreshCallback(chain, agent_name="test_executor")
 
                 # path 2: unknown parent_run_id → fallback to "test_executor"
@@ -576,9 +576,9 @@ async def test_strategy_b_populates_parent_agent_name_real():
                 del sys.modules[k]
         sys.modules.update(saved_lc)
         if saved_cb_mod is not None:
-            sys.modules["proofrail.langchain.callbacks"] = saved_cb_mod
-        elif "proofrail.langchain.callbacks" in sys.modules:
-            del sys.modules["proofrail.langchain.callbacks"]
+            sys.modules["arclasp.langchain.callbacks"] = saved_cb_mod
+        elif "arclasp.langchain.callbacks" in sys.modules:
+            del sys.modules["arclasp.langchain.callbacks"]
 
 
 @pytest.mark.asyncio
@@ -595,7 +595,7 @@ async def test_post_execution_recording_failure_propagates_langchain():
             raise BackendUnavailableError("recording failed", fail_mode="deny")
         return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError):
             await _govern(tools=["search_web"], chain_name="lc-post-fail").ainvoke({"input": "data"})
 

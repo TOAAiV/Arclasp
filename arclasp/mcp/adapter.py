@@ -1,27 +1,27 @@
 """
-proofrail.mcp.adapter — Governance adapter for MCP tool servers.
+arclasp.mcp.adapter — Governance adapter for MCP tool servers.
 
-:class:`ProofRailMcpAdapter` intercepts MCP tool calls, records each
-invocation through a ProofRail :class:`~proofrail.chain.Chain`, and only
+:class:`ArclaspMcpAdapter` intercepts MCP tool calls, records each
+invocation through a Arclasp :class:`~arclasp.chain.Chain`, and only
 forwards to the real handler when the policy engine allows it.
 
 The ``mcp`` package itself is only imported when
-:meth:`ProofRailMcpAdapter.install` is called (so importing this module does
+:meth:`ArclaspMcpAdapter.install` is called (so importing this module does
 not require the extra to be installed).
 
 Typical integration pattern
 ---------------------------
 ::
 
-    import proofrail
-    from proofrail.mcp import ProofRailMcpAdapter
+    import arclasp
+    from arclasp.mcp import ArclaspMcpAdapter
     from mcp.server import Server
 
-    proofrail.init(api_key="prail_...")
+    arclasp.init(api_key="prail_...")
     server = Server("my-tools")
 
-    async with proofrail.Chain("mcp-session") as chain:
-        adapter = ProofRailMcpAdapter(chain=chain, agent_name="my-tools")
+    async with arclasp.Chain("mcp-session") as chain:
+        adapter = ArclaspMcpAdapter(chain=chain, agent_name="my-tools")
 
         @server.call_tool()
         async def handle_call_tool(name: str, arguments: dict):
@@ -55,14 +55,14 @@ logger = logging.getLogger(__name__)
 ToolHandler = Callable[[str, dict], Awaitable[Any]]
 
 
-class ProofRailMcpAdapter:
+class ArclaspMcpAdapter:
     """
-    Records every MCP tool invocation through a ProofRail chain before
+    Records every MCP tool invocation through a Arclasp chain before
     execution.
 
     Parameters
     ----------
-    chain : proofrail.chain.Chain
+    chain : arclasp.chain.Chain
         An **already-entered** chain context (i.e. the chain has been started
         and its ``chain_id`` is available).
     agent_name : str
@@ -74,7 +74,7 @@ class ProofRailMcpAdapter:
 
     def __init__(
         self,
-        chain: Any,  # proofrail.chain.Chain — typed as Any to avoid circular import
+        chain: Any,  # arclasp.chain.Chain — typed as Any to avoid circular import
         agent_name: str = "mcp-agent",
         parent_agent_name: str | None = None,
     ) -> None:
@@ -93,7 +93,7 @@ class ProofRailMcpAdapter:
         handler: ToolHandler,
     ) -> Any:
         """
-        Record *tool_name* through ProofRail governance, then call *handler*.
+        Record *tool_name* through Arclasp governance, then call *handler*.
 
         Parameters
         ----------
@@ -113,9 +113,9 @@ class ProofRailMcpAdapter:
 
         Raises
         ------
-        proofrail.ActionDeniedError
+        arclasp.ActionDeniedError
             When the policy engine denies the tool call.
-        proofrail.ProofRailKillSwitchError
+        arclasp.ArclaspKillSwitchError
             When the organisation kill switch is active.
         """
         await self.chain.record_agent_action(
@@ -126,7 +126,7 @@ class ProofRailMcpAdapter:
             parent_agent_name=self.parent_agent_name,
         )
 
-        logger.debug("ProofRail governance passed for tool '%s' — executing", tool_name)
+        logger.debug("Arclasp governance passed for tool '%s' — executing", tool_name)
         return await handler(tool_name, arguments)
 
     # ------------------------------------------------------------------
@@ -138,7 +138,7 @@ class ProofRailMcpAdapter:
         Not supported with mcp >= 1.0.
 
         The mcp SDK no longer exposes a patchable ``_call_tool_handler``
-        attribute.  Wire ProofRail governance directly in your
+        attribute.  Wire Arclasp governance directly in your
         ``@server.call_tool()`` handler instead::
 
             @server.call_tool()
@@ -150,9 +150,9 @@ class ProofRailMcpAdapter:
                 )
         """
         raise RuntimeError(
-            "ProofRailMcpAdapter.install() is not supported with the current mcp "
+            "ArclaspMcpAdapter.install() is not supported with the current mcp "
             "SDK (>= 1.0).  Use handle_tool_call() directly inside your "
-            "@server.call_tool() handler instead.  See the ProofRail README for "
+            "@server.call_tool() handler instead.  See the Arclasp README for "
             "an example."
         )
 
@@ -162,7 +162,7 @@ class ProofRailMcpAdapter:
 
     def tool(self, tool_name: str) -> Callable[[ToolHandler], ToolHandler]:
         """
-        Decorator that wraps a bare async tool implementation with ProofRail
+        Decorator that wraps a bare async tool implementation with Arclasp
         governance.  The decorated function receives ``(tool_name, arguments)``
         and returns the tool result.
 

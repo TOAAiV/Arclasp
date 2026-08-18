@@ -1,5 +1,5 @@
 """
-Pytest configuration for the proofrail SDK test suite.
+Pytest configuration for the arclasp SDK test suite.
 
 Adds the worktree root to sys.path so that parity tests can import from
 ``backend.app.services.policy_engine`` directly.  The backend's DB-dependent

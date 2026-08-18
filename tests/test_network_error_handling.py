@@ -21,9 +21,9 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-import proofrail
-from proofrail import client as _pc
-from proofrail.exceptions import BackendUnavailableError
+import arclasp
+from arclasp import client as _pc
+from arclasp.exceptions import BackendUnavailableError
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ def _allow_response() -> httpx.Response:
 
 
 def _init_deny() -> None:
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://test.invalid",
         environment="development",
@@ -70,7 +70,7 @@ def _init_deny() -> None:
 
 def _init_allow() -> None:
     with pytest.warns(DeprecationWarning, match="fail_mode"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://test.invalid",
             environment="development",

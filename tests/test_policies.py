@@ -1,5 +1,5 @@
 """
-Tests for proofrail.policies — classify_risk, update_chain_metrics_local,
+Tests for arclasp.policies — classify_risk, update_chain_metrics_local,
 evaluate_policy, and process_action_local.
 """
 
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from proofrail.policies import (
+from arclasp.policies import (
     classify_risk,
     evaluate_policy,
     process_action_local,

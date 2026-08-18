@@ -1,13 +1,13 @@
 """
-proofrail.crewai.callbacks — CrewAI task and agent event handler.
+arclasp.crewai.callbacks — CrewAI task and agent event handler.
 
-Records task start and end events as ProofRail governance chain events.
+Records task start and end events as Arclasp governance chain events.
 Designed to be called from both monkey-patched synchronous ``execute_task``
 wrappers (via ``asyncio.run_coroutine_threadsafe``) and from native CrewAI
 callback hooks where available.
 
 This module has no top-level imports from ``crewai`` so that
-``import proofrail.crewai`` never raises ``ImportError`` when CrewAI is not
+``import arclasp.crewai`` never raises ``ImportError`` when CrewAI is not
 installed — the error is deferred to the first governed invocation.
 """
 
@@ -17,10 +17,10 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from proofrail.chain import Chain
+    from arclasp.chain import Chain
 
-from proofrail._constants import _ACTION_NAME_MAX
-from proofrail._utils import sanitize_log_field
+from arclasp._constants import _ACTION_NAME_MAX
+from arclasp._utils import sanitize_log_field
 
 logger = logging.getLogger(__name__)
 
@@ -84,15 +84,15 @@ def _extract_task_output(task_output: Any) -> dict:
 # ---------------------------------------------------------------------------
 
 
-class ProofRailCrewAICallback:
+class ArclaspCrewAICallback:
     """
     Handles CrewAI task and agent lifecycle events, recording each as a
-    ProofRail governance chain event via ``chain.record_agent_action``.
+    Arclasp governance chain event via ``chain.record_agent_action``.
 
     Parameters
     ----------
-    chain : proofrail.chain.Chain
-        The active ProofRail chain context (obtained from inside an
+    chain : arclasp.chain.Chain
+        The active Arclasp chain context (obtained from inside an
         ``async with Chain(...) as chain:`` block in the adapter).
     """
 
@@ -104,7 +104,7 @@ class ProofRailCrewAICallback:
     # ------------------------------------------------------------------
 
     async def on_task_start(self, task: Any, agent: Any) -> None:
-        """Record the start of a CrewAI task execution as a ProofRail chain event."""
+        """Record the start of a CrewAI task execution as a Arclasp chain event."""
         description = _task_description(task)
         agent_role = _agent_role(agent)
         action_name = description[:_ACTION_NAME_MAX]

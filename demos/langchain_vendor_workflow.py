@@ -4,9 +4,9 @@ End-to-end demo: LangChain 4-agent vendor purchase workflow.
 Same scenario as the LangGraph demo — 7 agent actions accumulating to $12,000
 against a $10,000 threshold — but exercised through the LangChain adapter.
 
-How ProofRail hooks in:
+How Arclasp hooks in:
     govern(chain, chain_name=...) wraps any LangChain Runnable.
-    On every ainvoke(), a ProofRailLangChainCallback is injected into the
+    On every ainvoke(), a ArclaspLangChainCallback is injected into the
     config's callbacks list.  The stub chain fires on_tool_start + on_tool_end
     for each of the 7 vendor workflow tools, producing 14 backend events total.
     Event 13 (the 7th tool_start, "record_commitment" for vendor-d) triggers
@@ -33,8 +33,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Any
 
-import proofrail
-from proofrail.langchain.adapter import govern
+import arclasp
+from arclasp.langchain.adapter import govern
 
 ARTIFACT_DIR = Path("verification-artifacts/demos")
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -135,7 +135,7 @@ class _VendorWorkflowChain:
     Minimal LangChain-like Runnable stub for the vendor purchase workflow.
 
     ainvoke fires on_tool_start + on_tool_end for each of the 7 vendor tools,
-    routing ProofRailLangChainCallback governance events through the injected
+    routing ArclaspLangChainCallback governance events through the injected
     callbacks list (populated by govern() before calling ainvoke).
     """
 
@@ -181,8 +181,8 @@ async def _run_vendor_workflow() -> tuple[Any, list[dict]]:
     )
 
     with (
-        patch("proofrail.client._post", side_effect=_mock_post),
-        patch("proofrail.client._get",  side_effect=_mock_get),
+        patch("arclasp.client._post", side_effect=_mock_post),
+        patch("arclasp.client._get",  side_effect=_mock_get),
         patch("asyncio.sleep",          new=AsyncMock(return_value=None)),
     ):
         await governed.ainvoke({"input": "start vendor purchase workflow"})
@@ -191,7 +191,7 @@ async def _run_vendor_workflow() -> tuple[Any, list[dict]]:
         chain_obj = getattr(governed, "_last_chain", None)
         chain_id = getattr(chain_obj, "chain_id", CHAIN_ID) if chain_obj else CHAIN_ID
 
-        from proofrail.models import ChainReceiptResponse
+        from arclasp.models import ChainReceiptResponse
         receipt = ChainReceiptResponse.model_validate(MOCK_RECEIPT_DATA)
 
     # Build events_log from known semantic steps + known decisions.
@@ -221,21 +221,21 @@ async def _run_vendor_workflow() -> tuple[Any, list[dict]]:
 
 async def main() -> int:
     print("=" * 65)
-    print("  ProofRail -- LangChain 4-Agent Vendor Purchase Demo")
+    print("  Arclasp -- LangChain 4-Agent Vendor Purchase Demo")
     print("=" * 65)
     print()
-    print("  Adapter   : proofrail.langchain.adapter.govern()")
+    print("  Adapter   : arclasp.langchain.adapter.govern()")
     print("  Agents    : pricing-research -> offer-calculator ->")
     print("              communication -> commitment-recorder (x4)")
     print("  Threshold : $10,000 cumulative financial exposure")
-    print("  Hook path : govern() injects ProofRailLangChainCallback;")
+    print("  Hook path : govern() injects ArclaspLangChainCallback;")
     print("              on_tool_start fires record_agent_action per tool.")
     print("  Scenario  : 7 tools (14 events); event 13 = 7th tool_start")
     print("              triggers require_approval; human approves;")
     print("              chain completes with signed receipt.")
     print()
 
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test_demo00000000000000000000000000000000000000000",
         backend_url="http://mock-backend.local",
         environment="development",

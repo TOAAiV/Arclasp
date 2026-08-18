@@ -13,10 +13,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-import proofrail
-from proofrail.chain import Chain
-from proofrail.exceptions import ActionDeniedError
-from proofrail.models import PolicyDecision
+import arclasp
+from arclasp.chain import Chain
+from arclasp.exceptions import ActionDeniedError
+from arclasp.models import PolicyDecision
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ def _make_approval_status_response(
 
 @pytest.fixture(autouse=True)
 def sdk_init():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         fail_mode="deny",
@@ -103,8 +103,8 @@ class TestApprovalResolution:
         async def fake_get(path):
             return approved_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post), \
-             patch("proofrail.client._get", side_effect=fake_get), \
+        with patch("arclasp.client._post", side_effect=fake_post), \
+             patch("arclasp.client._get", side_effect=fake_get), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             async with Chain("test-approval") as chain:
                 decision = await chain.record_agent_action(
@@ -140,8 +140,8 @@ class TestApprovalResolution:
         async def fake_get(path):
             return approved_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post), \
-             patch("proofrail.client._get", side_effect=fake_get), \
+        with patch("arclasp.client._post", side_effect=fake_post), \
+             patch("arclasp.client._get", side_effect=fake_get), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             async with Chain("test-approval-no-notes") as chain:
                 decision = await chain.record_agent_action(
@@ -179,8 +179,8 @@ class TestApprovalResolution:
         async def fake_get(path):
             return denied_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post), \
-             patch("proofrail.client._get", side_effect=fake_get), \
+        with patch("arclasp.client._post", side_effect=fake_post), \
+             patch("arclasp.client._get", side_effect=fake_get), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test-denied") as chain:
@@ -219,8 +219,8 @@ class TestApprovalResolution:
         async def fake_get(path):
             return timedout_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post), \
-             patch("proofrail.client._get", side_effect=fake_get), \
+        with patch("arclasp.client._post", side_effect=fake_post), \
+             patch("arclasp.client._get", side_effect=fake_get), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test-timeout") as chain:

@@ -44,25 +44,25 @@ WARNING
 -------
 This script must be run only against a controlled DEVELOPMENT organization
 and backend. It refuses to target a production-looking backend URL unless
-PROOFRAIL_K0B_ALLOW_PRODUCTION=1 is explicitly set, and even then this
+ARCLASP_K0B_ALLOW_PRODUCTION=1 is explicitly set, and even then this
 script does not run itself automatically against production — a human
 operator must choose to set that variable and invoke it deliberately.
 
 REQUIRED ENVIRONMENT VARIABLES
 -------------------------------
-    PROOFRAIL_K0B_BACKEND_URL   Backend base URL to benchmark against.
-    PROOFRAIL_K0B_API_KEY       API key for a controlled development
+    ARCLASP_K0B_BACKEND_URL   Backend base URL to benchmark against.
+    ARCLASP_K0B_API_KEY       API key for a controlled development
                                  organization. NEVER printed or written to
                                  any output file by this script.
 
 OPTIONAL ENVIRONMENT VARIABLES
 -------------------------------
-    PROOFRAIL_K0B_REGION_LABEL      Operator-supplied benchmark region label
+    ARCLASP_K0B_REGION_LABEL      Operator-supplied benchmark region label
                                      (e.g. "india", "us-east"). Recorded
                                      verbatim in output as low-cardinality
                                      metadata only — no other free text is
                                      ever recorded.
-    PROOFRAIL_K0B_ALLOW_PRODUCTION  Must be "1" to target a production-
+    ARCLASP_K0B_ALLOW_PRODUCTION  Must be "1" to target a production-
                                      looking backend URL. Absent by default.
 
 WHAT THIS SCRIPT NEVER RECORDS OR PRINTS
@@ -107,18 +107,18 @@ _SDK_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_SDK_ROOT) not in sys.path:
     sys.path.insert(0, str(_SDK_ROOT))
 
-import proofrail  # noqa: E402
-from proofrail import client as _pc  # noqa: E402
-from proofrail.chain import Chain  # noqa: E402
-from proofrail.exceptions import (  # noqa: E402
+import arclasp  # noqa: E402
+from arclasp import client as _pc  # noqa: E402
+from arclasp.chain import Chain  # noqa: E402
+from arclasp.exceptions import (  # noqa: E402
     ActionDeniedError,
     BackendUnavailableError,
     ChainAutoPausedError,
     ChainTimeoutError,
-    ProofRailKillSwitchError,
+    ArclaspKillSwitchError,
 )
-from proofrail.models import PolicyDecision  # noqa: E402
-from proofrail.sanitization import sanitize_payload  # noqa: E402
+from arclasp.models import PolicyDecision  # noqa: E402
+from arclasp.sanitization import sanitize_payload  # noqa: E402
 
 _ALLOWED_EVENT_COUNTS = (1, 20, 50)
 _DEFAULT_MAX_REQUESTS = 30
@@ -389,7 +389,7 @@ async def _timed_call(coro_factory, operation: str, event_count: int, region_lab
             exception_category = exc.category
             raise
         except (BackendUnavailableError, ActionDeniedError, ChainAutoPausedError,
-                ChainTimeoutError, ProofRailKillSwitchError):
+                ChainTimeoutError, ArclaspKillSwitchError):
             exception_category = "governance_stop"
             raise
         except Exception as exc:
@@ -619,7 +619,7 @@ def main() -> int:
     args = _parse_args()
     event_counts = _parse_event_counts(args.event_counts)
     runs = args.runs
-    region_label = os.environ.get("PROOFRAIL_K0B_REGION_LABEL")
+    region_label = os.environ.get("ARCLASP_K0B_REGION_LABEL")
 
     if runs < 1:
         raise SystemExit("--runs must be >= 1")
@@ -647,26 +647,26 @@ def main() -> int:
             f"{_HARD_REQUEST_CEILING})."
         )
 
-    backend_url = os.environ.get("PROOFRAIL_K0B_BACKEND_URL")
-    api_key = os.environ.get("PROOFRAIL_K0B_API_KEY")
+    backend_url = os.environ.get("ARCLASP_K0B_BACKEND_URL")
+    api_key = os.environ.get("ARCLASP_K0B_API_KEY")
 
     if args.dry_run:
         print("--dry-run: configuration validated, no network calls made.")
-        print(f"PROOFRAIL_K0B_BACKEND_URL set: {bool(backend_url)}")
-        print(f"PROOFRAIL_K0B_API_KEY set: {bool(api_key)}")
+        print(f"ARCLASP_K0B_BACKEND_URL set: {bool(backend_url)}")
+        print(f"ARCLASP_K0B_API_KEY set: {bool(api_key)}")
         return 0
 
     if not backend_url or not api_key:
         raise SystemExit(
-            "Refusing to run: PROOFRAIL_K0B_BACKEND_URL and PROOFRAIL_K0B_API_KEY "
+            "Refusing to run: ARCLASP_K0B_BACKEND_URL and ARCLASP_K0B_API_KEY "
             "must both be set. Use --dry-run to validate configuration without them."
         )
 
     if any(marker in backend_url for marker in _PRODUCTION_URL_MARKERS):
-        if os.environ.get("PROOFRAIL_K0B_ALLOW_PRODUCTION") != "1":
+        if os.environ.get("ARCLASP_K0B_ALLOW_PRODUCTION") != "1":
             raise SystemExit(
                 "Refusing to run: backend URL looks production-like and "
-                "PROOFRAIL_K0B_ALLOW_PRODUCTION=1 was not set. This script must "
+                "ARCLASP_K0B_ALLOW_PRODUCTION=1 was not set. This script must "
                 "default to a controlled development organization."
             )
 
@@ -681,7 +681,7 @@ def main() -> int:
                 # httpx.AsyncClient, so the first request of each run is an
                 # honest cold-client sample and the rest of that run's
                 # requests are honest warm-client samples.
-                proofrail.init(
+                arclasp.init(
                     api_key=api_key,
                     backend_url=backend_url,
                     environment="development",
@@ -701,7 +701,7 @@ def main() -> int:
         print(f"ABORTED: {exc.category}")
         return 1
     except (BackendUnavailableError, ActionDeniedError, ChainAutoPausedError,
-            ChainTimeoutError, ProofRailKillSwitchError) as exc:
+            ChainTimeoutError, ArclaspKillSwitchError) as exc:
         print(f"ABORTED on governance stop condition: {type(exc).__name__}")
         return 1
     except Exception as exc:

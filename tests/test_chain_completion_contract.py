@@ -4,14 +4,14 @@ from unittest.mock import patch
 
 import pytest
 
-import proofrail
-from proofrail.chain import Chain
-from proofrail.exceptions import ChainCompletionError
+import arclasp
+from arclasp.chain import Chain
+from arclasp.exceptions import ChainCompletionError
 
 
 @pytest.fixture(autouse=True)
 def sdk_init():
-    proofrail.init(api_key="prail_test", backend_url="http://localhost:9999")
+    arclasp.init(api_key="prail_test", backend_url="http://localhost:9999")
 
 
 def _post_factory(*complete_results):
@@ -33,7 +33,7 @@ def _post_factory(*complete_results):
 @pytest.mark.asyncio
 async def test_async_context_successful_body_successful_completion():
     fake_post, calls = _post_factory({"id": "chain-complete-001", "status": "completed"})
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         async with Chain("completion-succeeds"):
             pass
 
@@ -43,7 +43,7 @@ async def test_async_context_successful_body_successful_completion():
 @pytest.mark.asyncio
 async def test_async_context_successful_body_completion_failure_is_observable():
     fake_post, calls = _post_factory(RuntimeError("backend unavailable"))
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         with pytest.raises(ChainCompletionError) as exc_info:
             async with Chain("completion-fails"):
                 pass
@@ -55,7 +55,7 @@ async def test_async_context_successful_body_completion_failure_is_observable():
 @pytest.mark.asyncio
 async def test_async_context_user_exception_takes_precedence_over_completion_failure():
     fake_post, _calls = _post_factory(RuntimeError("backend unavailable"))
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         with pytest.raises(ValueError, match="user code failed"):
             async with Chain("body-fails"):
                 raise ValueError("user code failed")
@@ -68,7 +68,7 @@ async def test_explicit_completion_can_retry_after_response_loss():
         {"id": "chain-complete-001", "status": "completed"},
     )
     chain = Chain("retry")
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         await chain._start()
         with pytest.raises(ChainCompletionError):
             await chain._complete()
@@ -88,7 +88,7 @@ async def test_explicit_completion_called_twice_is_backend_idempotent():
         {"id": "chain-complete-001", "status": "completed"},
     )
     chain = Chain("double-complete")
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         await chain._start()
         await chain._complete()
         await chain._complete()
@@ -100,7 +100,7 @@ async def test_explicit_completion_called_twice_is_backend_idempotent():
 async def test_completion_malformed_response_is_observable():
     fake_post, _calls = _post_factory({"id": "chain-complete-001", "status": "active"})
     chain = Chain("malformed-complete")
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         await chain._start()
         with pytest.raises(ChainCompletionError):
             await chain._complete()
@@ -108,7 +108,7 @@ async def test_completion_malformed_response_is_observable():
 
 def test_sync_context_successful_body_completion_failure_is_observable():
     fake_post, calls = _post_factory(RuntimeError("backend unavailable"))
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         with pytest.raises(ChainCompletionError):
             with Chain("sync-completion-fails"):
                 pass
@@ -118,7 +118,7 @@ def test_sync_context_successful_body_completion_failure_is_observable():
 
 def test_sync_context_user_exception_takes_precedence_over_completion_failure():
     fake_post, _calls = _post_factory(RuntimeError("backend unavailable"))
-    with patch("proofrail.client._post", side_effect=fake_post):
+    with patch("arclasp.client._post", side_effect=fake_post):
         with pytest.raises(ValueError, match="user code failed"):
             with Chain("sync-body-fails"):
                 raise ValueError("user code failed")

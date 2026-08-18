@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
-import proofrail
-from proofrail.chain import Chain
+import arclasp
+from arclasp.chain import Chain
 
 
 def _init(backend_timeout_seconds: int = 2, drain_timeout_seconds: int | None = None) -> None:
@@ -29,7 +29,7 @@ def _init(backend_timeout_seconds: int = 2, drain_timeout_seconds: int | None = 
     )
     if drain_timeout_seconds is not None:
         kw["drain_timeout_seconds"] = drain_timeout_seconds
-    proofrail.init(**kw)
+    arclasp.init(**kw)
 
 
 async def _never_finishes() -> None:
@@ -53,8 +53,8 @@ async def test_drain_timeout_scales_with_buffer_size():
     async def complete_post(path: str, body: dict, action_type: str | None = None) -> dict:
         return {"status": "completed"}
 
-    with patch("proofrail.chain.asyncio.wait_for", side_effect=spy_wait_for):
-        with patch("proofrail.client._post", side_effect=complete_post):
+    with patch("arclasp.chain.asyncio.wait_for", side_effect=spy_wait_for):
+        with patch("arclasp.client._post", side_effect=complete_post):
             await chain._complete()
 
     assert wait_for_calls == [15.0]
@@ -75,9 +75,9 @@ async def test_drain_timeout_drop_count_logged(caplog):
     async def complete_post(path: str, body: dict, action_type: str | None = None) -> dict:
         return {"status": "completed"}
 
-    with caplog.at_level(logging.WARNING, logger="proofrail.chain"):
-        with patch("proofrail.chain.asyncio.wait_for", side_effect=spy_wait_for):
-            with patch("proofrail.client._post", side_effect=complete_post):
+    with caplog.at_level(logging.WARNING, logger="arclasp.chain"):
+        with patch("arclasp.chain.asyncio.wait_for", side_effect=spy_wait_for):
+            with patch("arclasp.client._post", side_effect=complete_post):
                 await chain._complete()
 
     assert any("3 event(s) dropped" in r.message for r in caplog.records)
@@ -102,8 +102,8 @@ async def test_drain_timeout_config_override():
     async def complete_post(path: str, body: dict, action_type: str | None = None) -> dict:
         return {"status": "completed"}
 
-    with patch("proofrail.chain.asyncio.wait_for", side_effect=spy_wait_for):
-        with patch("proofrail.client._post", side_effect=complete_post):
+    with patch("arclasp.chain.asyncio.wait_for", side_effect=spy_wait_for):
+        with patch("arclasp.client._post", side_effect=complete_post):
             await chain._complete()
 
     assert wait_for_calls == [60.0]

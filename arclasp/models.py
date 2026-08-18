@@ -1,5 +1,5 @@
 """
-proofrail.models — Shared Pydantic models and data types.
+arclasp.models — Shared Pydantic models and data types.
 """
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, SecretStr
 
-from proofrail._constants import (
+from arclasp._constants import (
     DEFAULT_SENSITIVE_FIELD_PATTERNS,
     DEFAULT_SENSITIVE_VALUE_PATTERNS,
 )
@@ -111,7 +111,7 @@ class PolicyDecision(BaseModel):
 
 class ChainConfig(BaseModel):
     """
-    Full configuration for a ProofRail SDK session.  Created by proofrail.init()
+    Full configuration for a Arclasp SDK session.  Created by arclasp.init()
     and stored as a module-level singleton.
     """
 
@@ -161,7 +161,7 @@ class ChainConfig(BaseModel):
 
     # Field-name patterns — any key matching (case-insensitive substring) is redacted.
     # Defaults are the complete v2 spec section 12 set.  Extend without replacing:
-    #   proofrail.init(sensitive_field_patterns=[*DEFAULT_SENSITIVE_FIELD_PATTERNS, "my_secret"])
+    #   arclasp.init(sensitive_field_patterns=[*DEFAULT_SENSITIVE_FIELD_PATTERNS, "my_secret"])
     sensitive_field_patterns: list[str] = Field(
         default_factory=lambda: list(DEFAULT_SENSITIVE_FIELD_PATTERNS)
     )

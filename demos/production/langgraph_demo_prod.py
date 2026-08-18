@@ -2,7 +2,7 @@
 Production end-to-end demo: LangGraph 4-agent vendor purchase workflow.
 
 Runs the same 7-event scenario as the mocked demo, but against the live
-ProofRail backend at https://api.proofrail.dev with a real API key.
+Arclasp backend at https://api.proofrail.dev with a real API key.
 
 The 4th commitment ($3,000 for vendor-d) pushes cumulative exposure to
 $12,000 — crossing the $10,000 default threshold.  The backend triggers
@@ -14,7 +14,7 @@ Usage (from repo root):
     python demos/production/langgraph_demo_prod.py
 
 Requires:
-    PROOFRAIL_API_KEY  — production API key (prail_...)
+    ARCLASP_API_KEY  — production API key (prail_...)
 
 Artifacts written to verification-artifacts/demos/production/langgraph/:
     chain-trace.json   — full chain + events from the backend
@@ -47,9 +47,9 @@ class _NoVerifyAsyncClient(_OrigAsyncClient):
         super().__init__(*args, **kwargs)
 _httpx.AsyncClient = _NoVerifyAsyncClient
 
-import proofrail
-import proofrail.client as _pr_client
-from proofrail import Chain
+import arclasp
+import arclasp.client as _pr_client
+from arclasp import Chain
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -195,17 +195,17 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
 
 
 async def main() -> int:
-    api_key = os.environ.get("PROOFRAIL_API_KEY", "")
+    api_key = os.environ.get("ARCLASP_API_KEY", "")
     if not api_key:
-        print("ERROR: PROOFRAIL_API_KEY environment variable is not set.")
+        print("ERROR: ARCLASP_API_KEY environment variable is not set.")
         return 1
 
     print("=" * 65)
-    print("  ProofRail — LangGraph Production Demo")
+    print("  Arclasp — LangGraph Production Demo")
     print("=" * 65)
     print()
     print("  Backend   : https://api.proofrail.dev")
-    print("  Adapter   : proofrail.Chain (direct, LangGraph-style)")
+    print("  Adapter   : arclasp.Chain (direct, LangGraph-style)")
     print("  Agents    : pricing-research -> offer-calculator ->")
     print("              communication -> commitment-recorder (x4)")
     print("  Threshold : $10,000 cumulative financial exposure")
@@ -214,7 +214,7 @@ async def main() -> int:
     print("              Owner clicks approve link in email -> chain completes.")
     print()
 
-    proofrail.init(
+    arclasp.init(
         api_key=api_key,
         backend_url="https://api.proofrail.dev",
         environment="production",

@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-import proofrail
-from proofrail import client as _client
-from proofrail.exceptions import ProofRailVerificationError
-from proofrail.models import (
+import arclasp
+from arclasp import client as _client
+from arclasp.exceptions import ArclaspVerificationError
+from arclasp.models import (
     AuthenticatedVerificationResponse,
     PublicVerificationResponse,
     PublicVerificationTokenCreateResponse,
@@ -144,7 +144,7 @@ _TOKEN_METADATA = {
 
 @pytest.fixture(autouse=True)
 def init_sdk():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_testkey123",
         backend_url="https://api.example.test",
         environment="development",
@@ -328,7 +328,7 @@ async def test_public_token_verify_uses_public_v2_and_sanitizes_error_text():
     response = httpx.Response(404, request=request, json={"reason_code": "not_publicly_verifiable"})
     error = httpx.HTTPStatusError("not found", request=request, response=response)
     with patch.object(_client, "_get_unauthenticated_json", new=AsyncMock(side_effect=error)):
-        with pytest.raises(ProofRailVerificationError) as exc_info:
+        with pytest.raises(ArclaspVerificationError) as exc_info:
             await _client.verify_public_token(_PUBLIC_TOKEN)
     assert _PUBLIC_TOKEN not in str(exc_info.value)
     assert exc_info.value.reason_code == "not_publicly_verifiable"

@@ -1,12 +1,12 @@
 """
-proofrail — AI Agent Governance Layer SDK.
+arclasp — AI Agent Governance Layer SDK.
 
 Quick start:
-    import proofrail
+    import arclasp
 
-    proofrail.init(api_key="prail_...")
+    arclasp.init(api_key="prail_...")
 
-    async with proofrail.Chain("my-agent-workflow") as chain:
+    async with arclasp.Chain("my-agent-workflow") as chain:
         await chain.record_agent_action(
             agent_name="my-agent",
             action_type="tool_call",
@@ -15,8 +15,8 @@ Quick start:
         )
 """
 
-from proofrail.chain import Chain
-from proofrail.client import (
+from arclasp.chain import Chain
+from arclasp.client import (
     init,
     issue_public_verification_token,
     list_public_verification_tokens,
@@ -26,15 +26,15 @@ from proofrail.client import (
     verify_receipt,
     verify_receipt_v2,
 )
-from proofrail.exceptions import (
+from arclasp.exceptions import (
     ActionDeniedError,
     BackendUnavailableError,
     ChainCompletionError,
     ChainAutoPausedError,
     ChainTimeoutError,
     PolicyViolationError,
-    ProofRailKillSwitchError,
-    ProofRailVerificationError,
+    ArclaspKillSwitchError,
+    ArclaspVerificationError,
 )
 
 __version__ = "0.1.0a9"
@@ -55,7 +55,7 @@ __all__ = [
     "ChainAutoPausedError",
     "ChainTimeoutError",
     "PolicyViolationError",
-    "ProofRailKillSwitchError",
-    "ProofRailVerificationError",
+    "ArclaspKillSwitchError",
+    "ArclaspVerificationError",
     "__version__",
 ]

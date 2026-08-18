@@ -4,10 +4,10 @@ End-to-end demo: MCP vendor purchase workflow.
 Same scenario as the LangGraph demo — 7 agent actions accumulating to $12,000
 against a $10,000 threshold — but exercised through the MCP adapter.
 
-How ProofRail hooks in:
+How Arclasp hooks in:
     No govern() wrapper for MCP.  Instead:
-      1. Open a ProofRail Chain context as usual.
-      2. Create ProofRailMcpAdapter(chain=chain, agent_name=...).
+      1. Open a Arclasp Chain context as usual.
+      2. Create ArclaspMcpAdapter(chain=chain, agent_name=...).
       3. For each tool invocation, call adapter.handle_tool_call(tool_name,
          arguments, handler).  The adapter calls chain.record_agent_action()
          before invoking the handler function.
@@ -35,9 +35,9 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-import proofrail
-from proofrail import Chain
-from proofrail.mcp.adapter import ProofRailMcpAdapter
+import arclasp
+from arclasp import Chain
+from arclasp.mcp.adapter import ArclaspMcpAdapter
 
 ARTIFACT_DIR = Path("verification-artifacts/demos")
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -154,15 +154,15 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
     events_log: list[dict] = []
 
     with (
-        patch("proofrail.client._post", side_effect=_mock_post),
-        patch("proofrail.client._get",  side_effect=_mock_get),
+        patch("arclasp.client._post", side_effect=_mock_post),
+        patch("arclasp.client._get",  side_effect=_mock_get),
         patch("asyncio.sleep",          new=AsyncMock(return_value=None)),
     ):
         async with Chain(
             "mcp-vendor-purchase",
             metadata={"workflow": "vendor_purchase", "framework": "mcp", "demo_run": True},
         ) as chain:
-            adapter = ProofRailMcpAdapter(chain=chain, agent_name="vendor-purchase-mcp")
+            adapter = ArclaspMcpAdapter(chain=chain, agent_name="vendor-purchase-mcp")
 
             for tool_name, tool_args in _VENDOR_TOOL_CALLS:
                 await adapter.handle_tool_call(tool_name, tool_args, _tool_handler)
@@ -196,10 +196,10 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
 
 async def main() -> int:
     print("=" * 65)
-    print("  ProofRail -- MCP Vendor Purchase Demo")
+    print("  Arclasp -- MCP Vendor Purchase Demo")
     print("=" * 65)
     print()
-    print("  Adapter   : proofrail.mcp.adapter.ProofRailMcpAdapter")
+    print("  Adapter   : arclasp.mcp.adapter.ArclaspMcpAdapter")
     print("  Interface : adapter.handle_tool_call(tool, args, handler)")
     print("  Agent     : vendor-purchase-mcp (single MCP server)")
     print("  Threshold : $10,000 cumulative financial exposure")
@@ -209,7 +209,7 @@ async def main() -> int:
     print("              chain completes with signed receipt.")
     print()
 
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test_demo00000000000000000000000000000000000000000",
         backend_url="http://mock-backend.local",
         environment="development",

@@ -1,5 +1,5 @@
 """
-proofrail.exceptions — SDK exception hierarchy.
+arclasp.exceptions — SDK exception hierarchy.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ _POLICY_REMEDIATION: dict[str, tuple[str, str]] = {
 # ---------------------------------------------------------------------------
 
 
-class ProofRailPolicyError(Exception):
+class ArclaspPolicyError(Exception):
     """
     Common base for all policy-denial exceptions raised by the SDK.
 
@@ -62,7 +62,7 @@ class ProofRailPolicyError(Exception):
     ``"deny"`` decision) and :class:`PolicyViolationError` (raised when a
     local fast-path check blocks an action) carry the same six diagnostic
     fields.  This base class holds them so callers can catch either with a
-    single ``except ProofRailPolicyError`` clause while still being able to
+    single ``except ArclaspPolicyError`` clause while still being able to
     distinguish the two if needed.
 
     Attributes
@@ -126,24 +126,24 @@ class ProofRailPolicyError(Exception):
 # ---------------------------------------------------------------------------
 
 
-class ActionDeniedError(ProofRailPolicyError):
+class ActionDeniedError(ArclaspPolicyError):
     """
     Raised when the backend policy engine returns a ``"deny"`` decision for an
     agent action.  Carries structured context so operators can surface a clear
     error message or take remediation steps.
 
-    Catch :class:`ProofRailPolicyError` instead when you want to handle both
+    Catch :class:`ArclaspPolicyError` instead when you want to handle both
     backend denials and local fast-path violations uniformly.
     """
 
 
-class PolicyViolationError(ProofRailPolicyError):
+class PolicyViolationError(ArclaspPolicyError):
     """
     Raised when an agent action is blocked by a local fast-path check before
     (or instead of) a backend round-trip, e.g. when the SDK's local policy
     evaluation rejects the action immediately.
 
-    Catch :class:`ProofRailPolicyError` instead when you want to handle both
+    Catch :class:`ArclaspPolicyError` instead when you want to handle both
     backend denials and local fast-path violations uniformly.
     """
 
@@ -155,7 +155,7 @@ class PolicyViolationError(ProofRailPolicyError):
 
 class BackendUnavailableError(Exception):
     """
-    Raised when the ProofRail backend cannot be reached and fail_mode is
+    Raised when the Arclasp backend cannot be reached and fail_mode is
     ``"deny"``.  Carries the original failure message and the configured
     fail_mode for context.
     """
@@ -175,7 +175,7 @@ class ChainCompletionError(Exception):
         super().__init__(f"{message} (chain_id={chain_id})")
 
 
-class ProofRailVerificationError(Exception):
+class ArclaspVerificationError(Exception):
     """Raised when a verification request fails with sanitized context."""
 
     def __init__(self, message: str, status_code: int | None = None, reason_code: str | None = None) -> None:
@@ -202,7 +202,7 @@ class ChainTimeoutError(Exception):
         super().__init__(f"chain '{chain_id}' timed out after {timeout_seconds}s")
 
 
-class ProofRailKillSwitchError(Exception):
+class ArclaspKillSwitchError(Exception):
     """
     Raised when the organisation's kill switch is active and an agent action
     is attempted.  The kill switch is evaluated at the very top of the policy
@@ -230,7 +230,7 @@ class ProofRailKillSwitchError(Exception):
         super().__init__(str(self))
 
     def __str__(self) -> str:
-        lines = [f"ProofRailKillSwitchError: {self.message}"]
+        lines = [f"ArclaspKillSwitchError: {self.message}"]
         if self.organization_id:
             lines.append(f"  Organisation : {self.organization_id}")
         if self.reason:
@@ -238,7 +238,7 @@ class ProofRailKillSwitchError(Exception):
         return "\n".join(lines)
 
 
-class ChainAutoPausedError(ProofRailPolicyError):
+class ChainAutoPausedError(ArclaspPolicyError):
     """
     Raised when the backend reports ``auto_paused=True`` on a chain event
     response.  This means the chain has been halted by the backend's runaway-

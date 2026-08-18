@@ -1,6 +1,6 @@
 """
-proofrail.client — SDK client initialization, configuration singleton, and
-low-level HTTP transport to the ProofRail backend.
+arclasp.client — SDK client initialization, configuration singleton, and
+low-level HTTP transport to the Arclasp backend.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from urllib.parse import urlencode
 
 import httpx
 
-from proofrail.exceptions import BackendUnavailableError, ProofRailVerificationError
-from proofrail.models import (
+from arclasp.exceptions import BackendUnavailableError, ArclaspVerificationError
+from arclasp.models import (
     AuthenticatedVerificationResponse,
     ChainConfig,
     ChainDetail,
@@ -75,7 +75,7 @@ _clients_by_loop: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 # ---------------------------------------------------------------------------
 
 _benchmark_ctx: ContextVar["_BenchmarkSample | None"] = ContextVar(
-    "_proofrail_benchmark_ctx", default=None
+    "_arclasp_benchmark_ctx", default=None
 )
 
 
@@ -138,7 +138,7 @@ class _OfflineSignal(Exception):
 
 def init(**kwargs) -> ChainConfig:
     """
-    Initialize the ProofRail SDK with the given configuration values.
+    Initialize the Arclasp SDK with the given configuration values.
 
     Must be called once before creating any Chain.  Calling it again with
     different values reconfigures the SDK and resets the HTTP client.
@@ -146,7 +146,7 @@ def init(**kwargs) -> ChainConfig:
     Parameters
     ----------
     api_key : str  (required)
-        The ProofRail API key generated from the dashboard.
+        The Arclasp API key generated from the dashboard.
     **kwargs :
         Any field accepted by ``ChainConfig`` (see models.py).
 
@@ -164,7 +164,7 @@ def init(**kwargs) -> ChainConfig:
 
     if not kwargs.get("api_key"):
         raise ValueError(
-            "api_key is required. Call proofrail.init(api_key='prail_...') before using the SDK."
+            "api_key is required. Call arclasp.init(api_key='prail_...') before using the SDK."
         )
 
     if kwargs.get("enable_local_fast_path") is True:
@@ -215,13 +215,13 @@ def init(**kwargs) -> ChainConfig:
         _config.backend_url
     ):
         logger.warning(
-            "ProofRail SDK: backend_url uses plaintext HTTP (%r). "
+            "Arclasp SDK: backend_url uses plaintext HTTP (%r). "
             "All audit data will be transmitted unencrypted. "
             "Switch to an https:// URL for non-local deployments.",
             _config.backend_url,
         )
 
-    logger.debug("ProofRail SDK initialized (environment=%s)", _config.environment)
+    logger.debug("Arclasp SDK initialized (environment=%s)", _config.environment)
     return _config
 
 
@@ -236,7 +236,7 @@ def get_config() -> ChainConfig:
     """
     if _config is None:
         raise RuntimeError(
-            "proofrail has not been initialized. Call proofrail.init(api_key='prail_...') first."
+            "arclasp has not been initialized. Call arclasp.init(api_key='prail_...') first."
         )
     return _config
 
@@ -260,7 +260,7 @@ def _get_client() -> httpx.AsyncClient:
     """
     if _config is None:
         raise RuntimeError(
-            "proofrail has not been initialized. Call proofrail.init(api_key='prail_...') first."
+            "arclasp has not been initialized. Call arclasp.init(api_key='prail_...') first."
         )
     loop = asyncio.get_running_loop()  # raises RuntimeError if no running loop
     sample = _benchmark_ctx.get()
@@ -339,7 +339,7 @@ async def _retry_with_backoff(
             if attempt < max_retries:
                 backoff_ms = backoff_base_ms * (2**attempt)
                 logger.info(
-                    "ProofRail SDK retry attempt %d/%d after %dms: %s",
+                    "Arclasp SDK retry attempt %d/%d after %dms: %s",
                     attempt + 1,
                     max_retries,
                     backoff_ms,
@@ -355,7 +355,7 @@ async def _retry_with_backoff(
             if attempt < max_retries:
                 backoff_ms = backoff_base_ms * (2**attempt)
                 logger.info(
-                    "ProofRail SDK retry attempt %d/%d after %dms: HTTP %d",
+                    "Arclasp SDK retry attempt %d/%d after %dms: HTTP %d",
                     attempt + 1,
                     max_retries,
                     backoff_ms,
@@ -373,7 +373,7 @@ async def _retry_with_backoff(
                     response, backoff_base_ms * (2**attempt)
                 )
                 logger.info(
-                    "ProofRail SDK retry attempt %d/%d after %dms: HTTP 429",
+                    "Arclasp SDK retry attempt %d/%d after %dms: HTTP 429",
                     attempt + 1,
                     max_retries,
                     backoff_ms,
@@ -609,7 +609,7 @@ async def verify_receipt(receipt_id: str) -> ReceiptVerifyResponse:
     organization-scoped receipt verification.
     """
     warnings.warn(
-        "proofrail.client.verify_receipt() uses the deprecated legacy receipt verifier; "
+        "arclasp.client.verify_receipt() uses the deprecated legacy receipt verifier; "
         "use verify_receipt_v2() for authenticated v2 verification.",
         DeprecationWarning,
         stacklevel=2,
@@ -683,13 +683,13 @@ async def verify_public_token(token: str) -> PublicVerificationResponse:
             reason_code = payload.get("reason_code") or payload.get("detail")
         except Exception:
             reason_code = None
-        raise ProofRailVerificationError(
+        raise ArclaspVerificationError(
             "public token verification failed",
             status_code=exc.response.status_code,
             reason_code=reason_code,
         ) from None
     except (httpx.TimeoutException, httpx.NetworkError) as exc:
-        raise ProofRailVerificationError("public token verification transport failed") from exc
+        raise ArclaspVerificationError("public token verification transport failed") from exc
     return PublicVerificationResponse.model_validate(data)
 
 async def list_chains(

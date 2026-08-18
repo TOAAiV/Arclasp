@@ -12,15 +12,15 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-import proofrail
-from proofrail.chain import Chain, _buffer_event
-from proofrail.exceptions import BackendUnavailableError
+import arclasp
+from arclasp.chain import Chain, _buffer_event
+from arclasp.exceptions import BackendUnavailableError
 
 
 @pytest.fixture()
 def sdk_allow():
     with pytest.warns(DeprecationWarning, match="fail_mode"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             fail_mode="allow",
@@ -30,7 +30,7 @@ def sdk_allow():
 
 @pytest.fixture()
 def sdk_deny():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         fail_mode="deny",
@@ -45,7 +45,7 @@ def _connect_error(*args, **kwargs):
 class TestFailClosedAllow:
     @pytest.mark.asyncio
     async def test_chain_start_allow_raises_backend_unavailable_not_offline(self, sdk_allow):
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -63,7 +63,7 @@ class TestFailClosedAllow:
         chain = Chain("test")
         chain._chain_id = "authoritative-chain-id"
 
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -80,7 +80,7 @@ class TestFailClosedAllow:
 
     @pytest.mark.asyncio
     async def test_no_public_offline_chain_context_manager(self, sdk_allow):
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -92,7 +92,7 @@ class TestFailClosedAllow:
 class TestOfflineDeny:
     @pytest.mark.asyncio
     async def test_deny_raises_backend_unavailable(self, sdk_deny):
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -104,7 +104,7 @@ class TestOfflineDeny:
 
     @pytest.mark.asyncio
     async def test_deny_error_has_correct_fail_mode(self, sdk_deny):
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -119,14 +119,14 @@ class TestFailModesChainStart:
     @pytest.mark.asyncio
     async def test_default_key_allow_still_fails_closed(self):
         with pytest.warns(DeprecationWarning, match="fail_mode"):
-            proofrail.init(
+            arclasp.init(
                 api_key="prail_test",
                 backend_url="http://localhost:9999",
                 fail_mode="deny",
                 fail_modes={"default": "allow"},
                 max_retries=0,
             )
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -139,14 +139,14 @@ class TestFailModesChainStart:
     @pytest.mark.asyncio
     async def test_chain_create_key_allow_still_fails_closed(self):
         with pytest.warns(DeprecationWarning, match="fail_mode"):
-            proofrail.init(
+            arclasp.init(
                 api_key="prail_test",
                 backend_url="http://localhost:9999",
                 fail_mode="deny",
                 fail_modes={"chain_create": "allow"},
                 max_retries=0,
             )
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -159,14 +159,14 @@ class TestFailModesChainStart:
     @pytest.mark.asyncio
     async def test_tool_call_only_does_not_affect_chain_start(self):
         with pytest.warns(DeprecationWarning, match="fail_mode"):
-            proofrail.init(
+            arclasp.init(
                 api_key="prail_test",
                 backend_url="http://localhost:9999",
                 fail_mode="deny",
                 fail_modes={"tool_call": "allow"},
                 max_retries=0,
             )
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -178,14 +178,14 @@ class TestFailModesChainStart:
 
     @pytest.mark.asyncio
     async def test_empty_fail_modes_preserves_global_deny(self):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             fail_mode="deny",
             fail_modes={},
             max_retries=0,
         )
-        with patch("proofrail.client._get_client") as mock_get_client:
+        with patch("arclasp.client._get_client") as mock_get_client:
             mock_client = mock_get_client.return_value
             mock_client.post = _connect_error
 
@@ -214,7 +214,7 @@ class TestBufferEventHelper:
         assert buf[-1] == {"action_name": "new_event"}
 
     def test_callable_without_chain(self):
-        from proofrail.chain import _buffer_event as imported_fn
+        from arclasp.chain import _buffer_event as imported_fn
 
         assert callable(imported_fn)
         buf = []

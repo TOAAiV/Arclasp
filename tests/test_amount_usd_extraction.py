@@ -1,5 +1,5 @@
 """
-Regression tests: proofrail.policies must read the "amount_usd" payload key.
+Regression tests: arclasp.policies must read the "amount_usd" payload key.
 
 Bug: the SDK's own documented payload shape is {"amount_usd": <n>} (see
 Chain.record_agent_action docstring, all demos/*.py), but _extract_numeric()
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from proofrail.policies import (
+from arclasp.policies import (
     _extract_numeric,
     evaluate_policy,
     update_chain_metrics_local,
@@ -64,7 +64,7 @@ class TestEvaluatePolicyCumulativeThresholdAmountUsd:
         """
         With cumulative_financial_exposure=$11,000 built entirely from
         amount_usd payloads and org cumulative_threshold_usd=10000 (matching
-        proofrail.init(cumulative_financial_threshold_usd=10000)), the
+        arclasp.init(cumulative_financial_threshold_usd=10000)), the
         decision must be require_approval.
         """
         org_config = {

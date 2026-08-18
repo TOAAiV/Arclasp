@@ -11,7 +11,7 @@ Usage (from repo root):
     python demos/production/crewai_demo_prod.py
 
 Requires:
-    PROOFRAIL_API_KEY  — production API key (prail_...)
+    ARCLASP_API_KEY  — production API key (prail_...)
 
 Artifacts written to verification-artifacts/demos/production/crewai/:
     chain-trace.json
@@ -42,9 +42,9 @@ class _NoVerifyAsyncClient(_OrigAsyncClient):
         super().__init__(*args, **kwargs)
 _httpx.AsyncClient = _NoVerifyAsyncClient
 
-import proofrail
-import proofrail.client as _pr_client
-from proofrail.crewai.adapter import govern
+import arclasp
+import arclasp.client as _pr_client
+from arclasp.crewai.adapter import govern
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -205,17 +205,17 @@ async def _run_vendor_workflow() -> None:
 
 
 async def main() -> int:
-    api_key = os.environ.get("PROOFRAIL_API_KEY", "")
+    api_key = os.environ.get("ARCLASP_API_KEY", "")
     if not api_key:
-        print("ERROR: PROOFRAIL_API_KEY environment variable is not set.")
+        print("ERROR: ARCLASP_API_KEY environment variable is not set.")
         return 1
 
     print("=" * 65)
-    print("  ProofRail — CrewAI Production Demo")
+    print("  Arclasp — CrewAI Production Demo")
     print("=" * 65)
     print()
     print("  Backend   : https://api.proofrail.dev")
-    print("  Adapter   : proofrail.crewai.adapter.govern()")
+    print("  Adapter   : arclasp.crewai.adapter.govern()")
     print("  Strategy  : Mixed (CrewAI 1.x) — Strategy B + Strategy A")
     print("  Agents    : pricing-researcher -> offer-calculator ->")
     print("              communications-manager -> commitment-recorder (x4)")
@@ -224,7 +224,7 @@ async def main() -> int:
     print("              -> require_approval -> owner approves via email.")
     print()
 
-    proofrail.init(
+    arclasp.init(
         api_key=api_key,
         backend_url="https://api.proofrail.dev",
         environment="production",

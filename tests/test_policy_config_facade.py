@@ -15,8 +15,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import proofrail
-from proofrail.chain import Chain
+import arclasp
+from arclasp.chain import Chain
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ from proofrail.chain import Chain
 
 @pytest.fixture(autouse=True)
 def sdk_init():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://test",
         fail_mode="deny",
@@ -133,7 +133,7 @@ class TestChainCreationBody:
                 return {"status": "completed"}
             return {"policy_decision": "allow"}
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             chain = Chain("test-facade")
             chain.add_financial_threshold(usd=10_000, notify=["ops@example.com"])
             async with chain:
@@ -157,7 +157,7 @@ class TestChainCreationBody:
             return {"policy_decision": "allow"}
 
         raw_config = {"cumulative_financial_threshold_usd": 50_000}
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             async with Chain("test-ctor", policy_config=raw_config):
                 pass
 
@@ -177,7 +177,7 @@ class TestChainCreationBody:
                 return {"status": "completed"}
             return {"policy_decision": "allow"}
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             async with Chain("test-default"):
                 pass
 
@@ -201,7 +201,7 @@ class TestChainCreationBody:
                 return {"status": "completed"}
             return {"policy_decision": "allow"}
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             facade_chain = Chain("via-facade")
             facade_chain.add_financial_threshold(usd=10_000, notify=["a@example.com"])
             async with facade_chain:

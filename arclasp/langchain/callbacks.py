@@ -1,11 +1,11 @@
 """
-proofrail.langchain.callbacks — LangChain BaseCallbackHandler that records
-tool calls and LLM calls as ProofRail governance chain events.
+arclasp.langchain.callbacks — LangChain BaseCallbackHandler that records
+tool calls and LLM calls as Arclasp governance chain events.
 
 This module loads ``langchain_core.callbacks.BaseCallbackHandler`` (or falls
 back to ``langchain.callbacks.BaseCallbackHandler`` for older installs) at
 *import time* using a safe loader that substitutes ``object`` when neither
-package is available.  This means ``import proofrail.langchain`` never raises
+package is available.  This means ``import arclasp.langchain`` never raises
 ``ImportError`` — the error is deferred until an attempt is made to inject
 the callback into a real LangChain object.
 """
@@ -18,16 +18,16 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from proofrail.chain import Chain
+    from arclasp.chain import Chain
 
-from proofrail._constants import _ACTION_NAME_MAX
-from proofrail._utils import sanitize_log_field
-from proofrail.exceptions import (
+from arclasp._constants import _ACTION_NAME_MAX
+from arclasp._utils import sanitize_log_field
+from arclasp.exceptions import (
     ActionDeniedError,
     BackendUnavailableError,
     ChainAutoPausedError,
     ChainTimeoutError,
-    ProofRailKillSwitchError,
+    ArclaspKillSwitchError,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,15 +56,15 @@ def _load_base_handler() -> type:
             handler = getattr(mod, "BaseCallbackHandler", None)
             if handler is not None:
                 logger.debug(
-                    "proofrail: loaded BaseCallbackHandler from %s", module_path
+                    "arclasp: loaded BaseCallbackHandler from %s", module_path
                 )
                 return handler
         except ImportError:
             continue
 
     logger.debug(
-        "proofrail: langchain / langchain_core not found — "
-        "ProofRailLangChainCallback will use object as base until LangChain is installed"
+        "arclasp: langchain / langchain_core not found — "
+        "ArclaspLangChainCallback will use object as base until LangChain is installed"
     )
     return object
 
@@ -133,18 +133,18 @@ def _serialized_name(serialized: dict[str, Any] | None, fallback: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
+class ArclaspLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
     """
     LangChain ``BaseCallbackHandler`` that records tool calls and LLM calls
-    as ProofRail governance chain events.
+    as Arclasp governance chain events.
 
     Pass an instance of this class to any LangChain chain or
     ``AgentExecutor`` via ``config={"callbacks": [callback]}``.
 
     Parameters
     ----------
-    chain : proofrail.chain.Chain
-        The active ProofRail chain context (obtained from inside an
+    chain : arclasp.chain.Chain
+        The active Arclasp chain context (obtained from inside an
         ``async with Chain(...) as chain:`` block).
     agent_name : str
         Label used as ``agent_name`` in every recorded event.  Defaults to
@@ -247,7 +247,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -288,7 +288,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -331,7 +331,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -387,7 +387,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -431,7 +431,7 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -473,6 +473,6 @@ class ProofRailLangChainCallback(_BaseCallbackHandler):  # type: ignore[misc]
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc

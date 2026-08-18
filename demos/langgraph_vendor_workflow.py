@@ -1,7 +1,7 @@
 """
 End-to-end demo: LangGraph 4-agent vendor purchase workflow.
 
-Demonstrates ProofRail governance over a multi-agent workflow:
+Demonstrates Arclasp governance over a multi-agent workflow:
   - 4 agents: pricing-research, offer-calculator, communication,
               commitment-recorder
   - The commitment-recorder runs 4 times, each committing $3,000
@@ -20,8 +20,8 @@ Artifacts (written to verification-artifacts/demos/):
     langgraph-stdout.txt        — console output (if stdout is redirected here)
 
 Mock pattern (mirrors SDK integration tests):
-    patch("proofrail.client._post") — intercepts chain lifecycle and event POSTs
-    patch("proofrail.client._get")  — intercepts approval-status poll and receipt GET
+    patch("arclasp.client._post") — intercepts chain lifecycle and event POSTs
+    patch("arclasp.client._get")  — intercepts approval-status poll and receipt GET
     patch("asyncio.sleep")          — makes the 5-second approval-poll instant
 """
 
@@ -34,8 +34,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import proofrail
-from proofrail import Chain
+import arclasp
+from arclasp import Chain
 
 # ---------------------------------------------------------------------------
 # Artifact directory
@@ -102,7 +102,7 @@ _event_call_count = 0
 
 async def _mock_post(path: str, data: dict, action_type: str | None = None) -> dict:
     """
-    Intercepts proofrail.client._post.
+    Intercepts arclasp.client._post.
 
     Routing:
       POST /v1/chains                → assign chain id
@@ -125,7 +125,7 @@ async def _mock_post(path: str, data: dict, action_type: str | None = None) -> d
 
 async def _mock_get(path: str, action_type: str | None = None) -> dict:
     """
-    Intercepts proofrail.client._get.
+    Intercepts arclasp.client._get.
 
     Routing:
       GET .../approval-status → immediately "approved" (mocked human decision)
@@ -147,7 +147,7 @@ async def _mock_get(path: str, action_type: str | None = None) -> dict:
 
 async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
     """
-    Execute the 4-agent vendor purchase workflow under ProofRail governance.
+    Execute the 4-agent vendor purchase workflow under Arclasp governance.
 
     Returns the closed Chain object (chain_id still accessible) and the
     ordered events log.
@@ -247,7 +247,7 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
 
 async def main() -> int:
     print("=" * 65)
-    print("  ProofRail — LangGraph 4-Agent Vendor Purchase Demo")
+    print("  Arclasp — LangGraph 4-Agent Vendor Purchase Demo")
     print("=" * 65)
     print()
     print("  Agents    : pricing-research -> offer-calculator ->")
@@ -261,7 +261,7 @@ async def main() -> int:
 
     # Configure SDK for local demo: fast-path OFF so every action hits the
     # mock backend synchronously and the require_approval on call 7 is observed.
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test_demo00000000000000000000000000000000000000000",
         backend_url="http://mock-backend.local",
         environment="development",
@@ -275,8 +275,8 @@ async def main() -> int:
     print()
 
     with (
-        patch("proofrail.client._post", side_effect=_mock_post),
-        patch("proofrail.client._get",  side_effect=_mock_get),
+        patch("arclasp.client._post", side_effect=_mock_post),
+        patch("arclasp.client._get",  side_effect=_mock_get),
         # Skip the 5-second sleep in _poll_for_approval so the demo runs instantly.
         patch("asyncio.sleep",          new=AsyncMock(return_value=None)),
     ):

@@ -1,6 +1,6 @@
-# ProofRail SDK — Security Model
+# Arclasp SDK — Security Model
 
-This document describes the security guarantees the ProofRail SDK provides,
+This document describes the security guarantees the Arclasp SDK provides,
 the intentional design trade-offs that operators must understand before
 deploying it, and how to report vulnerabilities.
 
@@ -10,8 +10,8 @@ For a full audit history, see [AUDIT_FINDINGS.md](https://github.com/TOAAiV/Proo
 
 ## 1. Threat model
 
-The ProofRail SDK acts as a governance intercept layer between AI agent
-frameworks (LangChain, LangGraph, CrewAI, MCP) and the ProofRail backend.
+The Arclasp SDK acts as a governance intercept layer between AI agent
+frameworks (LangChain, LangGraph, CrewAI, MCP) and the Arclasp backend.
 Its security goal is to ensure that agent actions are **evaluated against
 policy before (or immediately after) they execute**, and that a tamper-evident
 audit trail of every governed action is transmitted to the backend.
@@ -52,11 +52,11 @@ the error reports that effective value while still failing closed.
 
 ```python
 # Recommended and default: fail closed on backend failure.
-proofrail.init(fail_mode="deny")
+arclasp.init(fail_mode="deny")
 
 # Deprecated compatibility input. This still fails closed when backend authority
 # is unavailable, and emits a DeprecationWarning at init time.
-proofrail.init(fail_mode="allow")
+arclasp.init(fail_mode="allow")
 ```
 
 A network partition must not silently disable governance or produce audit gaps.
@@ -66,7 +66,7 @@ A network partition must not silently disable governance or produce audit gaps.
 ## 3. Local fast-path compatibility
 
 `enable_local_fast_path` is retained as a deprecated configuration field for
-older callers, and `proofrail.fast_path` remains importable for compatibility.
+older callers, and `arclasp.fast_path` remains importable for compatibility.
 Public governed execution no longer uses local fast-path decisions as allow
 authority. `Chain.record_agent_action()` records each action through the
 backend and waits for the backend decision before returning.
@@ -84,7 +84,7 @@ The SDK's default `backend_url` is `http://localhost:8000`, which is
 intentionally HTTP — it targets a local development server where TLS is
 not needed.
 
-**Warning behaviour:** At `proofrail.init()` time, the SDK logs a WARNING if
+**Warning behaviour:** At `arclasp.init()` time, the SDK logs a WARNING if
 `backend_url` uses plaintext HTTP and the host is **not** localhost
 (`127.0.0.1`, `localhost`, `::1`). The warning text names the impact:
 > *"All audit data will be transmitted unencrypted."*
@@ -102,7 +102,7 @@ SDK-S-6)*
 
 ## 5. API key handling
 
-The ProofRail API key (`api_key`) is stored as a Pydantic `SecretStr`. Its
+The Arclasp API key (`api_key`) is stored as a Pydantic `SecretStr`. Its
 value is masked in all repr and str output — `str(config)` and log lines
 that include `config` will display `**********` rather than the raw key.
 *(Audit finding: SDK-S-7)*
@@ -114,7 +114,7 @@ header of outbound requests to `backend_url`. It is never:
 - Passed to third-party framework adapters (LangChain, LangGraph, CrewAI).
 
 The sanitization layer also redacts string values that begin with `prail_`
-(the ProofRail API key prefix) from action payloads, so an agent that echoes
+(the Arclasp API key prefix) from action payloads, so an agent that echoes
 a key back in a tool result will have it redacted before transmission.
 
 ---
@@ -134,7 +134,7 @@ as a compliance-grade durable queue.
 
 ## 7. Receipt verification model
 
-ProofRail audit receipts are integrity-protected server-side. When
+Arclasp audit receipts are integrity-protected server-side. When
 `chain.receipt()` returns a `ChainReceiptResponse`, the `signature` field
 contains an HMAC computed by the backend over the receipt's `structured_data`.
 
@@ -143,11 +143,11 @@ contains an HMAC computed by the backend over the receipt's `structured_data`.
 ```python
 receipt = await chain.receipt()
 if receipt and receipt.id:
-    result = await proofrail.verify_receipt_v2(receipt.id)
+    result = await arclasp.verify_receipt_v2(receipt.id)
     assert result.verification.integrity.status == "valid"
 ```
 
-`proofrail.verify_receipt_v2(receipt_id)` calls
+`arclasp.verify_receipt_v2(receipt_id)` calls
 `GET /v1/verification/v2/receipts/{id}` on the backend. The backend re-derives
 HMAC integrity server-side and returns a role-aware verification envelope. This
 is server-attested integrity verification, not independent or offline proof.
@@ -167,7 +167,7 @@ ordinary SDK verification JSON today.
 
 ## 8. Security disclosure
 
-To report a security vulnerability in ProofRail, please email
+To report a security vulnerability in Arclasp, please email
 **security@proofrail.dev**.
 
 Please include:

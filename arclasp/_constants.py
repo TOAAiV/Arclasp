@@ -1,5 +1,5 @@
 """
-proofrail._constants — Shared constants used across sanitization, models, and policies.
+arclasp._constants — Shared constants used across sanitization, models, and policies.
 
 Kept in their own module to avoid the circular import that would result from
 sanitization.py importing ChainConfig from models.py while models.py imports
@@ -33,7 +33,7 @@ DEFAULT_SENSITIVE_FIELD_PATTERNS: list[str] = [
     "private_key",
 ]
 
-#: Maximum length for ``action_name`` values recorded on ProofRail events.
+#: Maximum length for ``action_name`` values recorded on Arclasp events.
 #: Adapter layers truncate framework-supplied names to this limit at extraction
 #: time before passing them to ``record_agent_action()``.  Suffixes like
 #: ``:result`` (7 chars) are appended after truncation, so the stored name is
@@ -51,5 +51,5 @@ DEFAULT_SENSITIVE_VALUE_PATTERNS: list[str] = [
     "hf_",  # Hugging Face tokens
     "eyJ",  # JWT tokens — base64url encoding of '{"' — every JWT starts with this
     "AKIA",  # AWS access key IDs (AKIA + 16 uppercase alphanumeric chars)
-    "prail_",  # ProofRail API keys
+    "prail_",  # Arclasp API keys
 ]

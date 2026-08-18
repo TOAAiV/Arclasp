@@ -1,5 +1,5 @@
 """
-proofrail.sanitization — Input and output sanitization utilities.
+arclasp.sanitization — Input and output sanitization utilities.
 
 Sanitization runs on every action payload before it is sent to the backend,
 ensuring that secrets and excessively large strings are never transmitted.
@@ -23,17 +23,17 @@ from __future__ import annotations
 from typing import cast
 
 # Re-export the shared constants so callers can do:
-#   from proofrail.sanitization import DEFAULT_SENSITIVE_FIELD_PATTERNS
+#   from arclasp.sanitization import DEFAULT_SENSITIVE_FIELD_PATTERNS
 # The definitions live in _constants.py to avoid the circular import that would
 # arise if models.py imported from here while this module imports ChainConfig
 # from models.py.
 # The `import X as X` form signals to ruff/mypy that these are intentional
 # re-exports rather than unused imports.
-from proofrail._constants import (
+from arclasp._constants import (
     DEFAULT_SENSITIVE_FIELD_PATTERNS as DEFAULT_SENSITIVE_FIELD_PATTERNS,
     DEFAULT_SENSITIVE_VALUE_PATTERNS as DEFAULT_SENSITIVE_VALUE_PATTERNS,
 )
-from proofrail.models import ChainConfig
+from arclasp.models import ChainConfig
 
 __all__ = [
     "sanitize_payload",

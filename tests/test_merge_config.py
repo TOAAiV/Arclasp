@@ -4,7 +4,7 @@ Tests for _merge_config helper — Item F verification.
 
 
 
-from proofrail._utils import _merge_config
+from arclasp._utils import _merge_config
 
 
 class TestMergeConfigImportable:
@@ -12,11 +12,11 @@ class TestMergeConfigImportable:
         assert callable(_merge_config)
 
     def test_langgraph_uses_shared_function(self):
-        from proofrail.langgraph.adapter import _merge_config as lg_merge
+        from arclasp.langgraph.adapter import _merge_config as lg_merge
         assert lg_merge is _merge_config
 
     def test_langchain_uses_shared_function(self):
-        from proofrail.langchain.adapter import _merge_config as lc_merge
+        from arclasp.langchain.adapter import _merge_config as lc_merge
         assert lc_merge is _merge_config
 
 

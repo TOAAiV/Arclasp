@@ -1,32 +1,32 @@
 """
-Tests for proofrail.exceptions — Item A verification.
+Tests for arclasp.exceptions — Item A verification.
 """
 
 import pytest
 
-from proofrail.exceptions import (
+from arclasp.exceptions import (
     ActionDeniedError,
     ChainAutoPausedError,
     PolicyViolationError,
-    ProofRailPolicyError,
+    ArclaspPolicyError,
 )
 
 
 class TestBaseClass:
     def test_action_denied_is_policy_error(self):
         err = ActionDeniedError(message="test")
-        assert isinstance(err, ProofRailPolicyError)
+        assert isinstance(err, ArclaspPolicyError)
 
     def test_policy_violation_is_policy_error(self):
         err = PolicyViolationError(message="test")
-        assert isinstance(err, ProofRailPolicyError)
+        assert isinstance(err, ArclaspPolicyError)
 
     def test_catch_both_with_base(self):
         caught = []
         for cls in (ActionDeniedError, PolicyViolationError):
             try:
                 raise cls(message="boom")
-            except ProofRailPolicyError as e:
+            except ArclaspPolicyError as e:
                 caught.append(type(e))
         assert caught == [ActionDeniedError, PolicyViolationError]
 
@@ -108,13 +108,13 @@ class TestChainAutoPausedError:
 
     def test_is_policy_error(self):
         err = ChainAutoPausedError()
-        assert isinstance(err, ProofRailPolicyError)
+        assert isinstance(err, ArclaspPolicyError)
 
     def test_catchable_via_base(self):
         caught = []
         try:
             raise ChainAutoPausedError(chain_id="abc-123")
-        except ProofRailPolicyError as e:
+        except ArclaspPolicyError as e:
             caught.append(type(e))
         assert caught == [ChainAutoPausedError]
 

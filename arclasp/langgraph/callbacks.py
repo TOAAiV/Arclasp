@@ -1,10 +1,10 @@
 """
-proofrail.langgraph.callbacks — LangGraph-compatible callback handler.
+arclasp.langgraph.callbacks — LangGraph-compatible callback handler.
 
-Records LangGraph node start and end events as ProofRail chain events.
+Records LangGraph node start and end events as Arclasp chain events.
 
 This module intentionally does NOT import langchain_core at module level so
-that ``proofrail`` itself can be imported without langgraph/langchain installed.
+that ``arclasp`` itself can be imported without langgraph/langchain installed.
 The ``_AsLangChainCallback`` inner class is constructed lazily and only when
 the adapter detects that langchain_core is available.
 """
@@ -15,18 +15,18 @@ import logging
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from proofrail._constants import _ACTION_NAME_MAX
-from proofrail._utils import sanitize_log_field
-from proofrail.exceptions import (
+from arclasp._constants import _ACTION_NAME_MAX
+from arclasp._utils import sanitize_log_field
+from arclasp.exceptions import (
     ActionDeniedError,
     BackendUnavailableError,
     ChainAutoPausedError,
     ChainTimeoutError,
-    ProofRailKillSwitchError,
+    ArclaspKillSwitchError,
 )
 
 if TYPE_CHECKING:
-    from proofrail.chain import Chain
+    from arclasp.chain import Chain
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class _StrategyBPolicyBreak(BaseException):
 def _state_to_dict(state: Any) -> dict:
     """
     Convert a LangGraph state value to a plain ``dict`` suitable for the
-    ProofRail payload.  Handles TypedDict, Pydantic v1/v2 models, NamedTuples,
+    Arclasp payload.  Handles TypedDict, Pydantic v1/v2 models, NamedTuples,
     and plain dicts gracefully.
 
     When the input is already a plain dict, each value is recursively
@@ -113,9 +113,9 @@ def _safe_value(v: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-class ProofRailLangGraphCallback:
+class ArclaspLangGraphCallback:
     """
-    Callback handler that records LangGraph node lifecycle events as ProofRail
+    Callback handler that records LangGraph node lifecycle events as Arclasp
     governance chain events.
 
     This class is framework-agnostic.  The :class:`_AsLangChainCallback`
@@ -217,35 +217,35 @@ def _build_langchain_base():
 class _AsLangChainCallback:
     """
     Thin adapter that implements ``AsyncCallbackHandler`` and delegates
-    LangGraph node events to a :class:`ProofRailLangGraphCallback`.
+    LangGraph node events to a :class:`ArclaspLangGraphCallback`.
 
-    Constructed via ``ProofRailLangGraphCallback.as_langchain_callback()``.
+    Constructed via ``ArclaspLangGraphCallback.as_langchain_callback()``.
 
     LangGraph maps node execution to ``on_chain_start`` / ``on_chain_end``
     callback calls.  The actual node name appears in the *metadata* dict
     under the key ``"langgraph_node"`` (LangGraph >= 0.1).
     """
 
-    def __init__(self, proofrail_callback: ProofRailLangGraphCallback) -> None:
+    def __init__(self, arclasp_callback: ArclaspLangGraphCallback) -> None:
         # Inherit from AsyncCallbackHandler at instantiation time so we
         # don't import langchain_core at module level.
         base = _build_langchain_base()
 
-        # Dynamically create a concrete subclass that holds our proofrail_callback
+        # Dynamically create a concrete subclass that holds our arclasp_callback
         # reference and overrides the relevant handler methods.
         cls = type(
-            "_ProofRailNodeEventHandler",
+            "_ArclaspNodeEventHandler",
             (base,),
             {
                 "__init__": lambda self_inner, cb: setattr(
-                    self_inner, "_proofrail", cb
+                    self_inner, "_arclasp", cb
                 ),
                 "on_chain_start": _make_on_chain_start(),
                 "on_chain_end": _make_on_chain_end(),
                 "on_chain_error": _make_on_chain_error(),
             },
         )
-        self._handler = cls(proofrail_callback)  # type: ignore[call-arg]  # Dynamic type() build — runtime-correct, pyright can't infer signature
+        self._handler = cls(arclasp_callback)  # type: ignore[call-arg]  # Dynamic type() build — runtime-correct, pyright can't infer signature
 
     def __getattr__(self, name: str) -> Any:
         # Proxy everything to the dynamically built handler.
@@ -285,7 +285,7 @@ def _make_on_chain_start():
             self._node_parents = {}
         self._node_parents[run_id] = parent_agent_name
         try:
-            await self._proofrail.on_node_start(
+            await self._arclasp.on_node_start(
                 node_name, inputs, parent_agent_name=parent_agent_name
             )
         except (
@@ -293,7 +293,7 @@ def _make_on_chain_start():
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -313,7 +313,7 @@ def _make_on_chain_end():
             return
         parent_agent_name = getattr(self, "_node_parents", {}).pop(run_id, None)
         try:
-            await self._proofrail.on_node_end(
+            await self._arclasp.on_node_end(
                 node_name, outputs, error=None, parent_agent_name=parent_agent_name
             )
         except (
@@ -321,7 +321,7 @@ def _make_on_chain_end():
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 
@@ -341,7 +341,7 @@ def _make_on_chain_error():
             return
         parent_agent_name = getattr(self, "_node_parents", {}).pop(run_id, None)
         try:
-            await self._proofrail.on_node_end(
+            await self._arclasp.on_node_end(
                 node_name, None, error=error, parent_agent_name=parent_agent_name
             )
         except (
@@ -349,7 +349,7 @@ def _make_on_chain_error():
             BackendUnavailableError,
             ChainTimeoutError,
             ChainAutoPausedError,
-            ProofRailKillSwitchError,
+            ArclaspKillSwitchError,
         ) as exc:
             raise _StrategyBPolicyBreak(exc) from exc
 

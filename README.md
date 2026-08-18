@@ -1,4 +1,4 @@
-# ProofRail
+# Arclasp
 
 Governance for AI agent workflows.
 
@@ -10,7 +10,7 @@ Most AI safety tools evaluate one tool call at a time. That misses the failure m
 
 A research agent looks up vendor pricing. A negotiation agent calculates an offer. An email agent drafts the message. A commitment agent records the deal. Each step passes its own per-call review, and the chain quietly hands a vendor `$50,000` with no human in the loop.
 
-ProofRail watches the whole chain. Cumulative spend, which agents have run, what external domains they've touched, how close the workflow is to its configured thresholds � that context goes into every policy decision. When a policy says a human needs to sign off, execution actually blocks until they do.
+Arclasp watches the whole chain. Cumulative spend, which agents have run, what external domains they've touched, how close the workflow is to its configured thresholds � that context goes into every policy decision. When a policy says a human needs to sign off, execution actually blocks until they do.
 
 This is built for people running real agents in real systems. Solo developers, small teams, and startups all qualify. You don't need to be at scale to want this; you need to be one chain of agent decisions away from a problem you can't take back.
 
@@ -19,10 +19,6 @@ This is built for people running real agents in real systems. Solo developers, s
 ```bash
 pip install arclasp
 ```
-
-> **Note:** the PyPI distribution is `arclasp`, but the Python import namespace
-> stays `proofrail` during the Arclasp transition — you still write
-> `import proofrail` after installing.
 
 Framework adapters are optional extras:
 
@@ -44,11 +40,11 @@ pip install "arclasp[all]"         # everything
 The core pattern is framework-agnostic. Open a chain, record each agent action, get a policy decision back.
 
 ```python
-import proofrail
+import arclasp
 
-proofrail.init(api_key="prail_...")
+arclasp.init(api_key="prail_...")
 
-chain = proofrail.Chain("checkout-flow", metadata={"order_id": "ord_8821"})
+chain = arclasp.Chain("checkout-flow", metadata={"order_id": "ord_8821"})
 chain.add_financial_threshold(usd=10_000, notify=["ops@yourco.com"])
 
 async with chain:
@@ -64,7 +60,7 @@ async with chain:
     #   "backend_evaluation" | "human_approval"
 ```
 
-`add_financial_threshold()` sets a cumulative spend limit for *this chain only* � if your org already has a default via `proofrail.init(cumulative_financial_threshold_usd=...)`, this overrides it just for `checkout-flow`. See [Composing custom policies](#composing-custom-policies) below for the full per-chain configuration surface.
+`add_financial_threshold()` sets a cumulative spend limit for *this chain only* � if your org already has a default via `arclasp.init(cumulative_financial_threshold_usd=...)`, this overrides it just for `checkout-flow`. See [Composing custom policies](#composing-custom-policies) below for the full per-chain configuration surface.
 
 If a policy requires human approval, `record_agent_action` blocks until the reviewer responds. On approval the call returns with `decision_source="human_approval"`. On denial or timeout, it raises `ActionDeniedError`. If the chain itself exceeds its configured timeout, `ChainTimeoutError` raises.
 
@@ -81,11 +77,11 @@ Full documentation � framework adapter guides, policy configuration, dashboard
 Wrap a compiled graph once. Every node execution is recorded and evaluated.
 
 ```python
-import proofrail
-from proofrail.langgraph import govern
+import arclasp
+from arclasp.langgraph import govern
 from langchain_core.messages import HumanMessage
 
-proofrail.init(api_key="prail_...")
+arclasp.init(api_key="prail_...")
 
 governed = govern(compiled_graph, chain_name="research-workflow")
 result = await governed.ainvoke({"messages": [HumanMessage(content="Summarize Q3 revenue")]})
@@ -97,18 +93,18 @@ See https://docs.proofrail.dev/frameworks/langgraph for LangGraph integration de
 
 ### MCP
 
-Wrap an MCP server's tool handler so every tool call goes through ProofRail before execution.
+Wrap an MCP server's tool handler so every tool call goes through Arclasp before execution.
 
 ```python
-import proofrail
-from proofrail.mcp import ProofRailMcpAdapter
+import arclasp
+from arclasp.mcp import ArclaspMcpAdapter
 from mcp.server import Server
 
-proofrail.init(api_key="prail_...")
+arclasp.init(api_key="prail_...")
 server = Server("my-tools")
 
-async with proofrail.Chain("mcp-session") as chain:
-    adapter = ProofRailMcpAdapter(chain=chain, agent_name="my-tools")
+async with arclasp.Chain("mcp-session") as chain:
+    adapter = ArclaspMcpAdapter(chain=chain, agent_name="my-tools")
 
     @server.call_tool()
     async def handle_call_tool(name: str, arguments: dict):
@@ -129,39 +125,39 @@ See https://docs.proofrail.dev/frameworks/mcp for MCP integration details.
 
 > **Python 3.14:** CrewAI's dependencies do not yet support Python 3.14. On Python 3.14, `arclasp[crewai]` installs the base SDK but skips CrewAI itself. Use Python 3.10�3.13 if you need CrewAI integration.
 
-> **Note for Python 3.11 users:** If you see a `distutils_hack` assertion error when installing `arclasp[crewai]`, set `SETUPTOOLS_USE_DISTUTILS=stdlib` before running pip install. This is a CrewAI dependency packaging issue, not a ProofRail one.
+> **Note for Python 3.11 users:** If you see a `distutils_hack` assertion error when installing `arclasp[crewai]`, set `SETUPTOOLS_USE_DISTUTILS=stdlib` before running pip install. This is a CrewAI dependency packaging issue, not an Arclasp one.
 > ```bash
 > SETUPTOOLS_USE_DISTUTILS=stdlib pip install "arclasp[crewai]"
 > ```
 > On Windows: `$env:SETUPTOOLS_USE_DISTUTILS="stdlib"; pip install "arclasp[crewai]"`
 
 ```python
-import proofrail
-from proofrail.crewai import govern
+import arclasp
+from arclasp.crewai import govern
 
-proofrail.init(api_key="prail_...")
+arclasp.init(api_key="prail_...")
 governed = govern(crew, chain_name="research-crew")
 result = await governed.kickoff_async(inputs={"topic": "AI safety"})
 ```
 
-See [proofrail/crewai/README.md](https://github.com/TOAAiV/proofrail/blob/master/proofrail/crewai/README.md) for details on CrewAI's specific behaviors and the post-execution governance model.
+See [arclasp/crewai/README.md](https://github.com/TOAAiV/proofrail/blob/master/arclasp/crewai/README.md) for details on CrewAI's specific behaviors and the post-execution governance model.
 
 See https://docs.proofrail.dev/frameworks/crewai for CrewAI integration details.
 
 ### LangChain
 
 ```python
-import proofrail
-from proofrail.langchain import govern
+import arclasp
+from arclasp.langchain import govern
 
-proofrail.init(api_key="prail_...")
+arclasp.init(api_key="prail_...")
 governed = govern(agent_executor, chain_name="support-agent")
 result = await governed.ainvoke({"input": "Book a flight to Tokyo"})
 ```
 
 See https://docs.proofrail.dev/frameworks/langchain for LangChain integration details.
 
-## What ProofRail does
+## What Arclasp does
 
 ### Chain-level governance
 
@@ -171,7 +167,7 @@ This is the central design difference from per-call governance tools.
 
 ### Local fast-path evaluation
 
-Low-risk, non-financial actions resolve locally without a backend round-trip when `environment="development"` is set in `proofrail.init()`. The event is still sent to the backend asynchronously so the dashboard and audit log stay accurate. A typical agent workflow has many obviously-safe actions (reading a config, listing items, lookups) interleaved with the few that actually need scrutiny � fast-path means you don't pay network latency on the safe ones. Fast-path is disabled in `environment="production"` (the default) so the production backend is always authoritative.
+Low-risk, non-financial actions resolve locally without a backend round-trip when `environment="development"` is set in `arclasp.init()`. The event is still sent to the backend asynchronously so the dashboard and audit log stay accurate. A typical agent workflow has many obviously-safe actions (reading a config, listing items, lookups) interleaved with the few that actually need scrutiny � fast-path means you don't pay network latency on the safe ones. Fast-path is disabled in `environment="production"` (the default) so the production backend is always authoritative.
 
 ### Blocking human approval gate
 
@@ -181,20 +177,20 @@ Timeout, fallback approvers, and time-boxed exceptions are all configurable per 
 
 ### Tamper-evident audit receipts
 
-Every chain closes with an HMAC-SHA256 signed receipt. Receipts are hash-chained across an organization � each embeds the hash of the previous receipt. Prefer authenticated v2 receipt verification with `proofrail.verify_receipt_v2(receipt_id)` or tokenized public verification through `/public/v2/verify/{opaque_token}`. Legacy no-auth `/v1/receipts/{id}/verify` remains callable for compatibility and reports server-attested integrity only.
+Every chain closes with an HMAC-SHA256 signed receipt. Receipts are hash-chained across an organization � each embeds the hash of the previous receipt. Prefer authenticated v2 receipt verification with `arclasp.verify_receipt_v2(receipt_id)` or tokenized public verification through `/public/v2/verify/{opaque_token}`. Legacy no-auth `/v1/receipts/{id}/verify` remains callable for compatibility and reports server-attested integrity only.
 
 Receipts are also hash-chained across an organization: each new receipt embeds the hash of the previous one. Authenticated v2 verification can report server-attested receipt integrity and receipt-chain status; raw/offline evidence export remains future work.
 
 ### Parity-tested policy engine
 
-The local policy engine is the same algorithm that runs on the backend. They're verified against identical inputs on every test run. If they diverge, the build fails. The full algorithm is in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py) � read it before you install if you want to know exactly what rules your agents are subject to.
+The local policy engine is the same algorithm that runs on the backend. They're verified against identical inputs on every test run. If they diverge, the build fails. The full algorithm is in [`arclasp/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/arclasp/policies.py) � read it before you install if you want to know exactly what rules your agents are subject to.
 
 ### Per-action-class fail modes
 
 When the backend is unreachable, you don't have to choose between "everything fails closed" and "everything fails open." Configure different fail modes per action class:
 
 ```python
-proofrail.init(
+arclasp.init(
     api_key="prail_...",
     fail_modes={
         "tool_call": "deny",       # block all tool calls when backend is unreachable
@@ -214,12 +210,12 @@ Tool calls fail closed. Reads and drafts fail open. Velocity stays intact for th
 
 ```python
 # Facade � covers the common case (one threshold, one notify list)
-chain = proofrail.Chain("vendor-payouts")
+chain = arclasp.Chain("vendor-payouts")
 chain.add_financial_threshold(usd=10_000, notify=["finance@yourco.com"])
 
 # Equivalent raw dict � same wire format, useful when composing config
 # programmatically or setting fields the facade doesn't expose yet
-chain = proofrail.Chain(
+chain = arclasp.Chain(
     "vendor-payouts",
     policy_config={
         "cumulative_financial_threshold_usd": 10_000,
@@ -237,7 +233,7 @@ Recognised `policy_config` keys:
 | `cumulative_financial_threshold_action` | `"pause_for_approval"` \| `"deny"` | What happens when the cumulative threshold crosses. Defaults to pausing for human approval; set `deny` (or pass `deny=True` to the facade) to hard-deny instead. |
 | `notify` | `list[str]` | Additional approver emails for this chain, unioned with `fallback_approvers` and deduplicated � does not replace them. |
 
-A chain with no `policy_config` (or `{}`) behaves exactly like one with no override at all � the org-wide config from `proofrail.init()` applies unchanged.
+A chain with no `policy_config` (or `{}`) behaves exactly like one with no override at all � the org-wide config from `arclasp.init()` applies unchanged.
 
 ## More features
 
@@ -249,7 +245,7 @@ Features marked **[SDK]** are available to every caller with an API key. Feature
 - **Policy shadow mode** [Dashboard]. Run new policies in observe-only mode against real traffic before flipping them to enforce. Shadow decisions are logged separately so you can calibrate without disruption. `evaluation_mode` and `shadow_decision` appear in SDK responses when active.
 - **Agent registry** [Dashboard]. Register every agent you expect to see via the dashboard. Unregistered agents that show up in chain events are flagged for review, surfacing shadow agents without blocking legitimate work.
 - **Cost tracking and monthly budgets** [Dashboard]. Recorded LLM token usage and estimated dollar cost are tracked for supported model pricing. Organization admins can configure a UTC calendar month budget in the dashboard; organization members can view it. A just-recorded provider action may already have incurred cost, and governed chains require approval only when the newly recorded monthly total is greater than the configured budget. Unknown model pricing is not treated as zero and also requires approval. This is not a provider billing limit.
-- **Org-wide kill switch** [Dashboard � admin only]. When something goes wrong, an admin can halt all agent activity with one click. The SDK raises `ProofRailKillSwitchError` so applications can distinguish a halt from a policy violation.
+- **Org-wide kill switch** [Dashboard � admin only]. When something goes wrong, an admin can halt all agent activity with one click. The SDK raises `ArclaspKillSwitchError` so applications can distinguish a halt from a policy violation.
 - **Admin audit log** [Dashboard � admin only]. Every dashboard action � policy edits, kill switch toggles, approver changes, key rotations � is logged with before/after diff to an append-only table for compliance review.
 - **Time-boxed policy exceptions** [Dashboard]. Approvers can grant exceptions for a specific scope and duration (one hour, one day, one week, single use). Exceptions auto-expire; no permanent allow-lists by accident. Exceptions are created through the approval workflow, not directly via the SDK.
 
@@ -257,7 +253,7 @@ Features marked **[SDK]** are available to every caller with an API key. Feature
 
 Two components: this SDK (open-source, Apache 2.0) and a hosted backend (closed, operated by us). The SDK handles chain lifecycle, payload sanitization, framework adapter instrumentation, and transport. The backend is the authority for governed policy decisions, approvals, kill-switch state, audit persistence, and receipts.
 
-The reference policy model lives in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py), but public governed execution does not use local policy evaluation as an allow authority.
+The reference policy model lives in [`arclasp/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/arclasp/policies.py), but public governed execution does not use local policy evaluation as an allow authority.
 
 The backend implementation itself is not open-source. The reasons are practical (operational complexity) rather than ideological, and we publish the policy algorithm in full so you can verify what the backend is doing.
 
@@ -265,10 +261,10 @@ The backend implementation itself is not open-source. The reasons are practical 
 
 | Framework | Adapter | Notes |
 |-----------|---------|-------|
-| LangGraph | `proofrail.langgraph.govern` | Node-level instrumentation via `astream_events` |
-| LangChain | `proofrail.langchain.govern` | Via `AsyncCallbackHandler` |
-| CrewAI | `proofrail.crewai.govern` | Post-execution governance; see CrewAI README for details |
-| MCP | `proofrail.mcp.ProofRailMcpAdapter` | Tool-call instrumentation for MCP servers |
+| LangGraph | `arclasp.langgraph.govern` | Node-level instrumentation via `astream_events` |
+| LangChain | `arclasp.langchain.govern` | Via `AsyncCallbackHandler` |
+| CrewAI | `arclasp.crewai.govern` | Post-execution governance; see CrewAI README for details |
+| MCP | `arclasp.mcp.ArclaspMcpAdapter` | Tool-call instrumentation for MCP servers |
 
 For the framework-agnostic case (custom agent loops, untested frameworks, or your own orchestration), use the `Chain` context manager directly as shown in Quick start above.
 
@@ -278,7 +274,7 @@ What this release doesn't do, so you find out from us and not from production:
 
 - Single region. The backend runs in AWS us-east-1 (Virginia). European and APAC users may see 100-150ms additional latency. Multi-region is on the roadmap.
 - Backend round-trip for governed actions. Public Chain execution waits for backend authority before returning an allow decision.
-- CrewAI governance fires synchronously per task: on task start, governance evaluates before the task runs; on task end, it fires after the task completes. An `ActionDeniedError` propagates immediately through `kickoff_async`, halting the remaining crew. The task that was already running when governance fires cannot be retroactively prevented. See [proofrail/crewai/README.md](https://github.com/TOAAiV/proofrail/blob/master/proofrail/crewai/README.md) for details.
+- CrewAI governance fires synchronously per task: on task start, governance evaluates before the task runs; on task end, it fires after the task completes. An `ActionDeniedError` propagates immediately through `kickoff_async`, halting the remaining crew. The task that was already running when governance fires cannot be retroactively prevented. See [arclasp/crewai/README.md](https://github.com/TOAAiV/proofrail/blob/master/arclasp/crewai/README.md) for details.
 - No SSO beyond what Clerk provides out of the box.
 - Email-only approval notifications. Slack and Teams integrations are planned, not shipped.
 
@@ -293,7 +289,7 @@ If any of these is a blocker for your use case, file an issue. We'd rather tell 
 
 We're asking you to install a governance SDK and let it sit in the path of every agent action your product takes. That's a real ask, and the answer to "should I trust this?" shouldn't be "the marketing site says so."
 
-The whole SDK is in this repo. You can read every line of code that runs in your process. The fast-path that decides actions locally is in [`proofrail/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/policies.py) � open it; that's the entire algorithm. The payload sanitizer that decides what leaves your machine is in [`proofrail/sanitization.py`](https://github.com/TOAAiV/proofrail/blob/master/proofrail/sanitization.py). The HTTP client and every payload format the SDK sends are inspectable.
+The whole SDK is in this repo. You can read every line of code that runs in your process. The fast-path that decides actions locally is in [`arclasp/policies.py`](https://github.com/TOAAiV/proofrail/blob/master/arclasp/policies.py) � open it; that's the entire algorithm. The payload sanitizer that decides what leaves your machine is in [`arclasp/sanitization.py`](https://github.com/TOAAiV/proofrail/blob/master/arclasp/sanitization.py). The HTTP client and every payload format the SDK sends are inspectable.
 
 The backend isn't open-source. What we've done instead:
 
@@ -302,7 +298,7 @@ The backend isn't open-source. What we've done instead:
 - **Server-attested receipt integrity.** Audit receipts are HMAC-signed and hash-chained across an organization. Use authenticated v2 verification or tokenized public verification for first-party flows. Legacy receipt verification remains compatibility-only and is not independent or offline proof.
 - **Security audit complete.** Fifteen findings covering the SDK have been addressed; the full security policy is in [SECURITY.md](https://github.com/TOAAiV/proofrail/blob/master/SECURITY.md).
 
-Most agent governance tools ask you to trust a closed-source policy engine. ProofRail's policy engine is open. Read it before you install it.
+Most agent governance tools ask you to trust a closed-source policy engine. Arclasp's policy engine is open. Read it before you install it.
 
 Vulnerability reports: see [SECURITY.md](https://github.com/TOAAiV/proofrail/blob/master/SECURITY.md).
 

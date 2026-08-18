@@ -1,5 +1,5 @@
 """
-proofrail._utils — Shared internal helpers.
+arclasp._utils — Shared internal helpers.
 """
 
 from __future__ import annotations

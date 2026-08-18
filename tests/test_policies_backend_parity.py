@@ -1,5 +1,5 @@
 """
-Parity tests: compare proofrail.policies against backend.app.services.policy_engine.
+Parity tests: compare arclasp.policies against backend.app.services.policy_engine.
 
 For every (inputs, expected_decision) tuple, BOTH the SDK's classify_risk /
 evaluate_policy and the backend's are called.  If results differ, the test
@@ -59,8 +59,8 @@ try:
 except Exception as _import_exc:
     _BACKEND_IMPORT_ERROR = str(_import_exc)
 
-from proofrail.policies import classify_risk as _sdk_classify_risk  # noqa: E402
-from proofrail.policies import evaluate_policy as _sdk_evaluate_policy  # noqa: E402
+from arclasp.policies import classify_risk as _sdk_classify_risk  # noqa: E402
+from arclasp.policies import evaluate_policy as _sdk_evaluate_policy  # noqa: E402
 
 _skip_no_backend = pytest.mark.skipif(
     not BACKEND_AVAILABLE,

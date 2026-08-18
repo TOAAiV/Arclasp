@@ -1,5 +1,5 @@
 """
-Tests for proofrail.fast_path — is_fast_path_eligible and evaluate_fast_path.
+Tests for arclasp.fast_path — is_fast_path_eligible and evaluate_fast_path.
 """
 
 from __future__ import annotations
@@ -7,8 +7,8 @@ from __future__ import annotations
 import time
 
 
-from proofrail.fast_path import evaluate_fast_path, is_fast_path_eligible
-from proofrail.models import ChainConfig
+from arclasp.fast_path import evaluate_fast_path, is_fast_path_eligible
+from arclasp.models import ChainConfig
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ class TestEvaluateFastPath:
         assert result is None
 
     def test_result_is_policy_decision_parseable(self):
-        from proofrail.models import PolicyDecision
+        from arclasp.models import PolicyDecision
         result = _evaluate()
         assert result is not None
         pd = PolicyDecision.model_validate(result)

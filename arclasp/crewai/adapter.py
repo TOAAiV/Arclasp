@@ -1,12 +1,12 @@
 """
-proofrail.crewai.adapter — Governance wrapper for CrewAI Crew objects.
+arclasp.crewai.adapter — Governance wrapper for CrewAI Crew objects.
 
 Quick start
 -----------
-    import proofrail
-    from proofrail.crewai import govern
+    import arclasp
+    from arclasp.crewai import govern
 
-    proofrail.init(api_key="prail_...")
+    arclasp.init(api_key="prail_...")
     governed = govern(crew, chain_name="research-crew")
 
     # Drop-in replacement — same interface as the original crew:
@@ -16,13 +16,13 @@ How it works
 ------------
 1.  ``govern()`` wraps a CrewAI ``Crew`` in a ``GovernedCrew`` instance that
     exposes identical ``.kickoff`` / ``.kickoff_async`` signatures.
-2.  On every invocation, a ProofRail ``Chain`` context manager is opened so
+2.  On every invocation, a Arclasp ``Chain`` context manager is opened so
     the full crew run appears as a single governed chain in the dashboard.
 3.  Instrumentation is applied via one of two strategies, tried in order:
 
     Strategy A — Native callbacks (CrewAI >= 0.28, preferred)
         If ``crew.task_callback`` exists, the existing value is wrapped so
-        that ``ProofRailCrewAICallback.on_task_end_from_output`` fires for
+        that ``ArclaspCrewAICallback.on_task_end_from_output`` fires for
         every completed task while preserving any existing user-provided hook.
         Additionally, if ``crew.before_task_callback`` exists, it is wrapped
         to fire ``on_task_start``.
@@ -70,15 +70,15 @@ import logging
 import concurrent.futures as _cf
 from typing import Any
 
-from proofrail import client as _proofrail_client
-from proofrail.chain import Chain
-from proofrail.crewai.callbacks import ProofRailCrewAICallback
-from proofrail.exceptions import (
+from arclasp import client as _arclasp_client
+from arclasp.chain import Chain
+from arclasp.crewai.callbacks import ArclaspCrewAICallback
+from arclasp.exceptions import (
     ActionDeniedError,
     BackendUnavailableError,
     ChainAutoPausedError,
     ChainTimeoutError,
-    ProofRailKillSwitchError,
+    ArclaspKillSwitchError,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,14 +95,14 @@ def govern(
     metadata: dict | None = None,
 ) -> "GovernedCrew":
     """
-    Wrap a CrewAI ``Crew`` with ProofRail governance.
+    Wrap a CrewAI ``Crew`` with Arclasp governance.
 
     Parameters
     ----------
     crew :
         A CrewAI ``Crew`` instance with a ``.kickoff()`` method.
     chain_name : str
-        Name recorded in the ProofRail dashboard for each invocation.
+        Name recorded in the Arclasp dashboard for each invocation.
         Defaults to ``"crewai_workflow"``.
     metadata : dict, optional
         Extra key/value pairs attached to every chain opened by this wrapper
@@ -149,7 +149,7 @@ def govern(
 class GovernedCrew:
     """
     Drop-in replacement for a CrewAI ``Crew`` that wraps every invocation
-    in a ProofRail governance chain.
+    in a Arclasp governance chain.
 
     Do not instantiate directly — use :func:`govern`.
     """
@@ -167,18 +167,18 @@ class GovernedCrew:
         """
         Async-kickoff the governed crew.
 
-        Opens a ProofRail chain, instruments all agents, runs the crew,
+        Opens a Arclasp chain, instruments all agents, runs the crew,
         restores original methods, then closes the chain.  Returns the
         crew's result unchanged.
 
         Raises
         ------
         RuntimeError
-            If ``proofrail.init()`` has not been called.
+            If ``arclasp.init()`` has not been called.
         ActionDeniedError
-            If a task execution is denied by the ProofRail policy engine.
+            If a task execution is denied by the Arclasp policy engine.
         """
-        _proofrail_client.get_config()
+        _arclasp_client.get_config()
 
         # Capture the running loop now — passed into patches so they can
         # schedule coroutines from synchronous worker threads.
@@ -187,8 +187,8 @@ class GovernedCrew:
         result: Any = None
         async with Chain(
             self._chain_name, metadata=self._chain_metadata
-        ) as proofrail_chain:
-            callback = ProofRailCrewAICallback(proofrail_chain)
+        ) as arclasp_chain:
+            callback = ArclaspCrewAICallback(arclasp_chain)
             patch_records = _install_instrumentation(self._crew, callback, loop)
 
             try:
@@ -250,11 +250,11 @@ class GovernedCrew:
 
 def _install_instrumentation(
     crew: Any,
-    callback: ProofRailCrewAICallback,
+    callback: ArclaspCrewAICallback,
     loop: asyncio.AbstractEventLoop,
 ) -> list:
     """
-    Instrument *crew* to fire ProofRail governance events for every task
+    Instrument *crew* to fire Arclasp governance events for every task
     execution.
 
     Tries Strategy A (native CrewAI callbacks) first.  Falls back to
@@ -273,7 +273,7 @@ def _install_instrumentation(
     has_after = hasattr(crew, "task_callback")
 
     if has_before or has_after:
-        logger.debug("proofrail: using native CrewAI task callbacks (Strategy A)")
+        logger.debug("arclasp: using native CrewAI task callbacks (Strategy A)")
 
         if has_before:
             original_before = crew.before_task_callback
@@ -305,7 +305,7 @@ def _install_instrumentation(
         # Strategy A has no error path.
         if has_after and not has_before:
             logger.debug(
-                "proofrail: no before_task_callback — patching execute_task "
+                "arclasp: no before_task_callback — patching execute_task "
                 "for pre-task start events only (Strategy A owns on_task_end)"
             )
             _patch_all_agents(crew, callback, loop, patch_records, emit_end=False)
@@ -316,7 +316,7 @@ def _install_instrumentation(
     # Strategy B — monkey-patch Agent.execute_task
     # ------------------------------------------------------------------
     logger.debug(
-        "proofrail: no native CrewAI callbacks found — monkey-patching "
+        "arclasp: no native CrewAI callbacks found — monkey-patching "
         "execute_task on %d agent(s) (Strategy B)",
         len(getattr(crew, "agents", [])),
     )
@@ -326,7 +326,7 @@ def _install_instrumentation(
 
 def _patch_all_agents(
     crew: Any,
-    callback: ProofRailCrewAICallback,
+    callback: ArclaspCrewAICallback,
     loop: asyncio.AbstractEventLoop,
     patch_records: list,
     emit_end: bool = True,
@@ -340,7 +340,7 @@ def _patch_all_agents(
     for agent in getattr(crew, "agents", []):
         if not hasattr(agent, "execute_task"):
             logger.debug(
-                "proofrail: agent %r has no execute_task — skipping",
+                "arclasp: agent %r has no execute_task — skipping",
                 getattr(agent, "role", agent),
             )
             continue
@@ -356,7 +356,7 @@ def _patch_all_agents(
         object.__setattr__(agent, "execute_task", patched)
         patch_records.append(("agent", agent, original_method))
         logger.debug(
-            "proofrail: patched execute_task on agent %r",
+            "arclasp: patched execute_task on agent %r",
             getattr(agent, "role", agent),
         )
 
@@ -364,12 +364,12 @@ def _patch_all_agents(
 def _make_patched_execute_task(
     original_method: Any,
     agent_ref: Any,
-    callback: ProofRailCrewAICallback,
+    callback: ArclaspCrewAICallback,
     loop: asyncio.AbstractEventLoop,
     emit_end: bool = True,
 ) -> Any:
     """
-    Return a replacement for ``agent.execute_task`` that fires ProofRail
+    Return a replacement for ``agent.execute_task`` that fires Arclasp
     governance events before (and optionally after) the original synchronous
     method runs.
 
@@ -429,21 +429,21 @@ def _restore_instrumentation(patch_records: list) -> None:
                 _, agent, original = record
                 object.__setattr__(agent, "execute_task", original)
                 logger.debug(
-                    "proofrail: restored execute_task on agent %r",
+                    "arclasp: restored execute_task on agent %r",
                     getattr(agent, "role", agent),
                 )
             elif kind == "crew_before":
                 _, crew, original = record
                 crew.before_task_callback = original
-                logger.debug("proofrail: restored crew.before_task_callback")
+                logger.debug("arclasp: restored crew.before_task_callback")
             elif kind == "crew_after":
                 _, crew, original = record
                 crew.task_callback = original
-                logger.debug("proofrail: restored crew.task_callback")
+                logger.debug("arclasp: restored crew.task_callback")
         except Exception as exc:
             # Log but never raise from cleanup — we must not mask the
             # original exception that triggered the finally block.
-            logger.warning("proofrail: error while restoring patch %r: %s", kind, exc)
+            logger.warning("arclasp: error while restoring patch %r: %s", kind, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -478,9 +478,9 @@ def _fire(
         ActionDeniedError,
         ChainTimeoutError,
         ChainAutoPausedError,
-        ProofRailKillSwitchError,
+        ArclaspKillSwitchError,
     ):
         raise
     except _cf.TimeoutError:
-        logger.error("ProofRail callback timed out after %ds", timeout)
+        logger.error("Arclasp callback timed out after %ds", timeout)
         raise BackendUnavailableError("Backend callback timed out") from None

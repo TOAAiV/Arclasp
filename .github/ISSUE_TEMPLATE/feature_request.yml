@@ -1,5 +1,5 @@
 ﻿name: Feature request
-description: Something you'd like ProofRail to do that it doesn't today.
+description: Something you'd like Arclasp to do that it doesn't today.
 labels: ["feature"]
 body:
   - type: markdown
@@ -15,7 +15,7 @@ body:
     attributes:
       label: What problem does this solve?
       description: |
-        What are you trying to do that ProofRail doesn't currently support?
+        What are you trying to do that Arclasp doesn't currently support?
         Real use cases beat abstract feature descriptions.
     validations:
       required: true
@@ -46,7 +46,7 @@ body:
       description: |
         Honest answer helps me prioritize.
       options:
-        - Yes, I can't use ProofRail without this
+        - Yes, I can't use Arclasp without this
         - Sort of, I'm working around it
         - No, but it would be nice
     validations:

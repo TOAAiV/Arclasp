@@ -11,10 +11,10 @@ from unittest.mock import patch
 
 import pytest
 
-import proofrail
-from proofrail import client as _proofrail_client
-from proofrail.chain import Chain
-from proofrail.fast_path import evaluate_fast_path, is_fast_path_eligible
+import arclasp
+from arclasp import client as _arclasp_client
+from arclasp.chain import Chain
+from arclasp.fast_path import evaluate_fast_path, is_fast_path_eligible
 
 
 def _chain_start_response(chain_id: str = "metrics-test-chain") -> dict:
@@ -31,7 +31,7 @@ def _allow_response() -> dict:
 
 def _init_deprecated_fast_path(cumulative_threshold_usd: float = 10_000.0) -> None:
     with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -51,7 +51,7 @@ async def _mock_post(path: str, body: dict, action_type: str | None = None) -> d
 
 def test_legacy_fast_path_evaluator_still_updates_direct_metrics():
     _init_deprecated_fast_path()
-    config = _proofrail_client.get_config()
+    config = _arclasp_client.get_config()
 
     result = evaluate_fast_path(
         "tool_call",
@@ -69,7 +69,7 @@ def test_legacy_fast_path_evaluator_still_updates_direct_metrics():
 
 def test_legacy_fast_path_evaluator_threshold_still_blocks_direct_use():
     _init_deprecated_fast_path(cumulative_threshold_usd=1_000.0)
-    config = _proofrail_client.get_config()
+    config = _arclasp_client.get_config()
 
     eligible, reason = is_fast_path_eligible(
         action_type="tool_call",
@@ -98,7 +98,7 @@ async def test_public_chain_does_not_update_local_fast_path_metrics():
             event_bodies.append(dict(body))
         return _allow_response()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("metrics-public") as chain:
             for _ in range(3):
                 decision = await chain.record_agent_action(

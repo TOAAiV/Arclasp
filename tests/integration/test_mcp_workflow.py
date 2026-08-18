@@ -1,13 +1,13 @@
 """
-Integration tests for proofrail.mcp.adapter (ProofRailMcpAdapter).
+Integration tests for arclasp.mcp.adapter (ArclaspMcpAdapter).
 
 Unlike the other adapters, MCP has no govern() convenience function.  Each
-test opens a Chain context manually, instantiates ProofRailMcpAdapter, and
+test opens a Chain context manually, instantiates ArclaspMcpAdapter, and
 calls handle_tool_call() for each tool invocation in the scenario.
 
-The mcp package (1.27.0) is installed, so ProofRailMcpAdapter can be imported
+The mcp package (1.27.0) is installed, so ArclaspMcpAdapter can be imported
 directly without mocking.  The chain backend is still mocked via
-proofrail.client._post.
+arclasp.client._post.
 
 Three usage modes are tested beyond the six core scenarios:
   handle_tool_call_direct  — core method (also used in Scenarios 1-6)
@@ -22,10 +22,10 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-import proofrail
-from proofrail.chain import Chain
-from proofrail.mcp.adapter import ProofRailMcpAdapter
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
+import arclasp
+from arclasp.chain import Chain
+from arclasp.mcp.adapter import ArclaspMcpAdapter
+from arclasp.exceptions import ActionDeniedError, BackendUnavailableError
 
 from .conftest import (
     make_mock_post,
@@ -58,9 +58,9 @@ async def test_happy_path_mcp():
 
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("mcp-happy") as chain:
-            adapter = ProofRailMcpAdapter(
+            adapter = ArclaspMcpAdapter(
                 chain=chain,
                 agent_name="mcp-agent",
                 parent_agent_name="mcp-client",
@@ -92,9 +92,9 @@ async def test_happy_path_mcp():
 async def test_backend_flags_action_mcp():
     mock_post, calls = make_mock_post(flag_on="format_output")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("mcp-flag") as chain:
-            adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
+            adapter = ArclaspMcpAdapter(chain=chain, agent_name="mcp-agent")
             for tool in ["query_database", "format_output"]:
                 await adapter.handle_tool_call(tool, {}, _handler)
 
@@ -117,10 +117,10 @@ async def test_backend_denies_action_mcp():
         handler_calls.append(name)
         return {"result": "ok"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(ActionDeniedError) as exc_info:
             async with Chain("mcp-deny") as chain:
-                adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
+                adapter = ArclaspMcpAdapter(chain=chain, agent_name="mcp-agent")
                 await adapter.handle_tool_call("query_database", {}, tracking_handler)
                 await adapter.handle_tool_call("delete_file",      {}, tracking_handler)
                 await adapter.handle_tool_call("log_result",       {}, tracking_handler)
@@ -144,7 +144,7 @@ async def test_backend_denies_action_mcp():
 
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_deny_mcp():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -153,10 +153,10 @@ async def test_backend_unreachable_fail_deny_mcp():
     )
     mock_post, calls = make_mock_post(unavailable=True)
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError):
             async with Chain("mcp-failden") as chain:
-                adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
+                adapter = ArclaspMcpAdapter(chain=chain, agent_name="mcp-agent")
                 await adapter.handle_tool_call("query_database", {}, _handler)
 
     assert count_event_calls(calls) == 0
@@ -169,7 +169,7 @@ async def test_backend_unreachable_fail_deny_mcp():
 @pytest.mark.asyncio
 async def test_backend_unreachable_fail_allow_mcp():
     with pytest.warns(DeprecationWarning, match="fail_mode"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -183,10 +183,10 @@ async def test_backend_unreachable_fail_allow_mcp():
         handler_calls.append(name)
         return {"result": "ok"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         with pytest.raises(BackendUnavailableError) as exc_info:
             async with Chain("mcp-offline") as chain:
-                adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
+                adapter = ArclaspMcpAdapter(chain=chain, agent_name="mcp-agent")
                 await adapter.handle_tool_call("query_database", {}, tracking_handler)
 
     assert exc_info.value.fail_mode == "allow"
@@ -201,7 +201,7 @@ async def test_backend_unreachable_fail_allow_mcp():
 @pytest.mark.asyncio
 async def test_fast_path_config_still_uses_backend_mcp():
     with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -215,9 +215,9 @@ async def test_fast_path_config_still_uses_backend_mcp():
         handler_called.append(name)
         return {"result": "ok"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("mcp-fp") as chain:
-            adapter = ProofRailMcpAdapter(chain=chain, agent_name="mcp-agent")
+            adapter = ArclaspMcpAdapter(chain=chain, agent_name="mcp-agent")
             # "get_user_info" → risk_score = 0, legacy-deprecated fast-path eligible
             await adapter.handle_tool_call("get_user_info", {}, tracking_handler)
             # Give drain task time to run
@@ -244,9 +244,9 @@ async def test_handle_tool_call_direct_mcp():
         handler_called.append((name, args))
         return {"data": [1, 2, 3]}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("mcp-direct") as chain:
-            adapter = ProofRailMcpAdapter(chain=chain, agent_name="my-service")
+            adapter = ArclaspMcpAdapter(chain=chain, agent_name="my-service")
             result = await adapter.handle_tool_call(
                 "list_records", {"table": "users"}, my_handler
             )
@@ -272,9 +272,9 @@ async def test_install_raises_for_unsupported_mcp_api():
     mock_post, _calls = make_mock_post()
     server = MagicMock()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("mcp-install") as chain:
-            adapter = ProofRailMcpAdapter(chain=chain, agent_name="install-agent")
+            adapter = ArclaspMcpAdapter(chain=chain, agent_name="install-agent")
             with pytest.raises(RuntimeError, match="handle_tool_call"):
                 adapter.install(server)
 
@@ -291,9 +291,9 @@ async def test_decorator_wraps_handler_mcp():
     """
     mock_post, calls = make_mock_post()
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("mcp-decorator") as chain:
-            adapter = ProofRailMcpAdapter(chain=chain, agent_name="deco-agent")
+            adapter = ArclaspMcpAdapter(chain=chain, agent_name="deco-agent")
 
             @adapter.tool("query_database")
             async def query_database(name: str, arguments: dict) -> dict:

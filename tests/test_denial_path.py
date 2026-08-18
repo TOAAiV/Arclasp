@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 import pytest
 
-import proofrail
-from proofrail.exceptions import ActionDeniedError, ProofRailPolicyError
-from proofrail.chain import Chain
+import arclasp
+from arclasp.exceptions import ActionDeniedError, ArclaspPolicyError
+from arclasp.chain import Chain
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ def _make_chain_start_response(chain_id: str = "test-chain-001") -> dict:
 
 @pytest.fixture(autouse=True)
 def sdk_init():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         fail_mode="deny",
@@ -71,7 +71,7 @@ class TestDenialRaisesActionDeniedError:
                 return _make_chain_start_response()
             return deny_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test") as chain:
                     await chain.record_agent_action(
@@ -82,7 +82,7 @@ class TestDenialRaisesActionDeniedError:
 
         err = exc_info.value
         assert isinstance(err, ActionDeniedError)
-        assert isinstance(err, ProofRailPolicyError)
+        assert isinstance(err, ArclaspPolicyError)
 
     @pytest.mark.asyncio
     async def test_action_denied_not_type_error(self):
@@ -107,7 +107,7 @@ class TestDenialErrorFields:
                 return _make_chain_start_response()
             return deny_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test") as chain:
                     await chain.record_agent_action(
@@ -138,7 +138,7 @@ class TestDenialErrorFields:
                 return _make_chain_start_response()
             return deny_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test") as chain:
                     await chain.record_agent_action(
@@ -167,7 +167,7 @@ class TestDenialErrorFields:
                 return _make_chain_start_response()
             return deny_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test") as chain:
                     await chain.record_agent_action(
@@ -197,7 +197,7 @@ class TestDenialErrorFields:
                 return _make_chain_start_response()
             return deny_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test") as chain:
                     await chain.record_agent_action(
@@ -222,7 +222,7 @@ class TestDenialErrorFields:
                 return _make_chain_start_response("chain-xyz")
             return deny_resp
 
-        with patch("proofrail.client._post", side_effect=fake_post):
+        with patch("arclasp.client._post", side_effect=fake_post):
             with pytest.raises(ActionDeniedError) as exc_info:
                 async with Chain("test") as chain:
                     await chain.record_agent_action(

@@ -44,8 +44,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-import proofrail
-from proofrail import client as _pc
+import arclasp
+from arclasp import client as _pc
 
 _SCRIPT_PATH = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -67,7 +67,7 @@ _DUMMY_REQUEST = httpx.Request("POST", "http://test.invalid/v1/test")
 
 
 def _init() -> None:
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://test.invalid",
         environment="development",
@@ -529,8 +529,8 @@ def test_full_run_writes_k2a_metrics_and_nesting_note_to_output(tmp_path):
     os.environ.clear()
     os.environ.update(
         {
-            "PROOFRAIL_K0B_BACKEND_URL": "http://test.invalid",
-            "PROOFRAIL_K0B_API_KEY": "prail_fake_test_key_never_appears",
+            "ARCLASP_K0B_BACKEND_URL": "http://test.invalid",
+            "ARCLASP_K0B_API_KEY": "prail_fake_test_key_never_appears",
         }
     )
     try:
@@ -867,8 +867,8 @@ def test_request_cap_enforced_before_dry_run_network_skip():
 def test_dry_run_succeeds_with_no_env_vars():
     exit_code, output = _run_main(["--dry-run"], {})
     assert exit_code == 0
-    assert "PROOFRAIL_K0B_BACKEND_URL set: False" in output
-    assert "PROOFRAIL_K0B_API_KEY set: False" in output
+    assert "ARCLASP_K0B_BACKEND_URL set: False" in output
+    assert "ARCLASP_K0B_API_KEY set: False" in output
 
 
 def test_missing_environment_refusal():
@@ -881,8 +881,8 @@ def test_production_url_refusal_without_explicit_authorization():
     exit_code, output = _run_main(
         [],
         {
-            "PROOFRAIL_K0B_BACKEND_URL": "https://api.proofrail.dev",
-            "PROOFRAIL_K0B_API_KEY": "prail_fake_secret_should_not_appear_anywhere_12345",
+            "ARCLASP_K0B_BACKEND_URL": "https://api.proofrail.dev",
+            "ARCLASP_K0B_API_KEY": "prail_fake_secret_should_not_appear_anywhere_12345",
         },
     )
     assert exit_code != 0
@@ -895,8 +895,8 @@ def test_api_key_never_disclosed_on_unreachable_backend():
     exit_code, output = _run_main(
         [],
         {
-            "PROOFRAIL_K0B_BACKEND_URL": "http://127.0.0.1:1",  # nothing listens here
-            "PROOFRAIL_K0B_API_KEY": secret,
+            "ARCLASP_K0B_BACKEND_URL": "http://127.0.0.1:1",  # nothing listens here
+            "ARCLASP_K0B_API_KEY": secret,
         },
     )
     assert exit_code != 0

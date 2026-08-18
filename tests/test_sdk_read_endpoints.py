@@ -21,10 +21,10 @@ import sys
 import httpx
 import pytest
 
-import proofrail
-from proofrail import client as _client
-from proofrail.chain import Chain
-from proofrail.models import (
+import arclasp
+from arclasp import client as _client
+from arclasp.chain import Chain
+from arclasp.models import (
     ChainDetail,
     ChainEventsResponse,
     ChainListResponse,
@@ -114,7 +114,7 @@ _CHAIN_LIST_PAYLOAD = {
 @pytest.fixture(autouse=True)
 def init_sdk():
     """Initialize the SDK with a fake API key before each test."""
-    proofrail.init(
+    arclasp.init(
         api_key="prail_testkey123",
         backend_url="http://test-backend",
         environment="development",
@@ -417,7 +417,7 @@ async def test_chain_verify_receipt_raises_if_not_started(init_sdk):
 @pytest.mark.asyncio
 async def test_reinit_closes_old_http_client():
     """
-    Calling proofrail.init() a second time must close the current loop's
+    Calling arclasp.init() a second time must close the current loop's
     httpx.AsyncClient so that TCP connections and file descriptors are released.
 
     With the loop-aware design, clients are created lazily on first _get_client()
@@ -435,7 +435,7 @@ async def test_reinit_closes_old_http_client():
 
     # Second init with a different api_key — must schedule aclose for current
     # loop's client, then clear _clients_by_loop.
-    proofrail.init(
+    arclasp.init(
         api_key="prail_newkey456",
         backend_url="http://test-backend-2",
         environment="development",
@@ -465,8 +465,8 @@ def test_loop_aware_client_creates_separate_clients_for_separate_loops():
     BUG-LC-03 regression test.
 
     Before the fix, a single global httpx.AsyncClient was created in the
-    event loop that called proofrail.init().  When a LangChain sync
-    StructuredTool callback invoked proofrail via asyncio.Runner() — which
+    event loop that called arclasp.init().  When a LangChain sync
+    StructuredTool callback invoked arclasp via asyncio.Runner() — which
     spins up a *new* event loop — httpx's internal anyio.Event raised:
 
         RuntimeError: asyncio.Event bound to a different event loop
@@ -516,8 +516,8 @@ def test_init_warns_on_http_non_localhost(caplog):
     The check applies regardless of environment (production or otherwise).
     """
     import logging
-    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
-        proofrail.init(
+    with caplog.at_level(logging.WARNING, logger="arclasp.client"):
+        arclasp.init(
             api_key="prail_test_warn",
             backend_url="http://insecure-backend",
             environment="production",
@@ -534,8 +534,8 @@ def test_init_warns_on_http_non_localhost_regardless_of_environment(caplog):
     environment='development' — the check is no longer scoped to production.
     """
     import logging
-    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
-        proofrail.init(
+    with caplog.at_level(logging.WARNING, logger="arclasp.client"):
+        arclasp.init(
             api_key="prail_test_warn_dev",
             backend_url="http://staging-backend",
             environment="development",
@@ -550,8 +550,8 @@ def test_init_warns_on_http_non_localhost_regardless_of_environment(caplog):
 def test_init_no_warn_on_https(caplog):
     """No logger warning when backend_url uses https://."""
     import logging
-    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
-        proofrail.init(
+    with caplog.at_level(logging.WARNING, logger="arclasp.client"):
+        arclasp.init(
             api_key="prail_test_no_warn",
             backend_url="https://secure-backend",
             environment="production",
@@ -567,8 +567,8 @@ def test_init_no_warn_on_http_localhost(caplog):
     no longer emit warnings.
     """
     import logging
-    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
-        proofrail.init(
+    with caplog.at_level(logging.WARNING, logger="arclasp.client"):
+        arclasp.init(
             api_key="prail_test_localhost",
             backend_url="http://localhost:9999",
             environment="production",
@@ -580,8 +580,8 @@ def test_init_no_warn_on_http_localhost(caplog):
 def test_init_no_warn_on_http_localhost_in_production(caplog):
     """http://localhost:8000 in production must not warn — localhost is always exempt."""
     import logging
-    with caplog.at_level(logging.WARNING, logger="proofrail.client"):
-        proofrail.init(
+    with caplog.at_level(logging.WARNING, logger="arclasp.client"):
+        arclasp.init(
             api_key="prail_test_dev",
             backend_url="http://localhost:8000",
             environment="production",
@@ -597,7 +597,7 @@ def test_init_no_warn_on_http_localhost_in_production(caplog):
 def test_init_warns_when_local_fast_path_explicitly_enabled():
     """Explicit enable_local_fast_path=True is accepted but no longer authoritative."""
     with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test_fp_on",
             backend_url="http://localhost:9999",
             enable_local_fast_path=True,
@@ -607,8 +607,8 @@ def test_init_warns_when_local_fast_path_explicitly_enabled():
 def test_init_no_fast_path_warning_when_disabled(caplog):
     import logging
 
-    with caplog.at_level(logging.INFO, logger="proofrail.client"):
-        proofrail.init(
+    with caplog.at_level(logging.INFO, logger="arclasp.client"):
+        arclasp.init(
             api_key="prail_test_fp_off",
             backend_url="http://localhost:9999",
             enable_local_fast_path=False,

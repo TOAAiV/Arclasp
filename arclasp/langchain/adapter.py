@@ -1,12 +1,12 @@
 """
-proofrail.langchain.adapter — Governance wrapper for LangChain chains and agents.
+arclasp.langchain.adapter — Governance wrapper for LangChain chains and agents.
 
 Quick start
 -----------
-    import proofrail
-    from proofrail.langchain import govern
+    import arclasp
+    from arclasp.langchain import govern
 
-    proofrail.init(api_key="prail_...")
+    arclasp.init(api_key="prail_...")
     governed = govern(agent_executor, chain_name="customer-support-agent")
 
     # Drop-in replacement — same interface as the original executor:
@@ -16,9 +16,9 @@ How it works
 ------------
 1.  ``govern()`` wraps a LangChain ``AgentExecutor`` (or any ``Runnable``
     with ``.invoke`` / ``.ainvoke``) in a ``GovernedChain`` instance.
-2.  On every invocation, a ProofRail ``Chain`` context manager is opened so
+2.  On every invocation, a Arclasp ``Chain`` context manager is opened so
     the full agent run appears as a single governed chain in the dashboard.
-3.  A :class:`ProofRailLangChainCallback` instance is injected into every
+3.  A :class:`ArclaspLangChainCallback` instance is injected into every
     call via ``config={"callbacks": [...]}`` — LangChain forwards it to all
     nested tool and LLM invocations automatically.
 4.  The callback fires ``record_agent_action`` for each of:
@@ -32,7 +32,7 @@ How it works
 Policy enforcement
 ------------------
 ``record_agent_action`` is called for every tool and LLM event.  If the
-ProofRail backend returns a ``"deny"`` decision, ``ActionDeniedError``
+Arclasp backend returns a ``"deny"`` decision, ``ActionDeniedError``
 propagates out of ``ainvoke`` / ``invoke`` — the agent execution is halted
 at that point.
 """
@@ -43,11 +43,11 @@ import asyncio
 import logging
 from typing import Any
 
-from proofrail import client as _proofrail_client
-from proofrail._utils import _merge_config
-from proofrail.chain import Chain
-from proofrail.langchain.callbacks import (
-    ProofRailLangChainCallback,
+from arclasp import client as _arclasp_client
+from arclasp._utils import _merge_config
+from arclasp.chain import Chain
+from arclasp.langchain.callbacks import (
+    ArclaspLangChainCallback,
     _BaseCallbackHandler,
     _StrategyBPolicyBreak,
 )
@@ -66,7 +66,7 @@ def govern(
     metadata: dict | None = None,
 ) -> "GovernedChain":
     """
-    Wrap a LangChain ``AgentExecutor`` or ``Runnable`` chain with ProofRail
+    Wrap a LangChain ``AgentExecutor`` or ``Runnable`` chain with Arclasp
     governance.
 
     Parameters
@@ -75,7 +75,7 @@ def govern(
         Any LangChain object with ``.invoke`` and ``.ainvoke`` methods —
         typically an ``AgentExecutor``, ``LLMChain``, or LCEL ``Runnable``.
     chain_name : str
-        Name recorded in the ProofRail dashboard for each invocation.
+        Name recorded in the Arclasp dashboard for each invocation.
         Defaults to ``"langchain_workflow"``.
     metadata : dict, optional
         Extra key/value pairs attached to every chain opened by this wrapper
@@ -130,7 +130,7 @@ def govern(
 class GovernedChain:
     """
     Drop-in replacement for a LangChain chain / ``AgentExecutor`` that wraps
-    every invocation in a ProofRail governance chain.
+    every invocation in a Arclasp governance chain.
 
     Do not instantiate directly — use :func:`govern`.
     """
@@ -160,8 +160,8 @@ class GovernedChain:
         """
         Async-invoke the governed chain.
 
-        Opens a ProofRail chain, injects the governance callback, runs the
-        original chain, then closes the ProofRail chain.  Returns the chain's
+        Opens a Arclasp chain, injects the governance callback, runs the
+        original chain, then closes the Arclasp chain.  Returns the chain's
         output unchanged.
 
         Parameters
@@ -172,26 +172,26 @@ class GovernedChain:
             ``AgentExecutor``) or a plain string for simple chains.
         config : dict, optional
             LangChain ``RunnableConfig``.  Any existing callbacks are
-            preserved — the ProofRail callback is appended, not replaced.
+            preserved — the Arclasp callback is appended, not replaced.
 
         Raises
         ------
         RuntimeError
-            If ``proofrail.init()`` has not been called.
+            If ``arclasp.init()`` has not been called.
         ActionDeniedError
-            If any tool or LLM call is denied by the ProofRail policy engine.
+            If any tool or LLM call is denied by the Arclasp policy engine.
         """
         # Fail fast with a clear message if the SDK was never initialised.
-        _proofrail_client.get_config()
+        _arclasp_client.get_config()
 
         async with Chain(
             self._chain_name, metadata=self._chain_metadata
-        ) as proofrail_chain:
-            proofrail_callback = ProofRailLangChainCallback(
-                chain=proofrail_chain,
+        ) as arclasp_chain:
+            arclasp_callback = ArclaspLangChainCallback(
+                chain=arclasp_chain,
                 agent_name=self._agent_name,
             )
-            merged_config = _merge_config(config, {"callbacks": [proofrail_callback]})
+            merged_config = _merge_config(config, {"callbacks": [arclasp_callback]})
             try:
                 return await self._chain.ainvoke(input, config=merged_config, **kwargs)
             except _StrategyBPolicyBreak as wrapper:

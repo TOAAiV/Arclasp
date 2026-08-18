@@ -5,7 +5,7 @@ Tests for PolicyDecision Pydantic model — Item B verification.
 import pytest
 from pydantic import ValidationError
 
-from proofrail.models import PolicyDecision, RemediationV1
+from arclasp.models import PolicyDecision, RemediationV1
 
 
 # Representative backend response shapes

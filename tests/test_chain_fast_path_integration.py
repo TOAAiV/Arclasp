@@ -12,14 +12,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-import proofrail
-from proofrail.chain import Chain
-from proofrail.exceptions import ActionDeniedError, BackendUnavailableError
+import arclasp
+from arclasp.chain import Chain
+from arclasp.exceptions import ActionDeniedError, BackendUnavailableError
 
 
 @pytest.fixture(autouse=True)
 def sdk_dev():
-    proofrail.init(
+    arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
@@ -71,7 +71,7 @@ async def test_development_default_safe_action_calls_backend_event():
             return _allow_response()
         return {"status": "completed"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("k1-default") as chain:
             result = await chain.record_agent_action(
                 agent_name="agent",
@@ -90,7 +90,7 @@ async def test_development_default_safe_action_calls_backend_event():
 @pytest.mark.asyncio
 async def test_explicit_enable_local_fast_path_warns_but_still_calls_backend():
     with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -108,7 +108,7 @@ async def test_explicit_enable_local_fast_path_warns_but_still_calls_backend():
             return _allow_response()
         return {"status": "completed"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("k1-explicit-fast-path") as chain:
             result = await chain.record_agent_action(
                 agent_name="agent",
@@ -126,7 +126,7 @@ async def test_explicit_enable_local_fast_path_warns_but_still_calls_backend():
 @pytest.mark.asyncio
 async def test_backend_down_with_fast_path_config_fails_closed_before_action():
     with pytest.warns(DeprecationWarning):
-        proofrail.init(
+        arclasp.init(
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
@@ -141,7 +141,7 @@ async def test_backend_down_with_fast_path_config_fails_closed_before_action():
             return {"status": "completed"}
         raise BackendUnavailableError("backend down", fail_mode="allow")
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("k1-down") as chain:
             with pytest.raises(BackendUnavailableError) as exc_info:
                 await chain.record_agent_action(
@@ -165,7 +165,7 @@ async def test_backend_deny_is_returned_as_action_denied():
             return _deny_response()
         return {"status": "completed"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("k1-deny") as chain:
             with pytest.raises(ActionDeniedError) as exc_info:
                 await chain.record_agent_action(
@@ -187,7 +187,7 @@ async def test_backend_require_approval_returns_human_approval_after_poll():
             return _approval_required_response()
         return {"status": "completed"}
 
-    with patch("proofrail.client._post", side_effect=mock_post), patch.object(
+    with patch("arclasp.client._post", side_effect=mock_post), patch.object(
         Chain, "_poll_for_approval", new=AsyncMock(return_value="looks good")
     ):
         async with Chain("k1-approval") as chain:
@@ -213,7 +213,7 @@ async def test_no_fast_path_async_memory_buffer_is_used_for_public_execution():
             return _allow_response()
         return {"status": "completed"}
 
-    with patch("proofrail.client._post", side_effect=mock_post):
+    with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("k1-no-buffer") as chain:
             result = await chain.record_agent_action(
                 agent_name="agent",

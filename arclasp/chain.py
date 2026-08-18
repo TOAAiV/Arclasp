@@ -1,8 +1,8 @@
 """
-proofrail.chain — Agent chain tracking and execution context.
+arclasp.chain — Agent chain tracking and execution context.
 
 Usage (async — preferred):
-    async with proofrail.Chain("order-processing", metadata={"order_id": "123"}) as chain:
+    async with arclasp.Chain("order-processing", metadata={"order_id": "123"}) as chain:
         await chain.record_agent_action(
             agent_name="pricing-agent",
             action_type="calculation",
@@ -11,7 +11,7 @@ Usage (async — preferred):
         )
 
 Usage (sync — for non-async scripts only):
-    with proofrail.Chain("order-processing") as chain:
+    with arclasp.Chain("order-processing") as chain:
         # record_agent_action is always async; wrap it for sync contexts:
         import asyncio
         asyncio.run(chain.record_agent_action(...))
@@ -27,23 +27,23 @@ from types import TracebackType
 
 import httpx
 
-from proofrail import client as _client
-from proofrail.exceptions import (
+from arclasp import client as _client
+from arclasp.exceptions import (
     ActionDeniedError,
     ChainAutoPausedError,
     ChainCompletionError,
     ChainTimeoutError,
-    ProofRailKillSwitchError,
+    ArclaspKillSwitchError,
     _POLICY_REMEDIATION,
 )
-from proofrail.models import (
+from arclasp.models import (
     ChainDetail,
     ChainEventsResponse,
     ChainReceiptResponse,
     PolicyDecision,
     ReceiptVerifyResponse,
 )
-from proofrail.sanitization import sanitize_payload
+from arclasp.sanitization import sanitize_payload
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def _buffer_event(buffer: list, event_body: dict, max_events: int) -> bool:
 
 class Chain:
     """
-    Context manager that wraps a ProofRail chain lifecycle.
+    Context manager that wraps a Arclasp chain lifecycle.
 
     Supports both ``async with`` (preferred) and ``with`` (sync scripts only).
     The sync interface uses ``asyncio.run()`` internally and will raise a
@@ -359,7 +359,7 @@ class Chain:
         # needing to inspect every PolicyDecision object manually.
         if decision_obj.evaluation_mode == "shadow" and decision_obj.shadow_decision:
             logger.info(
-                "ProofRail shadow mode: action '%s' would have been '%s' under "
+                "Arclasp shadow mode: action '%s' would have been '%s' under "
                 "enforce mode; returning allow per shadow mode (chain=%s)",
                 decision_obj.policy_decision,
                 decision_obj.shadow_decision,
@@ -370,7 +370,7 @@ class Chain:
             # Kill-switch denials carry a distinct flag so callers can
             # differentiate them from ordinary policy violations.
             if decision_obj.kill_switch_active:
-                raise ProofRailKillSwitchError(
+                raise ArclaspKillSwitchError(
                     message=decision_obj.decision_reason
                     or "All agent actions are denied: organisation kill switch is active",
                     reason=decision_obj.pause_reason,
@@ -499,7 +499,7 @@ class Chain:
         """
         Deprecated compatibility helper for legacy public receipt verification.
 
-        Prefer ``proofrail.client.verify_receipt_v2(receipt_id)`` for
+        Prefer ``arclasp.client.verify_receipt_v2(receipt_id)`` for
         authenticated, organization-scoped receipt verification. This method
         remains callable for compatibility and delegates to the legacy
         server-attested receipt verifier.
@@ -533,7 +533,7 @@ class Chain:
             "fallback_approvers": config.fallback_approvers,
             # Per-chain override (Chain(policy_config={...}) or
             # add_financial_threshold()). {} = no override, org-wide config
-            # from proofrail.init() applies unchanged.
+            # from arclasp.init() applies unchanged.
             "policy_config": self.policy_config,
         }
 
@@ -865,7 +865,7 @@ async def _drain_offline_buffer(chain: Chain) -> None:
             # Buffer fully drained — backend is back, mark chain as recovered.
             chain._offline = False
             logger.info(
-                "ProofRail SDK: backend recovered, offline buffer drained "
+                "Arclasp SDK: backend recovered, offline buffer drained "
                 "(chain=%s sent=%d)",
                 chain._chain_id,
                 sent_count,
