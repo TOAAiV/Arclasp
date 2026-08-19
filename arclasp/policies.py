@@ -13,7 +13,7 @@ v2 specification's higher-level description.  Where the spec and the backend
 diverge on specifics (e.g. the exact numeric thresholds that separate a flag
 decision from an approval gate), this file follows the backend.  If you spot
 a divergence that looks like a genuine bug rather than an intentional design
-choice, open an issue at https://github.com/proofrail/proofrail-sdk before
+choice, open an issue at https://github.com/TOAAiV/Arclasp/issues before
 sending a patch — we decide together which side is authoritative.
 
 Audience

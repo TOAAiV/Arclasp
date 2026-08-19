@@ -36,7 +36,7 @@ BACKEND_DENY = {
     "decision_source": "backend_evaluation",
     "policy_name": "cumulative_financial_threshold",
     "remediation": "Update financial_approval_threshold_usd in init()",
-    "docs_url": "https://docs.proofrail.ai/policies/thresholds",
+    "docs_url": "https://docs.proofrail.dev/policies/thresholds",
 }
 
 BACKEND_DENY_KILL_SWITCH = {
@@ -181,7 +181,7 @@ class TestRemediationV1Compatibility:
         assert d.remediation_v1 is None
         # The pre-existing plain-string fallback fields are unaffected.
         assert d.remediation == "Update financial_approval_threshold_usd in init()"
-        assert d.docs_url == "https://docs.proofrail.ai/policies/thresholds"
+        assert d.docs_url == "https://docs.proofrail.dev/policies/thresholds"
 
     def test_legacy_remediation_string_still_parses(self):
         d = PolicyDecision.model_validate(BACKEND_DENY)

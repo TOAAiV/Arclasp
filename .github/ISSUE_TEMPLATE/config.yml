@@ -1,7 +1,7 @@
 ﻿blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/TOAAiV/proofrail/blob/main/SECURITY.md
+    url: https://github.com/TOAAiV/Arclasp/blob/main/SECURITY.md
     about: Please report security issues privately via email, not as a public issue.
   - name: Questions about usage
     url: https://docs.proofrail.dev

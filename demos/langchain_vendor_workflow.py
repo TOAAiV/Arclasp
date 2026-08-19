@@ -30,7 +30,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from typing import Any
 
 import arclasp
@@ -291,7 +291,7 @@ async def main() -> int:
     with open(receipt_path, "w", encoding="utf-8") as f:
         json.dump(json.loads(receipt.model_dump_json()), f, indent=2)
 
-    print(f"  Artifacts:")
+    print("  Artifacts:")
     print(f"    {trace_path}  ({trace_path.stat().st_size} bytes)")
     print(f"    {receipt_path}  ({receipt_path.stat().st_size} bytes)")
 

@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** the Python import namespace is now `arclasp` (previously `proofrail`). `import arclasp`, `from arclasp import Chain`, `from arclasp.exceptions import ...` replace the old `proofrail` imports. The PyPI distribution name (`arclasp`) is unchanged from the prior prerelease. Exception classes `ProofRailPolicyError`, `ProofRailVerificationError`, and `ProofRailKillSwitchError` are renamed to `ArclaspPolicyError`, `ArclaspVerificationError`, and `ArclaspKillSwitchError`. There is no `proofrail` compatibility shim — the project has no external customers on the prior namespace yet.
 - Governed SDK execution now requires backend authority for every public Chain action. The deprecated `enable_local_fast_path=True` setting no longer produces local allow decisions, and backend unavailability raises `BackendUnavailableError` even when legacy `fail_mode="allow"` compatibility settings are supplied.
 
+## [0.1.0a10] — 2026-08-19
+
+Pre-release repository hygiene pass ahead of first public GitHub/PyPI release.
+
+### Changed
+
+- Repository renamed to `TOAAiV/Arclasp`; all project URLs, issue templates,
+  and in-repo documentation links now point at the current repository instead
+  of the prior `proofrail` name.
+- Fixed inconsistent documentation domain: exception remediation links now
+  consistently use `docs.proofrail.dev`.
+- Removed internal engineering/audit working documents and a private-backend
+  end-to-end test from the public repository; they do not affect the public
+  SDK's behavior or test coverage.
+- Removed a Windows-only development workaround from the production demo
+  scripts that disabled TLS certificate verification; production examples now
+  use normal certificate-verified HTTPS only.
+- Demo scripts no longer hardcode a personal notification address; they read
+  the approver email from an `ARCLASP_APPROVER_EMAIL` environment variable.
+- Package metadata classifier corrected to `Alpha` to match the `a10`
+  pre-release version string.
+
 ## [0.1.0] — 2026-06-17
 
 Initial public release.
@@ -116,4 +138,4 @@ Full security policy and disclosure process in [SECURITY.md](SECURITY.md).
   planned but not shipped.
 - No SSO beyond what Clerk provides out of the box.
 
-[0.1.0]: https://github.com/TOAAiV/proofrail/releases/tag/v0.1.0
+[0.1.0]: https://github.com/TOAAiV/Arclasp/releases/tag/v0.1.0

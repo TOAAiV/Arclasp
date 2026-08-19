@@ -25,7 +25,7 @@ keywords = [
     "llm",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
@@ -65,10 +65,6 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.0",
-    "passlib[bcrypt]>=1.7,<2.0",
-    "bcrypt>=4.0.0,<4.1.0",  # passlib 1.7 + bcrypt 4.1+ breaks CryptContext.hash()
-    "asyncpg>=0.29",
-    "sqlalchemy>=2.0",
     "ruff>=0.6",
     "pyright>=1.1",
 ]
@@ -82,14 +78,9 @@ all = [
 [project.urls]
 Homepage = "https://proofrail.dev"
 Documentation = "https://docs.proofrail.dev"
-Repository = "https://github.com/TOAAiV/proofrail"
-Issues = "https://github.com/TOAAiV/proofrail/issues"
-Changelog = "https://github.com/TOAAiV/proofrail/blob/main/CHANGELOG.md"
-
-[tool.pytest.ini_options]
-markers = [
-    "e2e: end-to-end tests that require a running local backend (deselect with '-m not e2e')",
-]
+Repository = "https://github.com/TOAAiV/Arclasp"
+Issues = "https://github.com/TOAAiV/Arclasp/issues"
+Changelog = "https://github.com/TOAAiV/Arclasp/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["arclasp"]
@@ -109,7 +100,7 @@ exclude = [
     "verify-docker.ps1",
     "Dockerfile.verify",
     "import_times.txt",
-    "AUDIT_FINDINGS.md",
-    "BACKLOG.md",
-    "CODE_QUALITY_FINDINGS.md",
+    "tests/",
+    "demos/",
+    "verification-artifacts/",
 ]

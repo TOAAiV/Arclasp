@@ -231,7 +231,7 @@ async def _run_vendor_workflow() -> tuple[str, list[dict]]:
         patch("arclasp.client._get",  side_effect=_mock_get),
         patch("asyncio.sleep",          new=AsyncMock(return_value=None)),
     ):
-        results = await governed.kickoff_async(inputs={"topic": "vendor purchase"})
+        await governed.kickoff_async(inputs={"topic": "vendor purchase"})
         # Let fire-and-forget coroutines (if any) complete
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -333,7 +333,7 @@ async def main() -> int:
     with open(receipt_path, "w", encoding="utf-8") as f:
         json.dump(MOCK_RECEIPT_DATA, f, indent=2)
 
-    print(f"  Artifacts:")
+    print("  Artifacts:")
     print(f"    {trace_path}  ({trace_path.stat().st_size} bytes)")
     print(f"    {receipt_path}  ({receipt_path.stat().st_size} bytes)")
 

@@ -4,7 +4,14 @@ This document describes the security guarantees the Arclasp SDK provides,
 the intentional design trade-offs that operators must understand before
 deploying it, and how to report vulnerabilities.
 
-For a full audit history, see [AUDIT_FINDINGS.md](https://github.com/TOAAiV/ProofRail/blob/main/AUDIT_FINDINGS.md).
+---
+
+## 0. Supported versions
+
+Arclasp is currently in **pre-release (alpha)**. Only the latest published
+version on PyPI receives security fixes; there is no backport policy for
+older pre-release versions. Once a stable `1.0` ships, this section will be
+updated with a supported-version table.
 
 ---
 
@@ -168,7 +175,8 @@ ordinary SDK verification JSON today.
 ## 8. Security disclosure
 
 To report a security vulnerability in Arclasp, please email
-**security@proofrail.dev**.
+**security@proofrail.dev**. Please do not report vulnerabilities via public
+GitHub issues.
 
 Please include:
 - A description of the vulnerability and the affected component.

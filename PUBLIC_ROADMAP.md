@@ -1,9 +1,9 @@
 ﻿# Public Roadmap
 
 What's planned after the initial release. Directional, not a committed timeline —
-priorities shift based on what people actually try to use ProofRail for.
+priorities shift based on what people actually try to use Arclasp for.
 
-If something on this list is the difference between adopting ProofRail and not,
+If something on this list is the difference between adopting Arclasp and not,
 file an issue or email me. That's how priorities get adjusted — louder than
 internal guesses about what matters.
 
@@ -15,7 +15,7 @@ and LlamaIndex are candidates for later releases. No ETA — I want to see
 real demand before committing.
 
 **Slack and Teams approval integration.**
-The human approval gate currently surfaces via email and the ProofRail dashboard.
+The human approval gate currently surfaces via email and the Arclasp dashboard.
 Native Slack and Teams integrations would let reviewers approve or deny directly
 from a message, without opening a separate UI. This is high on the list.
 

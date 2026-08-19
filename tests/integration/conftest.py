@@ -124,7 +124,7 @@ def deny_resp(action_name: str = "") -> dict:
         # policy_name in _POLICY_REMEDIATION → remediation + docs_url auto-filled
         "policy_name":      "cumulative_financial_threshold",
         "remediation":      "Request approval via dashboard.",
-        "docs_url":         "https://docs.proofrail.ai/policies/thresholds",
+        "docs_url":         "https://docs.proofrail.dev/policies/thresholds",
     }
 
 

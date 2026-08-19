@@ -14,7 +14,8 @@ Usage (from repo root):
     python demos/production/langgraph_demo_prod.py
 
 Requires:
-    ARCLASP_API_KEY  — production API key (prail_...)
+    ARCLASP_API_KEY        — production API key (prail_...)
+    ARCLASP_APPROVER_EMAIL — email address to receive the approval notification
 
 Artifacts written to verification-artifacts/demos/production/langgraph/:
     chain-trace.json   — full chain + events from the backend
@@ -33,20 +34,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Windows SSL workaround — must happen before httpx is used by the SDK.
-# Python's bundled OpenSSL on Windows doesn't trust the system cert store.
-# verify=False is acceptable here: this is a local developer script, not
-# production server code.  The backend on Render runs Linux where SSL works.
-# ---------------------------------------------------------------------------
-import httpx as _httpx
-_OrigAsyncClient = _httpx.AsyncClient
-class _NoVerifyAsyncClient(_OrigAsyncClient):
-    def __init__(self, *args, **kwargs):
-        kwargs["verify"] = False
-        super().__init__(*args, **kwargs)
-_httpx.AsyncClient = _NoVerifyAsyncClient
-
+# If you hit SSL certificate verification errors on Windows, set SSL_CERT_FILE
+# to certifi's bundle (`python -c "import certifi; print(certifi.where())"`)
+# rather than disabling certificate verification.
 import arclasp
 import arclasp.client as _pr_client
 from arclasp import Chain
@@ -68,6 +58,7 @@ ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
 _captured_chain_id: str | None = None
 _approval_start_time: float | None = None
+_approver_email: str | None = None
 
 _orig_post = _pr_client._post
 
@@ -82,7 +73,7 @@ async def _post_instrument(path: str, data: dict, action_type: str | None = None
         print()
         print("  ============================================================")
         print("  AWAITING APPROVAL")
-        print("  Check approver@example.com and click the approve link.")
+        print(f"  Check {_approver_email} and click the approve link.")
         print(f"  Chain ID: {_captured_chain_id}")
         print("  ============================================================")
         print("  Polling: ", end="", flush=True)
@@ -168,7 +159,7 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
             if d.decision_source == "human_approval":
                 note = "  <- human approved"
             elif cumulative >= 10000:
-                note = f"  <- crossed $10,000 threshold"
+                note = "  <- crossed $10,000 threshold"
             print(
                 f"  [{2+i}] commitment-recorder  record_commitment "
                 f"{vendor} ${amount:,}  (cumulative ${cumulative:,})"
@@ -195,10 +186,19 @@ async def _run_vendor_workflow() -> tuple[Chain, list[dict]]:
 
 
 async def main() -> int:
+    global _approver_email
+
     api_key = os.environ.get("ARCLASP_API_KEY", "")
     if not api_key:
         print("ERROR: ARCLASP_API_KEY environment variable is not set.")
         return 1
+
+    approver_email = os.environ.get("ARCLASP_APPROVER_EMAIL", "")
+    if not approver_email:
+        print("ERROR: ARCLASP_APPROVER_EMAIL environment variable is not set.")
+        print("       Set it to the email address that should receive approval requests.")
+        return 1
+    _approver_email = approver_email
 
     print("=" * 65)
     print("  Arclasp — LangGraph Production Demo")
@@ -221,7 +221,7 @@ async def main() -> int:
         enable_local_fast_path=False,
         cumulative_financial_threshold_usd=10000,
         default_approval_timeout_hours=1,
-        fallback_approvers=["approver@example.com"],
+        fallback_approvers=[approver_email],
     )
 
     print("  Executing workflow…")

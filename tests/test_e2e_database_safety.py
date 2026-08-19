@@ -1,6 +1,6 @@
 import pytest
 
-from tests.e2e.test_real_backend_workflow import (
+from tests._e2e_database_safety import (
     E2EDatabaseConfigError,
     E2E_ALLOW_MUTATION_ENV,
     E2E_DATABASE_URL_ENV,

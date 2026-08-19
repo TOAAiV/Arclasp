@@ -13,7 +13,6 @@ policy module directly, matching the style of test_policies.py.
 
 from __future__ import annotations
 
-import pytest
 
 from arclasp.policies import (
     _extract_numeric,

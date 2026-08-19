@@ -44,7 +44,7 @@ class TestFields:
         condition="$12,400 exceeds $10,000",
         chain_context={"chain_id": "abc-123", "sequence": 3},
         remediation="Update threshold in init()",
-        docs_url="https://docs.proofrail.ai/policies/thresholds",
+        docs_url="https://docs.proofrail.dev/policies/thresholds",
         decision_source="backend_evaluation",
     )
 
@@ -54,7 +54,7 @@ class TestFields:
         assert err.condition == "$12,400 exceeds $10,000"
         assert err.chain_context == {"chain_id": "abc-123", "sequence": 3}
         assert err.remediation == "Update threshold in init()"
-        assert err.docs_url == "https://docs.proofrail.ai/policies/thresholds"
+        assert err.docs_url == "https://docs.proofrail.dev/policies/thresholds"
         assert err.decision_source == "backend_evaluation"
 
     def test_action_denied_has_all_fields(self):
@@ -88,8 +88,8 @@ class TestStr:
         assert "Reduce batch size" in str(err)
 
     def test_str_contains_docs_url(self):
-        err = ActionDeniedError(message="denied", docs_url="https://docs.proofrail.ai/x")
-        assert "https://docs.proofrail.ai/x" in str(err)
+        err = ActionDeniedError(message="denied", docs_url="https://docs.proofrail.dev/x")
+        assert "https://docs.proofrail.dev/x" in str(err)
 
     def test_str_omits_none_fields(self):
         err = ActionDeniedError(message="bare")
@@ -140,7 +140,7 @@ class TestChainAutoPausedError:
 
     def test_docs_url_matches_sdk_convention(self):
         err = ChainAutoPausedError()
-        assert err.docs_url == "https://docs.proofrail.ai/policies/runaway-limits"
+        assert err.docs_url == "https://docs.proofrail.dev/policies/runaway-limits"
 
     def test_remediation_includes_resume_hint(self):
         err = ChainAutoPausedError(chain_id="chain-xyz")
