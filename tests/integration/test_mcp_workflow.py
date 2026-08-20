@@ -9,9 +9,8 @@ The mcp package (1.27.0) is installed, so ArclaspMcpAdapter can be imported
 directly without mocking.  The chain backend is still mocked via
 arclasp.client._post.
 
-Three usage modes are tested beyond the six core scenarios:
+Two usage modes are tested beyond the six core scenarios:
   handle_tool_call_direct  — core method (also used in Scenarios 1-6)
-  install_patches_server   — patches server._call_tool_handler in-place
   decorator_wraps_handler  — @adapter.tool("name") decorator
 """
 
@@ -189,7 +188,7 @@ async def test_handle_tool_call_direct_mcp():
 
 
 # ===========================================================================
-# Extra mode B — install() patches server._call_tool_handler
+# Extra mode B — @adapter.tool() decorator wraps handlers
 # ===========================================================================
 
 @pytest.mark.asyncio

@@ -5,9 +5,10 @@ arclasp.mcp.adapter — Governance adapter for MCP tool servers.
 invocation through a Arclasp :class:`~arclasp.chain.Chain`, and only
 forwards to the real handler when the policy engine allows it.
 
-The ``mcp`` package itself is only imported when
-:meth:`ArclaspMcpAdapter.install` is called (so importing this module does
-not require the extra to be installed).
+The supported MCP integration path is to call
+:meth:`ArclaspMcpAdapter.handle_tool_call` from your ``@server.call_tool()``
+handler, or to wrap individual async tool implementations with
+:meth:`ArclaspMcpAdapter.tool`.
 
 Typical integration pattern
 ---------------------------
