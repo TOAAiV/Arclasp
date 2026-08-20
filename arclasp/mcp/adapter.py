@@ -130,33 +130,6 @@ class ArclaspMcpAdapter:
         return await handler(tool_name, arguments)
 
     # ------------------------------------------------------------------
-    # Convenience: patch an MCP Server instance in-place
-    # ------------------------------------------------------------------
-
-    def install(self, server: Any) -> None:
-        """
-        Not supported with mcp >= 1.0.
-
-        The mcp SDK no longer exposes a patchable ``_call_tool_handler``
-        attribute.  Wire Arclasp governance directly in your
-        ``@server.call_tool()`` handler instead::
-
-            @server.call_tool()
-            async def handle_call_tool(name: str, arguments: dict):
-                return await adapter.handle_tool_call(
-                    tool_name=name,
-                    arguments=arguments,
-                    handler=your_actual_handler,
-                )
-        """
-        raise RuntimeError(
-            "ArclaspMcpAdapter.install() is not supported with the current mcp "
-            "SDK (>= 1.0).  Use handle_tool_call() directly inside your "
-            "@server.call_tool() handler instead.  See the Arclasp README for "
-            "an example."
-        )
-
-    # ------------------------------------------------------------------
     # Decorator helper
     # ------------------------------------------------------------------
 

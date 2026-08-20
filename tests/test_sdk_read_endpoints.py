@@ -118,7 +118,6 @@ def init_sdk():
         api_key="prail_testkey123",
         backend_url="http://test-backend",
         environment="development",
-        fail_mode="deny",
     )
     yield
     # Reset module-level singletons so tests don't bleed into each other
@@ -382,34 +381,6 @@ async def test_verify_receipt_tampered(init_sdk):
     assert result.valid is False
 
 
-@pytest.mark.asyncio
-async def test_chain_verify_receipt_happy_path(init_sdk):
-    """chain.verify_receipt(receipt_id) delegates to client.verify_receipt."""
-    chain = Chain("test-chain")
-    chain._chain_id = "fake-chain-id"
-    receipt_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-
-    mock_response = ReceiptVerifyResponse(
-        valid=True,
-        receipt_number="RCP-XYZ",
-        chain_id="fake-chain-id",
-        generated_at=_NOW,
-    )
-    with patch.object(_client, "verify_receipt", new=AsyncMock(return_value=mock_response)) as mock:
-        result = await chain.verify_receipt(receipt_uuid)
-        mock.assert_called_once_with(receipt_uuid)
-
-    assert result.valid is True
-
-
-@pytest.mark.asyncio
-async def test_chain_verify_receipt_raises_if_not_started(init_sdk):
-    """chain.verify_receipt() raises RuntimeError when chain has not been started."""
-    chain = Chain("not-started")
-    with pytest.raises(RuntimeError, match="context manager"):
-        await chain.verify_receipt("some-uuid")
-
-
 # ---------------------------------------------------------------------------
 # client.init() re-init closes old HTTP client (I-5)
 # ---------------------------------------------------------------------------
@@ -591,27 +562,22 @@ def test_init_no_warn_on_http_localhost_in_production(caplog):
 
 
 # ---------------------------------------------------------------------------
-# Deprecated local fast-path configuration
+# Obsolete first-release configuration keys
 # ---------------------------------------------------------------------------
 
-def test_init_warns_when_local_fast_path_explicitly_enabled():
-    """Explicit enable_local_fast_path=True is accepted but no longer authoritative."""
-    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
+def test_init_rejects_removed_fail_mode():
+    with pytest.raises(Exception, match="Extra inputs"):
         arclasp.init(
-            api_key="prail_test_fp_on",
+            api_key="prail_test_removed_fail_mode",
+            backend_url="http://localhost:9999",
+            fail_mode="allow",
+        )
+
+
+def test_init_rejects_removed_local_fast_path():
+    with pytest.raises(Exception, match="Extra inputs"):
+        arclasp.init(
+            api_key="prail_test_removed_fast_path",
             backend_url="http://localhost:9999",
             enable_local_fast_path=True,
         )
-
-
-def test_init_no_fast_path_warning_when_disabled(caplog):
-    import logging
-
-    with caplog.at_level(logging.INFO, logger="arclasp.client"):
-        arclasp.init(
-            api_key="prail_test_fp_off",
-            backend_url="http://localhost:9999",
-            enable_local_fast_path=False,
-        )
-
-    assert not any("kill switch" in r.message for r in caplog.records)

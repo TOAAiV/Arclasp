@@ -1,14 +1,13 @@
 """
-Tests for arclasp.exceptions — Item A verification.
+Tests for arclasp.exceptions first-release policy exception contract.
 """
 
 import pytest
 
 from arclasp.exceptions import (
     ActionDeniedError,
-    ChainAutoPausedError,
-    PolicyViolationError,
     ArclaspPolicyError,
+    ChainAutoPausedError,
 )
 
 
@@ -17,24 +16,27 @@ class TestBaseClass:
         err = ActionDeniedError(message="test")
         assert isinstance(err, ArclaspPolicyError)
 
-    def test_policy_violation_is_policy_error(self):
-        err = PolicyViolationError(message="test")
+    def test_auto_pause_is_policy_error(self):
+        err = ChainAutoPausedError()
         assert isinstance(err, ArclaspPolicyError)
 
-    def test_catch_both_with_base(self):
+    def test_catch_policy_family_with_base(self):
         caught = []
-        for cls in (ActionDeniedError, PolicyViolationError):
+        for exc in (
+            ActionDeniedError(message="boom"),
+            ChainAutoPausedError(chain_id="abc-123"),
+        ):
             try:
-                raise cls(message="boom")
+                raise exc
             except ArclaspPolicyError as e:
                 caught.append(type(e))
-        assert caught == [ActionDeniedError, PolicyViolationError]
+        assert caught == [ActionDeniedError, ChainAutoPausedError]
 
     def test_subclasses_still_distinct(self):
         with pytest.raises(ActionDeniedError):
             raise ActionDeniedError(message="x")
-        with pytest.raises(PolicyViolationError):
-            raise PolicyViolationError(message="x")
+        with pytest.raises(ChainAutoPausedError):
+            raise ChainAutoPausedError(message="x")
 
 
 class TestFields:
@@ -59,9 +61,6 @@ class TestFields:
 
     def test_action_denied_has_all_fields(self):
         self._check_fields(ActionDeniedError(**self.ALL_FIELDS))
-
-    def test_policy_violation_has_all_fields(self):
-        self._check_fields(PolicyViolationError(**self.ALL_FIELDS))
 
     def test_defaults_are_none(self):
         err = ActionDeniedError(message="bare")
@@ -100,11 +99,10 @@ class TestStr:
 
     def test_str_prefix_matches_class_name(self):
         assert str(ActionDeniedError(message="x")).startswith("ActionDeniedError:")
-        assert str(PolicyViolationError(message="x")).startswith("PolicyViolationError:")
 
 
 class TestChainAutoPausedError:
-    """ChainAutoPausedError — new exception for CD-04 auto_paused contract fix."""
+    """ChainAutoPausedError contract."""
 
     def test_is_policy_error(self):
         err = ChainAutoPausedError()

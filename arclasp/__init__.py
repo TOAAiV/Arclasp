@@ -18,21 +18,17 @@ Quick start:
 from arclasp.chain import Chain
 from arclasp.client import (
     init,
-    issue_public_verification_token,
-    list_public_verification_tokens,
-    revoke_public_verification_token,
     verify_approval_v2,
     verify_public_token,
-    verify_receipt,
     verify_receipt_v2,
 )
 from arclasp.exceptions import (
     ActionDeniedError,
+    ArclaspPolicyError,
     BackendUnavailableError,
     ChainCompletionError,
     ChainAutoPausedError,
     ChainTimeoutError,
-    PolicyViolationError,
     ArclaspKillSwitchError,
     ArclaspVerificationError,
 )
@@ -41,20 +37,16 @@ __version__ = "0.1.0a10"
 
 __all__ = [
     "init",
-    "issue_public_verification_token",
-    "list_public_verification_tokens",
-    "revoke_public_verification_token",
     "verify_approval_v2",
     "verify_public_token",
-    "verify_receipt",
     "verify_receipt_v2",
     "Chain",
+    "ArclaspPolicyError",
     "ActionDeniedError",
     "BackendUnavailableError",
     "ChainCompletionError",
     "ChainAutoPausedError",
     "ChainTimeoutError",
-    "PolicyViolationError",
     "ArclaspKillSwitchError",
     "ArclaspVerificationError",
     "__version__",

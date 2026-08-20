@@ -210,7 +210,6 @@ async def main() -> int:
         api_key=api_key,
         backend_url="https://api.proofrail.dev",
         environment="production",
-        enable_local_fast_path=False,
         cumulative_financial_threshold_usd=10000,
         default_approval_timeout_hours=1,
         fallback_approvers=[approver_email],
@@ -256,7 +255,7 @@ async def main() -> int:
         "chain_detail": json.loads(chain_detail.model_dump_json()),
         "governance_config": {
             "cumulative_financial_threshold_usd": 10000,
-            "fast_path_enabled": False,
+            "backend_authoritative": False,
             "environment": "production",
         },
         "events_from_backend": [e.model_dump() for e in events_resp.events],

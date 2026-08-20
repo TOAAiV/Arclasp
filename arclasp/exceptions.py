@@ -56,32 +56,30 @@ _POLICY_REMEDIATION: dict[str, tuple[str, str]] = {
 
 class ArclaspPolicyError(Exception):
     """
-    Common base for all policy-denial exceptions raised by the SDK.
+    Common base for policy-family exceptions raised by the SDK.
 
-    Both :class:`ActionDeniedError` (raised when the backend returns a
-    ``"deny"`` decision) and :class:`PolicyViolationError` (raised when a
-    local fast-path check blocks an action) carry the same six diagnostic
-    fields.  This base class holds them so callers can catch either with a
-    single ``except ArclaspPolicyError`` clause while still being able to
-    distinguish the two if needed.
+    :class:`ActionDeniedError` is raised when backend-authoritative governance
+    denies an action. :class:`ChainAutoPausedError` is raised when the backend
+    halts a chain through its runaway-action guard. Catch this base class when
+    application code wants to handle policy-family stops uniformly.
 
     Attributes
     ----------
     message : str
-        Human-readable summary of why the action was denied.
+        Human-readable summary of why execution stopped.
     policy_name : str | None
-        The name of the policy rule that triggered the denial.
+        The name of the policy rule or policy-family condition.
     condition : str | None
-        The specific condition that was violated, as returned by the backend.
+        The specific condition returned by the backend, when available.
     chain_context : dict | None
-        Snapshot of chain state at the time of denial (chain_id, sequence, …).
+        Snapshot of chain state at the time of the stop (chain_id, sequence, ...).
     remediation : str | None
         Actionable guidance for fixing the configuration or getting approval.
     docs_url : str | None
         Link to the relevant policy documentation.
     decision_source : str | None
-        Where the decision originated: ``"backend_evaluation"``,
-        legacy compatibility values.
+        Where the decision originated, for example ``"backend_evaluation"`` or
+        ``"human_approval"``.
     """
 
     def __init__(
@@ -132,19 +130,8 @@ class ActionDeniedError(ArclaspPolicyError):
     agent action.  Carries structured context so operators can surface a clear
     error message or take remediation steps.
 
-    Catch :class:`ArclaspPolicyError` instead when you want to handle both
-    backend denials and local fast-path violations uniformly.
-    """
-
-
-class PolicyViolationError(ArclaspPolicyError):
-    """
-    Raised when an agent action is blocked by a local fast-path check before
-    (or instead of) a backend round-trip, e.g. when the SDK's local policy
-    evaluation rejects the action immediately.
-
-    Catch :class:`ArclaspPolicyError` instead when you want to handle both
-    backend denials and local fast-path violations uniformly.
+    Catch :class:`ArclaspPolicyError` when you want to handle backend
+    policy-family stops uniformly.
     """
 
 
@@ -154,16 +141,11 @@ class PolicyViolationError(ArclaspPolicyError):
 
 
 class BackendUnavailableError(Exception):
-    """
-    Raised when the Arclasp backend cannot be reached and fail_mode is
-    ``"deny"``.  Carries the original failure message and the configured
-    fail_mode for context.
-    """
+    """Raised when the Arclasp backend cannot be reached after configured retries."""
 
-    def __init__(self, message: str, fail_mode: str = "deny") -> None:
+    def __init__(self, message: str) -> None:
         self.message = message
-        self.fail_mode = fail_mode
-        super().__init__(f"{message} (fail_mode={fail_mode})")
+        super().__init__(message)
 
 
 class ChainCompletionError(Exception):

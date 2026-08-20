@@ -17,8 +17,7 @@ Three usage modes are tested beyond the six core scenarios:
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -139,7 +138,7 @@ async def test_backend_denies_action_mcp():
 
 
 # ===========================================================================
-# Scenario 4 — backend unreachable, fail_mode=deny
+# Scenario 4 — backend unreachable
 # ===========================================================================
 
 @pytest.mark.asyncio
@@ -148,8 +147,6 @@ async def test_backend_unreachable_fail_deny_mcp():
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="deny",
     )
     mock_post, calls = make_mock_post(unavailable=True)
 
@@ -163,75 +160,7 @@ async def test_backend_unreachable_fail_deny_mcp():
 
 
 # ===========================================================================
-# Scenario 5 - backend unreachable, deprecated fail_mode=allow fails closed
-# ===========================================================================
-
-@pytest.mark.asyncio
-async def test_backend_unreachable_fail_allow_mcp():
-    with pytest.warns(DeprecationWarning, match="fail_mode"):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=False,
-            fail_mode="allow",
-        )
-    mock_post, calls = make_mock_post(offline_signal=True)
-    handler_calls: list[str] = []
-
-    async def tracking_handler(name: str, args: dict) -> dict:
-        handler_calls.append(name)
-        return {"result": "ok"}
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        with pytest.raises(BackendUnavailableError) as exc_info:
-            async with Chain("mcp-offline") as chain:
-                adapter = ArclaspMcpAdapter(chain=chain, agent_name="mcp-agent")
-                await adapter.handle_tool_call("query_database", {}, tracking_handler)
-
-    assert exc_info.value.fail_mode == "allow"
-    assert handler_calls == []
-    assert count_event_calls(calls) == 0
-
-
-# ===========================================================================
-# Scenario 6 - deprecated deprecated fast-path flag still requires backend authority
-# ===========================================================================
-
-@pytest.mark.asyncio
-async def test_fast_path_config_still_uses_backend_mcp():
-    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=True,
-            fail_mode="deny",
-        )
-    mock_post, calls = make_mock_post()
-    handler_called = []
-
-    async def tracking_handler(name: str, args: dict) -> dict:
-        handler_called.append(name)
-        return {"result": "ok"}
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        async with Chain("mcp-fp") as chain:
-            adapter = ArclaspMcpAdapter(chain=chain, agent_name="mcp-agent")
-            # "get_user_info" → risk_score = 0, legacy-deprecated fast-path eligible
-            await adapter.handle_tool_call("get_user_info", {}, tracking_handler)
-            # Give drain task time to run
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-
-    assert "get_user_info" in handler_called
-    # Chain was started
-    assert any(c["path"] == "/v1/chains" for c in calls)
-    assert count_event_calls(calls) == 1
-
-
-# ===========================================================================
-# Extra mode A — handle_tool_call direct (explicit test of the core method)
+# Scenario 5 - backend unreachable, deprecated backend unavailable fails closed
 # ===========================================================================
 
 @pytest.mark.asyncio
@@ -261,26 +190,6 @@ async def test_handle_tool_call_direct_mcp():
 
 # ===========================================================================
 # Extra mode B — install() patches server._call_tool_handler
-# ===========================================================================
-
-@pytest.mark.asyncio
-async def test_install_raises_for_unsupported_mcp_api():
-    """
-    install() is not supported with mcp >= 1.0 and must raise RuntimeError
-    with a message directing users to handle_tool_call() instead.
-    """
-    mock_post, _calls = make_mock_post()
-    server = MagicMock()
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        async with Chain("mcp-install") as chain:
-            adapter = ArclaspMcpAdapter(chain=chain, agent_name="install-agent")
-            with pytest.raises(RuntimeError, match="handle_tool_call"):
-                adapter.install(server)
-
-
-# ===========================================================================
-# Extra mode C — @adapter.tool() decorator
 # ===========================================================================
 
 @pytest.mark.asyncio

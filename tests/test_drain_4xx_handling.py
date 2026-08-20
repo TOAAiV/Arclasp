@@ -70,8 +70,6 @@ def sdk_init():
     arclasp.init(
         api_key="prail_test",
         backend_url="http://test",
-        fail_mode="allow",
-        enable_local_fast_path=False,
         max_retries=0,
     )
 

@@ -120,10 +120,10 @@ def _benchmark_sample():
 
 
 class _OfflineSignal(Exception):
-    """Legacy compatibility signal retained for older internal imports.
+    """Legacy internal signal retained for older internal imports.
 
     Governed SDK transport no longer emits this signal; backend unavailability
-    raises BackendUnavailableError regardless of fail_mode.
+    raises BackendUnavailableError.
     """
 
     def __init__(self, message: str) -> None:
@@ -165,25 +165,6 @@ def init(**kwargs) -> ChainConfig:
     if not kwargs.get("api_key"):
         raise ValueError(
             "api_key is required. Call arclasp.init(api_key='prail_...') before using the SDK."
-        )
-
-    if kwargs.get("enable_local_fast_path") is True:
-        warnings.warn(
-            "enable_local_fast_path is deprecated and no longer enables local "
-            "governance decisions. Governed SDK execution now always requires "
-            "backend authority.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    if kwargs.get("fail_mode") == "allow" or "allow" in (
-        kwargs.get("fail_modes") or {}
-    ).values():
-        warnings.warn(
-            "fail_mode='allow' is deprecated and ineffective for governed "
-            "execution. Backend unavailability now raises BackendUnavailableError.",
-            DeprecationWarning,
-            stacklevel=2,
         )
 
     _config = ChainConfig(**kwargs)
@@ -318,7 +299,7 @@ async def _retry_with_backoff(
     * **Non-retryable — propagates immediately:** ``httpx.RemoteProtocolError``
       and ``httpx.DecodingError`` indicate backend health issues (malformed
       HTTP, bad response body) that should surface to the caller for
-      ``fail_mode`` handling rather than silently retrying.
+      the caller rather than silently retrying forever.
     * **Non-retryable (immediate return):** 2xx success or 4xx client error.
 
     After all retries are exhausted on a network exception, re-raises the
@@ -365,7 +346,7 @@ async def _retry_with_backoff(
                     sample.retries += 1
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
-            # Exhausted retries on 5xx — return for caller to handle via fail_mode.
+            # Exhausted retries on 5xx — return for caller to fail closed.
 
         elif response.status_code == 429:
             if attempt < max_retries:
@@ -382,7 +363,7 @@ async def _retry_with_backoff(
                     sample.retries += 1
                 await asyncio.sleep(backoff_ms / 1000.0)
                 continue
-            # Exhausted retries on 429 — return for caller to handle via fail_mode.
+            # Exhausted retries on 429 — return for caller to fail closed.
 
         return response
 
@@ -402,10 +383,9 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
     ``config.retry_backoff_base_ms`` ms) on transient errors: timeouts,
     ``NetworkError`` (connect / read / write failures), 5xx, and 429.
 
-    After all retries are exhausted:
-    * Network/5xx/429 -> BackendUnavailableError. ``fail_mode="allow"`` is
-      accepted for compatibility but deprecated and ineffective for governed
-      execution.
+    After all retries are exhausted, network errors, 5xx responses, and 429
+    responses raise BackendUnavailableError. Governed execution always fails
+    closed when backend authority is unavailable.
 
     4xx responses are non-retryable and always re-raise ``HTTPStatusError``
     immediately — these are deterministic client errors where retry won't help.
@@ -442,7 +422,7 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
             action_type,
         )
 
-    response.raise_for_status()  # 4xx → HTTPStatusError; non-retryable, no fail_mode
+    response.raise_for_status()  # 4xx -> HTTPStatusError; non-retryable
     return response.json()
 
 
@@ -450,7 +430,7 @@ async def _get(path: str, action_type: str | None = None) -> dict:
     """
     GET *path* on the configured backend.
 
-    Same retry and fail_mode semantics as ``_post``.
+    Same retry and fail-closed semantics as ``_post``.
     """
     config = get_config()
     client = _get_client()
@@ -735,16 +715,12 @@ def _handle_backend_failure(
     """
     Apply fail-closed handling to a transport-level backend failure.
 
-    ``fail_mode="allow"`` is retained as a deprecated configuration value for
-    signature compatibility, but governed execution never converts backend
+    Governed execution requires backend authority and never converts backend
     unavailability into an allow or an offline chain.
     """
-    effective = config.resolve_fail_mode(action_type)
-    if effective == "allow":
-        logger.warning(
-            "%s - fail_mode=allow is deprecated for governed execution; failing closed "
-            "(action_type=%s)",
-            message,
-            action_type or "unspecified",
-        )
-    raise BackendUnavailableError(message=message, fail_mode=effective)
+    logger.warning(
+        "%s - governed execution requires backend authority (action_type=%s)",
+        message,
+        action_type or "unspecified",
+    )
+    raise BackendUnavailableError(message=message)

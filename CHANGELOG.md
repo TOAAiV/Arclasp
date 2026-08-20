@@ -1,3 +1,7 @@
+## Unreleased
+
+- Finalized the first public Arclasp Python namespace before PyPI publication: removed dead local-governance compatibility APIs, exposed `ArclaspPolicyError` at top level, kept legacy receipt verification under `arclasp.client`, and kept backend/wire verification contracts unchanged.
+
 ﻿# Changelog
 
 All notable changes to Arclasp (formerly ProofRail) will be documented in this file.

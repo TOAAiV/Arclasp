@@ -169,11 +169,8 @@ This is the central design difference from per-call governance tools.
 
 `Chain.record_agent_action()` records every action through the backend and
 waits for the backend's decision before returning — the backend is the sole
-authority for governed allow/deny decisions. `enable_local_fast_path` and
-`arclasp.fast_path` are retained only for backward compatibility with older
-callers; passing `enable_local_fast_path=True` emits a `DeprecationWarning`
-and does not bypass backend evaluation. See [SECURITY.md](SECURITY.md) §3
-for the full compatibility note.
+authority for governed allow/deny decisions. The SDK does not expose a local
+fast-path allow/deny mode in the first public Arclasp package.
 
 ### Blocking human approval gate
 
@@ -183,32 +180,13 @@ Timeout, fallback approvers, and time-boxed exceptions are all configurable per 
 
 ### Tamper-evident audit receipts
 
-Every chain closes with an HMAC-SHA256 signed receipt. Receipts are hash-chained across an organization — each embeds the hash of the previous receipt. Prefer authenticated v2 receipt verification with `arclasp.verify_receipt_v2(receipt_id)` or tokenized public verification through `/public/v2/verify/{opaque_token}`. Legacy no-auth `/v1/receipts/{id}/verify` remains callable for compatibility and reports server-attested integrity only.
+Every chain closes with an HMAC-SHA256 signed receipt. Receipts are hash-chained across an organization — each embeds the hash of the previous receipt. Use authenticated v2 receipt verification with `arclasp.verify_receipt_v2(receipt_id)`, approval verification with `arclasp.verify_approval_v2(approval_id)`, or tokenized public verification with `arclasp.verify_public_token(token)` / `/public/v2/verify/{opaque_token}`.
 
 Receipts are also hash-chained across an organization: each new receipt embeds the hash of the previous one. Authenticated v2 verification can report server-attested receipt integrity and receipt-chain status; raw/offline evidence export remains future work.
 
 ### Parity-tested policy engine
 
 The local policy engine is the same algorithm that runs on the backend. They're verified against identical inputs on every test run. If they diverge, the build fails. The full algorithm is in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py) — read it before you install if you want to know exactly what rules your agents are subject to.
-
-### Per-action-class fail modes
-
-When the backend is unreachable, you don't have to choose between "everything fails closed" and "everything fails open." Configure different fail modes per action class:
-
-```python
-arclasp.init(
-    api_key="prail_...",
-    fail_modes={
-        "tool_call": "deny",       # block all tool calls when backend is unreachable
-        "llm_inference": "allow",  # allow LLM calls — no external side-effects
-        "default": "allow",
-    },
-)
-```
-
-Keys must match the `action_type` strings your code passes to `record_agent_action`. Framework adapters record `"tool_call"` and `"llm_inference"`. For custom action classes, use any string you define.
-
-Tool calls fail closed. Reads and drafts fail open. Velocity stays intact for the things where velocity is fine; the dangerous actions still get the brake pedal they need.
 
 ## Composing custom policies
 
@@ -246,7 +224,7 @@ A chain with no `policy_config` (or `{}`) behaves exactly like one with no overr
 Features marked **[SDK]** are available to every caller with an API key. Features marked **[Dashboard]** require the web dashboard (or Clerk JWT auth) and are intended for human operators.
 
 - **Payload sanitization** [SDK]. Default redaction patterns cover API keys, passwords, credit cards, SSNs, private keys via field-name matching, plus common token formats by value prefix (Stripe `sk_`/`pk_`, GitHub `ghp_`, Hugging Face `hf_`, AWS access key IDs `AKIA`, JWT `eyJ`). Extend with your own patterns. Raw payloads are never persisted.
-- **Backend-unavailable handling** [SDK]. Governed execution requires backend authority. If the backend is unreachable after retries, the SDK raises `BackendUnavailableError`. The legacy `fail_mode="allow"` and per-action `fail_modes` settings are accepted for compatibility but deprecated and do not allow governed actions to proceed offline.
+- **Backend-unavailable handling** [SDK]. Governed execution requires backend authority. If the backend is unreachable after retries, the SDK raises `BackendUnavailableError` and fails closed.
 - **Cross-organization isolation** [SDK + Backend]. Every UUID-bearing endpoint enforces org scoping at the backend. Tests confirm one organization's API key can never access another organization's chains, events, or receipts.
 - **Policy shadow mode** [Dashboard]. Run new policies in observe-only mode against real traffic before flipping them to enforce. Shadow decisions are logged separately so you can calibrate without disruption. `evaluation_mode` and `shadow_decision` appear in SDK responses when active.
 - **Agent registry** [Dashboard]. Register every agent you expect to see via the dashboard. Unregistered agents that show up in chain events are flagged for review, surfacing shadow agents without blocking legitimate work.
@@ -259,7 +237,7 @@ Features marked **[SDK]** are available to every caller with an API key. Feature
 
 Two components: this SDK (open-source, Apache 2.0) and a hosted backend (closed, operated by us). The SDK handles chain lifecycle, payload sanitization, framework adapter instrumentation, and transport. The backend is the authority for governed policy decisions, approvals, kill-switch state, audit persistence, and receipts.
 
-The reference policy model lives in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py), but public governed execution does not use local policy evaluation as an allow authority.
+The reference policy model lives in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py). It is a readable local/reference model; public governed execution does not use local policy evaluation as an allow authority.
 
 The backend implementation itself is not open-source. The reasons are practical (operational complexity) rather than ideological, and we publish the policy algorithm in full so you can verify what the backend is doing.
 
@@ -287,7 +265,6 @@ What this release doesn't do, so you find out from us and not from production:
 - Approval emails may land in spam on first delivery. Add `notifications@proofrail.dev` to your contacts to avoid this.
 - First request after 15 minutes of inactivity may take 5—15 seconds due to backend cold start (free tier).
 - On Python 3.11, installing `arclasp[crewai]` requires `SETUPTOOLS_USE_DISTUTILS=stdlib` set before pip. See the CrewAI section above.
-- `fail_modes` keys must match your `action_type` strings, not risk categories. Adapter users: use `"tool_call"` and `"llm_inference"` as keys.
 
 If any of these is a blocker for your use case, file an issue. We'd rather tell you honestly whether to wait than have you discover the limitation in production.
 
@@ -295,13 +272,13 @@ If any of these is a blocker for your use case, file an issue. We'd rather tell 
 
 We're asking you to install a governance SDK and let it sit in the path of every agent action your product takes. That's a real ask, and the answer to "should I trust this?" shouldn't be "the marketing site says so."
 
-The whole SDK is in this repo. You can read every line of code that runs in your process. The fast-path that decides actions locally is in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py) — open it; that's the entire algorithm. The payload sanitizer that decides what leaves your machine is in [`arclasp/sanitization.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/sanitization.py). The HTTP client and every payload format the SDK sends are inspectable.
+The whole SDK is in this repo. You can read every line of code that runs in your process. The reference policy calculation is in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py) — open it to understand the algorithm the backend enforces authoritatively. The payload sanitizer that decides what leaves your machine is in [`arclasp/sanitization.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/sanitization.py). The HTTP client and every payload format the SDK sends are inspectable.
 
 The backend isn't open-source. What we've done instead:
 
 - **Parity tests.** The SDK's local policy and the backend's policy run against identical inputs on every test run. If they diverge — if the backend decides something the open-source code wouldn't — the build fails. The tests are in [`tests/test_policies_backend_parity.py`](https://github.com/TOAAiV/Arclasp/blob/main/tests/test_policies_backend_parity.py).
 - **Cross-organization isolation tests.** A dedicated test suite confirms one organization's API key cannot reach another organization's chains, events, or receipts. The application enforces org scoping on every UUID-bearing endpoint.
-- **Server-attested receipt integrity.** Audit receipts are HMAC-signed and hash-chained across an organization. Use authenticated v2 verification or tokenized public verification for first-party flows. Legacy receipt verification remains compatibility-only and is not independent or offline proof.
+- **Server-attested receipt integrity.** Audit receipts are HMAC-signed and hash-chained across an organization. Use authenticated v2 verification or tokenized public verification for first-party flows.
 - **Security audit complete.** Fifteen findings covering the SDK have been addressed; the full security policy is in [SECURITY.md](https://github.com/TOAAiV/Arclasp/blob/main/SECURITY.md).
 
 Most agent governance tools ask you to trust a closed-source policy engine. Arclasp's policy engine is open. Read it before you install it.

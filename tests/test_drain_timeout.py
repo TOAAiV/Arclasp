@@ -23,8 +23,6 @@ def _init(backend_timeout_seconds: int = 2, drain_timeout_seconds: int | None = 
         api_key="prail_test",
         backend_url="http://test.invalid",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="deny",
         backend_timeout_seconds=backend_timeout_seconds,
     )
     if drain_timeout_seconds is not None:

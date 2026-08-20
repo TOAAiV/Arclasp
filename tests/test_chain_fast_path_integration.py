@@ -1,9 +1,8 @@
 """
-Regression tests for K1 backend-authoritative Chain.record_agent_action behavior.
+Regression tests for backend-authoritative Chain.record_agent_action behavior.
 
-The legacy local fast path remains as a compatibility module, but public governed
-Chain execution must always require an authoritative backend decision before an
-action is allowed to proceed.
+Public governed Chain execution always requires an authoritative backend
+response before an action is allowed to proceed.
 """
 
 from __future__ import annotations
@@ -23,8 +22,6 @@ def sdk_dev():
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="deny",
         default_approval_timeout_hours=0,
     )
 
@@ -60,7 +57,7 @@ def _approval_required_response():
 
 
 @pytest.mark.asyncio
-async def test_development_default_safe_action_calls_backend_event():
+async def test_development_safe_action_calls_backend_event():
     event_posts = []
 
     async def mock_post(path, body, action_type=None):
@@ -72,7 +69,7 @@ async def test_development_default_safe_action_calls_backend_event():
         return {"status": "completed"}
 
     with patch("arclasp.client._post", side_effect=mock_post):
-        async with Chain("k1-default") as chain:
+        async with Chain("backend-authority-default") as chain:
             result = await chain.record_agent_action(
                 agent_name="agent",
                 action_type="tool_call",
@@ -88,58 +85,13 @@ async def test_development_default_safe_action_calls_backend_event():
 
 
 @pytest.mark.asyncio
-async def test_explicit_enable_local_fast_path_warns_but_still_calls_backend():
-    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=True,
-            fail_mode="deny",
-        )
-
-    calls = []
-
-    async def mock_post(path, body, action_type=None):
-        calls.append({"path": path, "body": dict(body or {})})
-        if path == "/v1/chains":
-            return _chain_start_response("chain-k1-explicit")
-        if "/events" in path:
-            return _allow_response()
-        return {"status": "completed"}
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        async with Chain("k1-explicit-fast-path") as chain:
-            result = await chain.record_agent_action(
-                agent_name="agent",
-                action_type="tool_call",
-                action_name="get_config",
-                payload={},
-            )
-
-    assert result.decision_source == "backend_evaluation"
-    assert [c["path"] for c in calls].count("/v1/chains") == 1
-    assert len([c for c in calls if "/events" in c["path"]]) == 1
-    assert result.decision_source != "local_fast_path"
-
-
-@pytest.mark.asyncio
-async def test_backend_down_with_fast_path_config_fails_closed_before_action():
-    with pytest.warns(DeprecationWarning):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=True,
-            fail_mode="allow",
-        )
-
+async def test_backend_down_fails_closed_before_action():
     async def mock_post(path, body, action_type=None):
         if path == "/v1/chains":
             return _chain_start_response("chain-k1-down")
         if path.endswith("/complete"):
             return {"status": "completed"}
-        raise BackendUnavailableError("backend down", fail_mode="allow")
+        raise BackendUnavailableError("backend down")
 
     with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain("k1-down") as chain:
@@ -151,7 +103,7 @@ async def test_backend_down_with_fast_path_config_fails_closed_before_action():
                     payload={},
                 )
 
-    assert exc_info.value.fail_mode == "allow"
+    assert "backend down" in str(exc_info.value)
     assert chain._offline is False
     assert chain._offline_buffer == []
 
@@ -205,7 +157,7 @@ async def test_backend_require_approval_returns_human_approval_after_poll():
 
 
 @pytest.mark.asyncio
-async def test_no_fast_path_async_memory_buffer_is_used_for_public_execution():
+async def test_no_async_memory_buffer_is_used_for_public_execution():
     async def mock_post(path, body, action_type=None):
         if path == "/v1/chains":
             return _chain_start_response()

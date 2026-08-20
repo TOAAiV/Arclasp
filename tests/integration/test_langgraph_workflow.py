@@ -11,7 +11,6 @@ NOT installed.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from unittest.mock import patch, MagicMock
 from typing import AsyncIterator, Any
@@ -161,7 +160,7 @@ async def test_backend_flags_action_langgraph():
 
 @pytest.mark.asyncio
 async def test_backend_denies_action_langgraph():
-    # "delete_records" contains "delete" → risk_score ≥ 40, not legacy-deprecated fast-path eligible
+    # "delete_records" contains "delete" → risk_score ≥ 40, not legacy-backend authority eligible
     governed = govern(
         _StubGraphA(nodes=["fetch_data", "delete_records"]),
         chain_name="lg-deny",
@@ -192,7 +191,7 @@ async def test_backend_denies_action_langgraph():
 
 
 # ===========================================================================
-# Scenario 4 — backend unreachable, fail_mode=deny
+# Scenario 4 — backend unreachable
 # ===========================================================================
 
 @pytest.mark.asyncio
@@ -201,8 +200,6 @@ async def test_backend_unreachable_fail_deny_langgraph():
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="deny",
     )
     mock_post, calls = make_mock_post(unavailable=True)
 
@@ -217,67 +214,7 @@ async def test_backend_unreachable_fail_deny_langgraph():
 
 
 # ===========================================================================
-# Scenario 5 - backend unreachable, deprecated fail_mode=allow fails closed
-# ===========================================================================
-
-@pytest.mark.asyncio
-async def test_backend_unreachable_fail_allow_langgraph():
-    with pytest.warns(DeprecationWarning, match="fail_mode"):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=False,
-            fail_mode="allow",
-        )
-    mock_post, calls = make_mock_post(offline_signal=True)
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        with pytest.raises(BackendUnavailableError) as exc_info:
-            await _govern_a().ainvoke({"input": "data"})
-
-    assert exc_info.value.fail_mode == "allow"
-    assert count_event_calls(calls) == 0
-
-
-# ===========================================================================
-# Scenario 6 - deprecated deprecated fast-path flag still requires backend authority
-# ===========================================================================
-
-@pytest.mark.asyncio
-async def test_fast_path_config_still_uses_backend_langgraph():
-    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=True,
-            fail_mode="deny",
-        )
-    # Single node with a clearly safe name (risk_score = 0)
-    governed = govern(_StubGraphA(nodes=["get_config"]), chain_name="lg-fp")
-    mock_post, calls = make_mock_post()
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        result = await governed.ainvoke({"input": "data"})
-        # Yield to let any drain tasks run
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
-    assert result == {"result": "workflow_complete"}
-    # Chain was started (1 call) and completed (1 call) — those are always sync
-    chain_start = [c for c in calls if c["path"] == "/v1/chains"]
-    assert len(chain_start) == 1
-    # No SYNCHRONOUS /events calls happened during record_agent_action (deprecated fast-path)
-    # Drain may have added async calls, but the decision is returned locally.
-    # We verify deprecated fast-path is wired by checking the cumulative event count is ≤ 2
-    # (chain start + complete only, or chain start + complete + drain events ≤ total nodes*2)
-    # The key assertion: workflow completed without a backend error.
-    assert count_event_calls(calls) == 2
-
-
-# ===========================================================================
-# BUG-LG-01 — aclose() race: original policy exception must survive cleanup
+# Scenario 5 - backend unreachable, deprecated backend unavailable fails closed
 # ===========================================================================
 
 class _StreamWithRace:
@@ -361,8 +298,6 @@ async def test_bug_lg_01_aclose_race_preserves_policy_exception():
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="allow",
         default_approval_timeout_hours=0,   # instant ChainTimeoutError on require_approval
     )
 
@@ -445,8 +380,6 @@ async def test_bug_lg_02_strategy_b_propagates_policy_exception():
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="allow",
         default_approval_timeout_hours=0,   # instant ChainTimeoutError on require_approval
     )
 
@@ -509,8 +442,6 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
-            enable_local_fast_path=False,
-            fail_mode="allow",
             default_approval_timeout_hours=0,
         )
 

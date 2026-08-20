@@ -135,7 +135,7 @@ def deny_resp(action_name: str = "") -> dict:
 def make_mock_post(
     deny_on:         str | None = None,
     flag_on:         str | None = None,
-    offline_signal:  bool = False,   # legacy name; now raises BackendUnavailableError
+    offline_signal:  bool = False,   # legacy fixture name; raises BackendUnavailableError
     unavailable:     bool = False,   # raises BackendUnavailableError (Scenario 4)
 ):
     """
@@ -153,9 +153,9 @@ def make_mock_post(
         calls.append({"path": path, "body": dict(body or {})})
 
         if unavailable:
-            raise BackendUnavailableError("backend down", fail_mode="deny")
+            raise BackendUnavailableError("backend down")
         if offline_signal:
-            raise BackendUnavailableError("backend down", fail_mode="allow")
+            raise BackendUnavailableError("backend down")
 
         if path == "/v1/chains":
             return {"id": CHAIN_ID}
@@ -225,14 +225,11 @@ def arclasp_dev():
     Default SDK config for all integration tests.
 
     Fast-path is off and fail-closed transport is the default. Tests that
-    intentionally cover deprecated compatibility knobs opt into them locally.
     """
     arclasp.init(
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="deny",
     )
 
 

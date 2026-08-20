@@ -21,7 +21,9 @@ Audience
 External developers evaluating Arclasp can audit this file to understand
 exactly what rules their agents are subject to.  Operators building custom
 tooling (e.g. local CI policy checks, dashboard integrations) can call these
-functions directly without spinning up the full backend.
+functions directly without spinning up the full backend. These functions are
+reference/local calculations only; live governed SDK execution still requires
+backend authority for allow, deny, approval, and kill-switch decisions.
 
 Usage
 -----

@@ -11,7 +11,7 @@ Five surfaces:
   4. RemoteProtocolError does NOT retry — confirms narrow NetworkError
      catch, not the broader TransportError parent.
   5. Exhausted retries on ReadError calls _handle_backend_failure so
-     BackendUnavailableError fires even when fail_mode="allow".
+     BackendUnavailableError fires after retry exhaustion.
 """
 
 from __future__ import annotations
@@ -61,24 +61,21 @@ def _init_deny() -> None:
         api_key="prail_test",
         backend_url="http://test.invalid",
         environment="development",
-        fail_mode="deny",
         backend_timeout_seconds=5,
         max_retries=3,
         retry_backoff_base_ms=1,   # 1 ms — tests run fast
     )
 
 
-def _init_allow() -> None:
-    with pytest.warns(DeprecationWarning, match="fail_mode"):
-        arclasp.init(
+def _init_fail_closed() -> None:
+    arclasp.init(
             api_key="prail_test",
             backend_url="http://test.invalid",
             environment="development",
-            fail_mode="allow",
             backend_timeout_seconds=5,
             max_retries=3,
             retry_backoff_base_ms=1,
-        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -213,13 +210,12 @@ async def test_remote_protocol_error_does_not_retry():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_exhausted_read_error_retries_fail_closed_on_allow():
+async def test_exhausted_read_error_retries_fail_closed():
     """
-    When all retries are exhausted on ReadError and fail_mode='allow', _post
-    raises BackendUnavailableError. The allow setting is deprecated and must
-    not create an offline allow path.
+    When all retries are exhausted on ReadError, _post raises
+    BackendUnavailableError and must not create an offline allow path.
     """
-    _init_allow()
+    _init_fail_closed()
 
     call_count = 0
 
@@ -232,14 +228,12 @@ async def test_exhausted_read_error_retries_fail_closed_on_allow():
     client_mock.post = _always_fails
 
     with patch.object(_pc, "_get_client", return_value=client_mock):
-        with pytest.raises(BackendUnavailableError) as exc_info:
+        with pytest.raises(BackendUnavailableError):
             await _pc._post(
                 "/v1/chains/test-id/events",
                 {"action_type": "tool_call"},
                 action_type="tool_call",
             )
-
-    assert exc_info.value.fail_mode == "allow"
     assert call_count == 4, (
         f"Expected 4 total attempts (max_retries=3), got {call_count}. "
         "ReadError must be retried the full configured count before giving up."
@@ -249,8 +243,8 @@ async def test_exhausted_read_error_retries_fail_closed_on_allow():
 @pytest.mark.asyncio
 async def test_exhausted_read_error_retries_raise_backend_unavailable_on_deny():
     """
-    Same exhausted-retry scenario with fail_mode='deny': BackendUnavailableError
-    should be raised, not a bare ReadError.
+    Same exhausted-retry scenario: BackendUnavailableError should be raised,
+    not a bare ReadError.
     """
     _init_deny()
 

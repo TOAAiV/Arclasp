@@ -27,9 +27,8 @@ audit trail of every governed action is transmitted to the backend.
 - Preventing sensitive values in action payloads from reaching the backend
   in plaintext (sanitization layer).
 - Ensuring the API key is never exposed via logs, repr, or debug output.
-- Applying `fail_mode` correctly when the backend is unreachable.
-- Transmitting all governed events to the backend, including fast-path
-  decisions (via async drain).
+- Failing closed when the backend is unreachable.
+- Transmitting all governed events to the backend before returning an allow decision.
 
 **Out of scope (operator responsibility):**
 - TLS certificate pinning for the backend connection.
@@ -48,44 +47,14 @@ audit trail of every governed action is transmitted to the backend.
 Governed SDK execution requires an authoritative backend response before an
 action is allowed to proceed. When the backend is unreachable after configured
 retries (network failure, timeout, 5xx, or 429 exhaustion), the SDK raises
-`BackendUnavailableError`.
-
-The historical `fail_mode="allow"` and per-action `fail_modes` configuration
-values remain accepted for API compatibility, but they are deprecated and do
-not permit governed actions to execute offline. If one resolves to `"allow"`,
-the error reports that effective value while still failing closed.
-
-**Configuration compatibility:**
-
-```python
-# Recommended and default: fail closed on backend failure.
-arclasp.init(fail_mode="deny")
-
-# Deprecated compatibility input. This still fails closed when backend authority
-# is unavailable, and emits a DeprecationWarning at init time.
-arclasp.init(fail_mode="allow")
-```
+`BackendUnavailableError` and fails closed. There is no public fail-open
+configuration in the first Arclasp package.
 
 A network partition must not silently disable governance or produce audit gaps.
 
 ---
 
-## 3. Local fast-path compatibility
-
-`enable_local_fast_path` is retained as a deprecated configuration field for
-older callers, and `arclasp.fast_path` remains importable for compatibility.
-Public governed execution no longer uses local fast-path decisions as allow
-authority. `Chain.record_agent_action()` records each action through the
-backend and waits for the backend decision before returning.
-
-Explicitly passing `enable_local_fast_path=True` emits a `DeprecationWarning`
-and does not bypass backend evaluation. Backend-enforced controls such as the
-organization kill switch, human approval, monthly budgets, and audit recording
-therefore stay authoritative for governed SDK execution.
-
----
-
-## 4. HTTP/HTTPS policy
+## 3. HTTP/HTTPS policy
 
 The SDK's default `backend_url` is `http://localhost:8000`, which is
 intentionally HTTP — it targets a local development server where TLS is
@@ -107,7 +76,7 @@ SDK-S-6)*
 
 ---
 
-## 5. API key handling
+## 4. API key handling
 
 The Arclasp API key (`api_key`) is stored as a Pydantic `SecretStr`. Its
 value is masked in all repr and str output — `str(config)` and log lines
@@ -126,12 +95,12 @@ a key back in a tool result will have it redacted before transmission.
 
 ---
 
-## 6. Transitional buffer limitations
+## 5. Transitional buffer limitations
 
-Public governed execution no longer creates offline or fast-path buffers. The
-`Chain` object still retains legacy internal buffer fields and drain helpers for
-compatibility with older state and focused tests, but backend unavailability at
-record time raises `BackendUnavailableError` instead of allowing the action.
+Public governed execution does not create offline or fast-path buffers. The
+`Chain` object still retains internal buffer fields used by focused lifecycle
+tests, but backend unavailability at record time raises `BackendUnavailableError`
+instead of allowing the action.
 
 If transitional internal buffer state exists, it remains in-memory only, bounded
 by `offline_buffer_max_events`, and best-effort drained. It must not be treated
@@ -139,7 +108,7 @@ as a compliance-grade durable queue.
 
 ---
 
-## 7. Receipt verification model
+## 6. Receipt verification model
 
 Arclasp audit receipts are integrity-protected server-side. When
 `chain.receipt()` returns a `ChainReceiptResponse`, the `signature` field

@@ -71,7 +71,6 @@ def _init() -> None:
         api_key="prail_test",
         backend_url="http://test.invalid",
         environment="development",
-        fail_mode="deny",
         backend_timeout_seconds=5,
         max_retries=3,
         retry_backoff_base_ms=1,

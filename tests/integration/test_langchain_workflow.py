@@ -12,7 +12,6 @@ NOT installed.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from unittest.mock import patch, MagicMock
 from typing import Any
@@ -141,7 +140,7 @@ async def test_backend_denies_action_langchain():
 
 
 # ===========================================================================
-# Scenario 4 — backend unreachable, fail_mode=deny
+# Scenario 4 — backend unreachable
 # ===========================================================================
 
 @pytest.mark.asyncio
@@ -150,8 +149,6 @@ async def test_backend_unreachable_fail_deny_langchain():
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="deny",
     )
     mock_post, calls = make_mock_post(unavailable=True)
 
@@ -163,62 +160,7 @@ async def test_backend_unreachable_fail_deny_langchain():
 
 
 # ===========================================================================
-# Scenario 5 - backend unreachable, deprecated fail_mode=allow fails closed
-# ===========================================================================
-
-@pytest.mark.asyncio
-async def test_backend_unreachable_fail_allow_langchain():
-    with pytest.warns(DeprecationWarning, match="fail_mode"):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=False,
-            fail_mode="allow",
-        )
-    mock_post, calls = make_mock_post(offline_signal=True)
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        with pytest.raises(BackendUnavailableError) as exc_info:
-            await _govern().ainvoke({"input": "data"})
-
-    assert exc_info.value.fail_mode == "allow"
-    assert count_event_calls(calls) == 0
-
-
-# ===========================================================================
-# Scenario 6 - deprecated deprecated fast-path flag still requires backend authority
-# ===========================================================================
-
-@pytest.mark.asyncio
-async def test_fast_path_config_still_uses_backend_langchain():
-    with pytest.warns(DeprecationWarning, match="enable_local_fast_path"):
-        arclasp.init(
-            api_key="prail_test",
-            backend_url="http://localhost:9999",
-            environment="development",
-            enable_local_fast_path=True,
-            fail_mode="deny",
-        )
-    # Single safe tool: "get_record" → risk_score = 0, legacy-deprecated fast-path eligible
-    governed = govern(_StubChain(tools=["get_record"]), chain_name="lc-fp")
-    mock_post, calls = make_mock_post()
-
-    with patch("arclasp.client._post", side_effect=mock_post):
-        result = await governed.ainvoke({"input": "data"})
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
-    assert result == {"output": "langchain_result"}
-    # Chain must have been started
-    assert any(c["path"] == "/v1/chains" for c in calls)
-    # Workflow completed without exception — backend authority is used
-    assert result is not None
-
-
-# ===========================================================================
-# BUG-LC-02 — LangChain adapter must propagate policy exceptions via
-#             BaseException pivot (same mechanism as BUG-LG-02 / Strategy B)
+# Scenario 5 - backend unreachable, deprecated backend unavailable fails closed
 # ===========================================================================
 
 class _StubChainWithSwallow:
@@ -272,8 +214,6 @@ async def test_bug_lc_02_strategy_b_propagates_policy_exception():
         api_key="prail_test",
         backend_url="http://localhost:9999",
         environment="development",
-        enable_local_fast_path=False,
-        fail_mode="allow",
         default_approval_timeout_hours=0,   # instant ChainTimeoutError on require_approval
     )
 
@@ -345,8 +285,6 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
-            enable_local_fast_path=False,
-            fail_mode="allow",
             default_approval_timeout_hours=0,
         )
 
@@ -507,8 +445,6 @@ async def test_strategy_b_populates_parent_agent_name_real():
             api_key="prail_test",
             backend_url="http://localhost:9999",
             environment="development",
-            enable_local_fast_path=False,
-            fail_mode="allow",
         )
 
         async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
@@ -594,7 +530,7 @@ async def test_post_execution_recording_failure_propagates_langchain():
         if path.endswith("/complete"):
             return {"id": "chain-lc-post-fail", "status": "completed"}
         if body.get("action_type") == "tool_result":
-            raise BackendUnavailableError("recording failed", fail_mode="deny")
+            raise BackendUnavailableError("recording failed")
         return {"policy_decision": "allow", "decision_source": "backend_evaluation"}
 
     with patch("arclasp.client._post", side_effect=mock_post):

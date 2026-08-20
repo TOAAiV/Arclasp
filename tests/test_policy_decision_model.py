@@ -49,7 +49,7 @@ BACKEND_DENY_KILL_SWITCH = {
 
 OFFLINE_STUB = {
     "policy_decision": "allow",
-    "decision_reason": "Offline — fail_mode=allow",
+    "decision_reason": "Offline — backend unavailable",
     "decision_source": "offline_stub",
 }
 

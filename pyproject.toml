@@ -91,6 +91,7 @@ exclude = [
     ".measure_full/",
     ".venv311/",
     ".venv/",
+    ".venv*/",
     "dist/",
     "*.egg-info/",
     "__pycache__/",

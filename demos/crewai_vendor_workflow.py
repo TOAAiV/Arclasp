@@ -281,7 +281,6 @@ async def main() -> int:
         api_key="prail_test_demo00000000000000000000000000000000000000000",
         backend_url="http://mock-backend.local",
         environment="development",
-        enable_local_fast_path=False,
         cumulative_financial_threshold_usd=10000,
         fallback_approvers=["lead@example.com"],
         default_approval_timeout_hours=1,
@@ -321,7 +320,7 @@ async def main() -> int:
         "framework": "crewai",
         "governance_config": {
             "cumulative_financial_threshold_usd": 10000,
-            "fast_path_enabled": False,
+            "backend_authoritative": False,
         },
         "events": events_log,
     }

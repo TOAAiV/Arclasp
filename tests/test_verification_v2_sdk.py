@@ -148,7 +148,6 @@ def init_sdk():
         api_key="prail_testkey123",
         backend_url="https://api.example.test",
         environment="development",
-        fail_mode="deny",
     )
     yield
     _client._config = None

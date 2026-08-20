@@ -685,8 +685,6 @@ def main() -> int:
                     api_key=api_key,
                     backend_url=backend_url,
                     environment="development",
-                    enable_local_fast_path=False,
-                    fail_mode="deny",
                     backend_timeout_seconds=30,
                 )
                 all_samples.extend(await _run_one(event_count, region_label))

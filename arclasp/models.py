@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from arclasp._constants import (
     DEFAULT_SENSITIVE_FIELD_PATTERNS,
@@ -115,6 +115,8 @@ class ChainConfig(BaseModel):
     and stored as a module-level singleton.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     api_key: SecretStr
 
     environment: str = "production"
@@ -131,17 +133,6 @@ class ChainConfig(BaseModel):
     default_approval_timeout_hours: int = 24
     fallback_approvers: list[str] = Field(default_factory=list)
 
-    fail_mode: str = "deny"  # "deny" | "allow" — global default
-    # Per-action-class overrides.  Keys are action_type strings (e.g.
-    # "tool_call", "llm_inference", "chain_create"); values are "deny" or "allow".
-    # Two reserved keys are also recognised:
-    #   "chain_create" — applies when the chain itself is being created
-    #                    (Chain._start() → POST /v1/chains).
-    #   "default"      — catch-all override applied when no specific key matches;
-    #                    takes precedence over the global fail_mode.
-    # When an action_type is present here it takes precedence over "default"
-    # and fail_mode.
-    fail_modes: dict[str, str] = Field(default_factory=dict)
     backend_timeout_seconds: int = 5
     # Drain timeout override.  None (default) = use the buffer-size formula:
     #   max(10.0, buffer_size * backend_timeout_seconds * 1.5).
@@ -172,41 +163,12 @@ class ChainConfig(BaseModel):
     )
     max_payload_string_length: int = 1000
 
-    enable_local_fast_path: bool = True
     cumulative_financial_threshold_usd: float = 10000.0
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def resolve_fail_mode(self, action_type: str | None = None) -> str:
-        """
-        Return the effective fail_mode for a given *action_type*.
-
-        Lookup order:
-
-        1. ``fail_modes[action_type]`` — per-class override (if key exists).
-        2. ``fail_modes["default"]``   — catch-all override (if present).
-        3. ``fail_mode``               — global default.
-
-        Parameters
-        ----------
-        action_type : str | None
-            The ``action_type`` of the event being recorded (e.g.
-            ``"tool_call"``, ``"llm_inference"``, ``"chain_create"``).
-            Pass ``None`` to skip the specific lookup and fall through to
-            ``fail_modes["default"]`` or the global ``fail_mode``.
-
-        Returns
-        -------
-        str
-            ``"deny"`` or ``"allow"``.
-        """
-        if action_type and action_type in self.fail_modes:
-            return self.fail_modes[action_type]
-        if "default" in self.fail_modes:
-            return self.fail_modes["default"]
-        return self.fail_mode
 
 
 # ---------------------------------------------------------------------------

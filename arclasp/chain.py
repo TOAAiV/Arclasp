@@ -41,7 +41,6 @@ from arclasp.models import (
     ChainEventsResponse,
     ChainReceiptResponse,
     PolicyDecision,
-    ReceiptVerifyResponse,
 )
 from arclasp.sanitization import sanitize_payload
 
@@ -321,7 +320,6 @@ class Chain:
                     "Chain is not backed by an authoritative backend session; "
                     "governed actions cannot execute offline."
                 ),
-                fail_mode=config.resolve_fail_mode(action_type),
             )
 
         response = await _client._post(
@@ -494,28 +492,6 @@ class Chain:
             if exc.response.status_code == 404:
                 return None
             raise
-
-    async def verify_receipt(self, receipt_id: str) -> ReceiptVerifyResponse:
-        """
-        Deprecated compatibility helper for legacy public receipt verification.
-
-        Prefer ``arclasp.client.verify_receipt_v2(receipt_id)`` for
-        authenticated, organization-scoped receipt verification. This method
-        remains callable for compatibility and delegates to the legacy
-        server-attested receipt verifier.
-
-        Raises
-        ------
-        RuntimeError
-            If the chain has not been started yet.
-        httpx.HTTPStatusError
-            On 404 (receipt not found) or other HTTP errors.
-        """
-        if self._chain_id is None:
-            raise RuntimeError(
-                "Chain has not been started. Use it as a context manager."
-            )
-        return await _client.verify_receipt(receipt_id)
 
     # ------------------------------------------------------------------
     # Private helpers
