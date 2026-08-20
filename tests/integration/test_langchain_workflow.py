@@ -327,13 +327,14 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
     saved_lc = {k: sys.modules.pop(k)
                 for k in list(sys.modules.keys())
                 if k.startswith("langchain_core")}
+    saved_cb_mod = sys.modules.get("arclasp.langchain.callbacks")
 
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler
 
         # Reload our callbacks module so _BaseCallbackHandler becomes the real
         # langchain_core.callbacks.base.BaseCallbackHandler (not the stub).
-        saved_cb_mod = sys.modules.pop("arclasp.langchain.callbacks", None)
+        sys.modules.pop("arclasp.langchain.callbacks", None)
         import arclasp.langchain.callbacks as _fresh_cb_mod
         importlib.reload(_fresh_cb_mod)
 
@@ -491,11 +492,12 @@ async def test_strategy_b_populates_parent_agent_name_real():
     saved_lc = {k: sys.modules.pop(k)
                 for k in list(sys.modules.keys())
                 if k.startswith("langchain_core")}
+    saved_cb_mod = sys.modules.get("arclasp.langchain.callbacks")
 
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler
 
-        saved_cb_mod = sys.modules.pop("arclasp.langchain.callbacks", None)
+        sys.modules.pop("arclasp.langchain.callbacks", None)
         import arclasp.langchain.callbacks as _fresh_cb_mod
         importlib.reload(_fresh_cb_mod)
 

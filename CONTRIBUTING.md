@@ -15,11 +15,14 @@ git clone https://github.com/TOAAiV/Arclasp.git
 cd Arclasp
 python -m venv .venv
 source .venv/bin/activate   # .venv\Scripts\activate on Windows
-pip install -e ".[dev]"
+pip install -e ".[dev,langchain,langgraph,crewai,mcp]"
 ```
 
-Install a framework extra too if you're working on an adapter, e.g.
-`pip install -e ".[dev,langgraph]"`.
+For faster local work on one adapter, install just the matching framework
+extra, e.g. `pip install -e ".[dev,langgraph]"`.
+
+On Python 3.11, set `SETUPTOOLS_USE_DISTUTILS=stdlib` first if CrewAI's
+dependency installer raises a `distutils_hack` assertion.
 
 ## Running tests
 

@@ -23,7 +23,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        env:
+          SETUPTOOLS_USE_DISTUTILS: stdlib
+        run: pip install -e ".[dev,langchain,langgraph,crewai,mcp]"
 
       - name: Lint
         run: ruff check .
