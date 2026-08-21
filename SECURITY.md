@@ -143,9 +143,9 @@ ordinary SDK verification JSON today.
 
 ## 8. Security disclosure
 
-To report a security vulnerability in Arclasp, please email
-**security@proofrail.dev**. Please do not report vulnerabilities via public
-GitHub issues.
+To report a security vulnerability in Arclasp, please email the published
+reporting address: **security@proofrail.dev**. Please do not report
+vulnerabilities via public GitHub issues.
 
 Please include:
 - A description of the vulnerability and the affected component.
@@ -153,12 +153,9 @@ Please include:
 - Your assessment of severity and exploitability.
 - Any suggested mitigations.
 
-We aim to acknowledge reports within **2 business days** and to provide an
-initial assessment within **7 business days**.
-
-We follow a **90-day coordinated disclosure** policy: we ask that you give
-us 90 days to investigate and ship a fix before publishing your findings.
-We will credit reporters in release notes unless you request anonymity.
+Please allow reasonable time for investigation and remediation before public
+disclosure. We will credit reporters in release notes unless you request
+anonymity.
 
 For general support questions (non-security), open an issue on the public
 repository or contact support@proofrail.dev.

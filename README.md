@@ -1,80 +1,159 @@
 # Arclasp
 
-Governance for AI agent workflows.
+## Govern the workflow, not just the API call.
 
-Track what your agents do — individually and together — apply policies to the whole workflow, route risky actions for human approval, and produce tamper-evident audit trails.
+Arclasp is runtime governance for AI-agent workflows. It tracks cumulative risk
+across a sequence of actions and enforces boundaries using the state of the
+whole workflow, not just the current call.
 
-## Why this exists
+When a workflow crosses a configured boundary, Arclasp can pause it for human
+approval before execution continues.
 
-Most AI safety tools evaluate one tool call at a time. That misses the failure mode that actually matters in production: agents that each look fine individually but commit you to something serious in aggregate.
+**Backend-authoritative. Fail-closed.**
 
-A research agent looks up vendor pricing. A negotiation agent calculates an offer. An email agent drafts the message. A commitment agent records the deal. Each step passes its own per-call review, and the chain quietly hands a vendor `$50,000` with no human in the loop.
-
-Arclasp watches the whole chain. Cumulative spend, which agents have run, what external domains they've touched, how close the workflow is to its configured thresholds — that context goes into every policy decision. When a policy says a human needs to sign off, execution actually blocks until they do.
-
-This is built for people running real agents in real systems. Solo developers, small teams, and startups all qualify. You don't need to be at scale to want this; you need to be one chain of agent decisions away from a problem you can't take back.
-
-## Install
+LangChain | LangGraph | CrewAI | MCP | custom Python
 
 ```bash
 pip install arclasp
 ```
 
-Framework adapters are optional extras:
+## Why Cumulative Governance Matters
 
-```bash
-pip install "arclasp[langgraph]"   # LangGraph
-pip install "arclasp[langchain]"   # LangChain
-pip install "arclasp[crewai]"      # CrewAI
-pip install "arclasp[mcp]"         # MCP servers
-pip install "arclasp[all]"         # everything
+A safe action can be part of an unsafe workflow.
+
+Suppose a workflow makes several individually acceptable financial commitments:
+
+```text
+$4,000
+$3,000
+$4,000
 ```
 
-**Python version notes:**
+Each action might pass when evaluated alone. The workflow has now accumulated
+$11,000 of exposure.
 
-- The base SDK and all adapters except CrewAI support Python 3.10+, including 3.14.
-- `arclasp[crewai]` requires **Python 3.10—3.13**. CrewAI's own dependencies are not yet compatible with Python 3.14. If you're on Python 3.14, use the other adapters or pin your CrewAI environment to Python 3.13.
+Arclasp evaluates running workflow state and can pause a governed action when a
+configured cumulative boundary is crossed. The application still chooses which
+actions are placed behind governance and what metadata, such as `amount_usd`,
+is sent for policy evaluation.
 
-## Quick start
+Keep your agent stack. Add governance around it.
 
-The core pattern is framework-agnostic. Open a chain, record each agent action, get a policy decision back.
+## Quick Start
+
+The smallest pattern is: initialize the SDK, open a chain, record the governed
+action before the application executes the real side effect.
 
 ```python
 import arclasp
 
 arclasp.init(api_key="prail_...")
 
-chain = arclasp.Chain("checkout-flow", metadata={"order_id": "ord_8821"})
-chain.add_financial_threshold(usd=10_000, notify=["ops@yourco.com"])
+chain = arclasp.Chain("vendor-commitments")
+chain.add_financial_threshold(usd=10_000, notify=["finance@example.com"])
 
 async with chain:
     decision = await chain.record_agent_action(
-        agent_name="payment-agent",
+        agent_name="procurement-agent",
         action_type="tool_call",
-        action_name="charge_card",
-        payload={"amount_usd": 350.00, "card_last4": "4242"},
+        action_name="create_purchase_order",
+        payload={"amount_usd": 4_000, "vendor": "Acme Services"},
     )
-    # Execution reaches here only if the action was allowed.
-    # If policy required human approval, that gate has already resolved.
-    # decision.decision_source is normally:
-    #   "backend_evaluation" | "human_approval"
+
+    # The governed action is allowed here. If policy required human approval,
+    # this line is reached only after the approval gate resolved.
+    print(decision.decision_source)
 ```
 
-`add_financial_threshold()` sets a cumulative spend limit for *this chain only* — if your org already has a default via `arclasp.init(cumulative_financial_threshold_usd=...)`, this overrides it just for `checkout-flow`. See [Composing custom policies](#composing-custom-policies) below for the full per-chain configuration surface.
+If the backend denies the action, a human denies the approval, the approval
+times out, or the organization kill switch is active, the SDK raises a typed
+exception instead of silently continuing. If the governance backend is
+unavailable after retries, governed execution raises `BackendUnavailableError`
+and fails closed.
 
-If a policy requires human approval, `record_agent_action` blocks until the reviewer responds. On approval the call returns with `decision_source="human_approval"`. On denial or timeout, it raises `ActionDeniedError`. If the chain itself exceeds its configured timeout, `ChainTimeoutError` raises.
+## Install Options
 
-That's the whole core surface. The framework adapters below wrap this same pattern so you don't have to instrument every node by hand.
+Framework integrations are optional extras. Install only what your application
+uses.
 
-## Documentation
+```bash
+pip install "arclasp[langchain]"
+pip install "arclasp[langgraph]"
+pip install "arclasp[crewai]"
+pip install "arclasp[mcp]"
+pip install "arclasp[all]"
+```
 
-Full documentation — framework adapter guides, policy configuration, dashboard usage, cost tracking, kill switch, approval flows — is at **https://docs.proofrail.dev**.
+The base SDK and all adapters except CrewAI support Python 3.10+. The CrewAI
+extra is available on Python 3.10 through 3.13 because CrewAI's dependency graph
+does not currently support Python 3.14.
 
-## Framework adapters
+## Control The Chain
+
+Arclasp's primary job is enforcement.
+
+Governed actions are recorded through the backend, evaluated against policy,
+and allowed to continue only when the backend returns an allow decision or a
+required human approval is granted.
+
+Supported governance patterns include:
+
+- cumulative financial thresholds
+- per-action risk and policy boundaries
+- blocking human approval gates
+- tool-call governance through framework adapters
+- cost and monthly budget controls
+- time-boxed policy exceptions
+- organization kill switch and chain auto-pause
+- fail-closed handling for governed execution
+
+The SDK does not expose a local allow fast path in this public release. The
+backend is the governance authority.
+
+## Understand Every Decision
+
+Arclasp keeps chain context around the decision instead of treating each action
+as an isolated request.
+
+Depending on the workflow and configured policies, operators can inspect chain
+context, agent actions, policy decisions, approvals, events, cumulative state,
+and cost/governance state through supported SDK and dashboard paths.
+
+## Prove What Happened
+
+Generate tamper-evident, signed, hash-linked records that can be verified
+later.
+
+Verification paths vary by artifact and can include authenticated or scoped
+public verification. Canonical top-level verification APIs are:
+
+```python
+await arclasp.verify_receipt_v2(receipt_id)
+await arclasp.verify_approval_v2(approval_id)
+await arclasp.verify_public_token("arv_...")
+```
+
+Evidence features are designed for integrity and transparency. They are not a
+claim of legal certification, guaranteed compliance, universal offline
+verification, or universal exactly-once execution.
+
+See [SECURITY_AND_TRUST.md](SECURITY_AND_TRUST.md) for the security and trust
+architecture.
+
+## Human Approval
+
+Policies can require human approval before a governed workflow continues. In
+that case, `record_agent_action()` waits for the approval result. Approval lets
+the workflow proceed; denial or timeout raises `ActionDeniedError` or
+`ChainTimeoutError`.
+
+Arclasp governs the actions you place behind its SDK calls or supported
+adapters. It does not automatically intercept application side effects that
+were never instrumented.
+
+## Framework Integrations
 
 ### LangGraph
-
-Wrap a compiled graph once. Every node execution is recorded and evaluated.
 
 ```python
 import arclasp
@@ -87,63 +166,6 @@ governed = govern(compiled_graph, chain_name="research-workflow")
 result = await governed.ainvoke({"messages": [HumanMessage(content="Summarize Q3 revenue")]})
 ```
 
-`governed` has the same `.invoke` / `.ainvoke` signatures as the original graph. If any node is denied, `ActionDeniedError` propagates out of `ainvoke` and the graph halts at that node.
-
-See https://docs.proofrail.dev/frameworks/langgraph for LangGraph integration details.
-
-### MCP
-
-Wrap an MCP server's tool handler so every tool call goes through Arclasp before execution.
-
-```python
-import arclasp
-from arclasp.mcp import ArclaspMcpAdapter
-from mcp.server import Server
-
-arclasp.init(api_key="prail_...")
-server = Server("my-tools")
-
-async with arclasp.Chain("mcp-session") as chain:
-    adapter = ArclaspMcpAdapter(chain=chain, agent_name="my-tools")
-
-    @server.call_tool()
-    async def handle_call_tool(name: str, arguments: dict):
-        return await adapter.handle_tool_call(
-            tool_name=name,
-            arguments=arguments,
-            handler=your_actual_handler,
-        )
-
-    await server.run(...)
-```
-
-A denied tool call raises `ActionDeniedError` out of `handle_tool_call`. Approved calls execute normally.
-
-See https://docs.proofrail.dev/frameworks/mcp for MCP integration details.
-
-### CrewAI
-
-> **Python 3.14:** CrewAI's dependencies do not yet support Python 3.14. On Python 3.14, `arclasp[crewai]` installs the base SDK but skips CrewAI itself. Use Python 3.10—3.13 if you need CrewAI integration.
-
-> **Note for Python 3.11 users:** If you see a `distutils_hack` assertion error when installing `arclasp[crewai]`, set `SETUPTOOLS_USE_DISTUTILS=stdlib` before running pip install. This is a CrewAI dependency packaging issue, not an Arclasp one.
-> ```bash
-> SETUPTOOLS_USE_DISTUTILS=stdlib pip install "arclasp[crewai]"
-> ```
-> On Windows: `$env:SETUPTOOLS_USE_DISTUTILS="stdlib"; pip install "arclasp[crewai]"`
-
-```python
-import arclasp
-from arclasp.crewai import govern
-
-arclasp.init(api_key="prail_...")
-governed = govern(crew, chain_name="research-crew")
-result = await governed.kickoff_async(inputs={"topic": "AI safety"})
-```
-
-See [arclasp/crewai/README.md](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/crewai/README.md) for details on CrewAI's specific behaviors and the post-execution governance model.
-
-See https://docs.proofrail.dev/frameworks/crewai for CrewAI integration details.
-
 ### LangChain
 
 ```python
@@ -151,144 +173,98 @@ import arclasp
 from arclasp.langchain import govern
 
 arclasp.init(api_key="prail_...")
+
 governed = govern(agent_executor, chain_name="support-agent")
 result = await governed.ainvoke({"input": "Book a flight to Tokyo"})
 ```
 
-See https://docs.proofrail.dev/frameworks/langchain for LangChain integration details.
-
-## What Arclasp does
-
-### Chain-level governance
-
-Policies see cumulative state across the whole workflow, not just the single event in front of them. Total spend so far, which agents have been active, which external domains have been contacted, how many records have been modified — all of it goes into the decision. A `$3,000` charge looks fine in isolation. The same charge after nine prior `$300` charges — nine steps that each passed review — is the one that should require approval.
-
-This is the central design difference from per-call governance tools.
-
-### Backend-authoritative evaluation
-
-`Chain.record_agent_action()` records every action through the backend and
-waits for the backend's decision before returning — the backend is the sole
-authority for governed allow/deny decisions. The SDK does not expose a local
-fast-path allow/deny mode in the first public Arclasp package.
-
-### Blocking human approval gate
-
-When a policy returns `require_approval`, `record_agent_action` suspends. An email goes to the configured approver with a clean summary of what the chain has done so far and what action triggered the gate. The approver clicks through the dashboard, approves or denies with optional notes, and the workflow resumes (or raises `ActionDeniedError` on denial). Approval decisions are currently made through the dashboard; programmatic resume via API key is not supported in this release.
-
-Timeout, fallback approvers, and time-boxed exceptions are all configurable per policy. A denied or timed-out approval surfaces in your code as a typed exception with structured remediation hints.
-
-### Tamper-evident audit receipts
-
-Every chain closes with an HMAC-SHA256 signed receipt. Receipts are hash-chained across an organization — each embeds the hash of the previous receipt. Use authenticated v2 receipt verification with `arclasp.verify_receipt_v2(receipt_id)`, approval verification with `arclasp.verify_approval_v2(approval_id)`, or tokenized public verification with `arclasp.verify_public_token(token)` / `/public/v2/verify/{opaque_token}`.
-
-Receipts are also hash-chained across an organization: each new receipt embeds the hash of the previous one. Authenticated v2 verification can report server-attested receipt integrity and receipt-chain status; raw/offline evidence export remains future work.
-
-### Parity-tested policy engine
-
-The local policy engine is the same algorithm that runs on the backend. They're verified against identical inputs on every test run. If they diverge, the build fails. The full algorithm is in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py) — read it before you install if you want to know exactly what rules your agents are subject to.
-
-## Composing custom policies
-
-`add_financial_threshold()` is a facade over a plain dict — `Chain.policy_config` — sent once in the chain-creation request and merged by the backend over your org's default config (chain value wins where set, org value fills the rest). There's no separate class hierarchy; the facade and the raw dict form produce byte-identical requests, so reach for whichever fits your code.
+### CrewAI
 
 ```python
-# Facade — covers the common case (one threshold, one notify list)
-chain = arclasp.Chain("vendor-payouts")
-chain.add_financial_threshold(usd=10_000, notify=["finance@yourco.com"])
+import arclasp
+from arclasp.crewai import govern
 
-# Equivalent raw dict — same wire format, useful when composing config
-# programmatically or setting fields the facade doesn't expose yet
-chain = arclasp.Chain(
+arclasp.init(api_key="prail_...")
+
+governed = govern(crew, chain_name="research-crew")
+result = await governed.kickoff_async(inputs={"topic": "AI safety"})
+```
+
+CrewAI governance follows CrewAI's execution model. Use Python 3.10 through
+3.13 for this extra.
+
+### MCP
+
+```python
+import arclasp
+from arclasp.mcp import ArclaspMcpAdapter
+
+arclasp.init(api_key="prail_...")
+
+async with arclasp.Chain("mcp-session") as chain:
+    adapter = ArclaspMcpAdapter(chain=chain, agent_name="my-tools")
+
+    async def handle_call_tool(name: str, arguments: dict):
+        return await adapter.handle_tool_call(
+            tool_name=name,
+            arguments=arguments,
+            handler=your_actual_handler,
+        )
+```
+
+For custom agent loops, use `Chain` directly as shown in the quickstart.
+
+## Who Arclasp Is For
+
+Arclasp is built for agents that take consequential actions, such as agents
+that can:
+
+- spend money
+- change production state
+- communicate externally
+- invoke privileged tools
+- coordinate multi-step workflows
+
+If an AI application only generates suggestions or drafts that a human always
+reviews before anything happens, runtime governance may not be necessary yet.
+
+## Policy Configuration
+
+`add_financial_threshold()` is a convenience facade over the chain's
+`policy_config` dictionary. The dictionary is sent when the chain is created
+and merged by the backend over organization defaults.
+
+```python
+chain = arclasp.Chain("vendor-payouts")
+chain.add_financial_threshold(usd=10_000, notify=["finance@example.com"])
+
+same_chain = arclasp.Chain(
     "vendor-payouts",
     policy_config={
         "cumulative_financial_threshold_usd": 10_000,
-        "notify": ["finance@yourco.com"],
+        "notify": ["finance@example.com"],
     },
 )
 ```
 
-Recognised `policy_config` keys:
+Recognized per-chain policy keys include:
 
-| Key | Type | Effect |
-|---|---|---|
-| `cumulative_financial_threshold_usd` | `float` | Overrides the org's cumulative spend threshold for this chain only. |
-| `financial_approval_threshold_usd` | `float` | Overrides the org's single-transaction approval threshold for this chain only. |
-| `cumulative_financial_threshold_action` | `"pause_for_approval"` \| `"deny"` | What happens when the cumulative threshold crosses. Defaults to pausing for human approval; set `deny` (or pass `deny=True` to the facade) to hard-deny instead. |
-| `notify` | `list[str]` | Additional approver emails for this chain, unioned with `fallback_approvers` and deduplicated — does not replace them. |
+| Key | Effect |
+| --- | --- |
+| `cumulative_financial_threshold_usd` | Overrides the cumulative spend threshold for this chain. |
+| `financial_approval_threshold_usd` | Overrides the single-action financial approval threshold for this chain. |
+| `cumulative_financial_threshold_action` | Uses `"pause_for_approval"` by default; `"deny"` hard-denies instead. |
+| `notify` | Adds approver emails for this chain. |
 
-A chain with no `policy_config` (or `{}`) behaves exactly like one with no override at all — the org-wide config from `arclasp.init()` applies unchanged.
+## Alpha Status
 
-## More features
+Arclasp is currently in Alpha. The public API is intentionally small and the
+release is designed for teams evaluating runtime governance in real agent
+workflows. Expect active development before a stable 1.0 contract.
 
-Features marked **[SDK]** are available to every caller with an API key. Features marked **[Dashboard]** require the web dashboard (or Clerk JWT auth) and are intended for human operators.
-
-- **Payload sanitization** [SDK]. Default redaction patterns cover API keys, passwords, credit cards, SSNs, private keys via field-name matching, plus common token formats by value prefix (Stripe `sk_`/`pk_`, GitHub `ghp_`, Hugging Face `hf_`, AWS access key IDs `AKIA`, JWT `eyJ`). Extend with your own patterns. Raw payloads are never persisted.
-- **Backend-unavailable handling** [SDK]. Governed execution requires backend authority. If the backend is unreachable after retries, the SDK raises `BackendUnavailableError` and fails closed.
-- **Cross-organization isolation** [SDK + Backend]. Every UUID-bearing endpoint enforces org scoping at the backend. Tests confirm one organization's API key can never access another organization's chains, events, or receipts.
-- **Policy shadow mode** [Dashboard]. Run new policies in observe-only mode against real traffic before flipping them to enforce. Shadow decisions are logged separately so you can calibrate without disruption. `evaluation_mode` and `shadow_decision` appear in SDK responses when active.
-- **Agent registry** [Dashboard]. Register every agent you expect to see via the dashboard. Unregistered agents that show up in chain events are flagged for review, surfacing shadow agents without blocking legitimate work.
-- **Cost tracking and monthly budgets** [Dashboard]. Recorded LLM token usage and estimated dollar cost are tracked for supported model pricing. Organization admins can configure a UTC calendar month budget in the dashboard; organization members can view it. A just-recorded provider action may already have incurred cost, and governed chains require approval only when the newly recorded monthly total is greater than the configured budget. Unknown model pricing is not treated as zero and also requires approval. This is not a provider billing limit.
-- **Org-wide kill switch** [Dashboard — admin only]. When something goes wrong, an admin can halt all agent activity with one click. The SDK raises `ArclaspKillSwitchError` so applications can distinguish a halt from a policy violation.
-- **Admin audit log** [Dashboard — admin only]. Every dashboard action — policy edits, kill switch toggles, approver changes, key rotations — is logged with before/after diff to an append-only table for compliance review.
-- **Time-boxed policy exceptions** [Dashboard]. Approvers can grant exceptions for a specific scope and duration (one hour, one day, one week, single use). Exceptions auto-expire; no permanent allow-lists by accident. Exceptions are created through the approval workflow, not directly via the SDK.
-
-## How it works
-
-Two components: this SDK (open-source, Apache 2.0) and a hosted backend (closed, operated by us). The SDK handles chain lifecycle, payload sanitization, framework adapter instrumentation, and transport. The backend is the authority for governed policy decisions, approvals, kill-switch state, audit persistence, and receipts.
-
-The reference policy model lives in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py). It is a readable local/reference model; public governed execution does not use local policy evaluation as an allow authority.
-
-The backend implementation itself is not open-source. The reasons are practical (operational complexity) rather than ideological, and we publish the policy algorithm in full so you can verify what the backend is doing.
-
-## Supported frameworks
-
-| Framework | Adapter | Notes |
-|-----------|---------|-------|
-| LangGraph | `arclasp.langgraph.govern` | Node-level instrumentation via `astream_events` |
-| LangChain | `arclasp.langchain.govern` | Via `AsyncCallbackHandler` |
-| CrewAI | `arclasp.crewai.govern` | Post-execution governance; see CrewAI README for details |
-| MCP | `arclasp.mcp.ArclaspMcpAdapter` | Tool-call instrumentation for MCP servers |
-
-For the framework-agnostic case (custom agent loops, untested frameworks, or your own orchestration), use the `Chain` context manager directly as shown in Quick start above.
-
-## Limitations
-
-What this release doesn't do, so you find out from us and not from production:
-
-- Single region. The backend runs in AWS us-east-1 (Virginia). European and APAC users may see 100-150ms additional latency. Multi-region is on the roadmap.
-- Backend round-trip for governed actions. Public Chain execution waits for backend authority before returning an allow decision.
-- CrewAI governance fires synchronously per task: on task start, governance evaluates before the task runs; on task end, it fires after the task completes. An `ActionDeniedError` propagates immediately through `kickoff_async`, halting the remaining crew. The task that was already running when governance fires cannot be retroactively prevented. See [arclasp/crewai/README.md](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/crewai/README.md) for details.
-- No SSO beyond what Clerk provides out of the box.
-- Email-only approval notifications. Slack and Teams integrations are planned, not shipped.
-
-- Approval emails may land in spam on first delivery. Add `notifications@proofrail.dev` to your contacts to avoid this.
-- First request after 15 minutes of inactivity may take 5—15 seconds due to backend cold start (free tier).
-- On Python 3.11, installing `arclasp[crewai]` requires `SETUPTOOLS_USE_DISTUTILS=stdlib` set before pip. See the CrewAI section above.
-
-If any of these is a blocker for your use case, file an issue. We'd rather tell you honestly whether to wait than have you discover the limitation in production.
-
-## Trust
-
-We're asking you to install a governance SDK and let it sit in the path of every agent action your product takes. That's a real ask, and the answer to "should I trust this?" shouldn't be "the marketing site says so."
-
-The whole SDK is in this repo. You can read every line of code that runs in your process. The reference policy calculation is in [`arclasp/policies.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/policies.py) — open it to understand the algorithm the backend enforces authoritatively. The payload sanitizer that decides what leaves your machine is in [`arclasp/sanitization.py`](https://github.com/TOAAiV/Arclasp/blob/main/arclasp/sanitization.py). The HTTP client and every payload format the SDK sends are inspectable.
-
-The backend isn't open-source. What we've done instead:
-
-- **Parity tests.** The SDK's local policy and the backend's policy run against identical inputs on every test run. If they diverge — if the backend decides something the open-source code wouldn't — the build fails. The tests are in [`tests/test_policies_backend_parity.py`](https://github.com/TOAAiV/Arclasp/blob/main/tests/test_policies_backend_parity.py).
-- **Cross-organization isolation tests.** A dedicated test suite confirms one organization's API key cannot reach another organization's chains, events, or receipts. The application enforces org scoping on every UUID-bearing endpoint.
-- **Server-attested receipt integrity.** Audit receipts are HMAC-signed and hash-chained across an organization. Use authenticated v2 verification or tokenized public verification for first-party flows.
-- **Security audit complete.** Fifteen findings covering the SDK have been addressed; the full security policy is in [SECURITY.md](https://github.com/TOAAiV/Arclasp/blob/main/SECURITY.md).
-
-Most agent governance tools ask you to trust a closed-source policy engine. Arclasp's policy engine is open. Read it before you install it.
-
-Vulnerability reports: see [SECURITY.md](https://github.com/TOAAiV/Arclasp/blob/main/SECURITY.md).
+Install Arclasp and govern one workflow that can spend money, change production
+state, or communicate externally.
 
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).
-
-## Status
-
-Alpha / early access (`0.1.0a10`). APIs may still change before `1.0`. We read every issue and respond. File at [github.com/TOAAiV/Arclasp/issues](https://github.com/TOAAiV/Arclasp/issues).
