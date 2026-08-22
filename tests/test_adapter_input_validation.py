@@ -60,7 +60,7 @@ async def test_langchain_tool_name_truncated_in_action_name():
 
     recorded: list[dict] = []
 
-    async def mock_post(path, body, action_type=None):
+    async def mock_post(path, body, action_type=None, headers=None):
         if path == "/v1/chains":
             return _chain_start_response()
         if path.endswith("/complete"):
@@ -99,7 +99,7 @@ async def test_langchain_model_name_truncated_in_action_name():
 
     recorded: list[dict] = []
 
-    async def mock_post(path, body, action_type=None):
+    async def mock_post(path, body, action_type=None, headers=None):
         if path == "/v1/chains":
             return _chain_start_response()
         if path.endswith("/complete"):
@@ -138,7 +138,7 @@ async def test_langgraph_node_name_truncated_in_action_name():
 
     recorded: list[dict] = []
 
-    async def mock_post(path, body, action_type=None):
+    async def mock_post(path, body, action_type=None, headers=None):
         if path == "/v1/chains":
             return _chain_start_response()
         if path.endswith("/complete"):
@@ -158,7 +158,7 @@ async def test_langgraph_node_name_truncated_in_action_name():
     # calling the closure with a long node_name in metadata.
     recorded_bridge: list[dict] = []
 
-    async def mock_post2(path, body, action_type=None):
+    async def mock_post2(path, body, action_type=None, headers=None):
         if path == "/v1/chains":
             return _chain_start_response()
         if path.endswith("/complete"):

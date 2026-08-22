@@ -18,7 +18,7 @@ def _post_factory(*complete_results):
     results = list(complete_results)
     calls: list[str] = []
 
-    async def fake_post(path, data, action_type=None):
+    async def fake_post(path, data, action_type=None, headers=None):
         calls.append(path)
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}

@@ -375,7 +375,12 @@ async def _retry_with_backoff(
 # ---------------------------------------------------------------------------
 
 
-async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
+async def _post(
+    path: str,
+    data: dict,
+    action_type: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict:
     """
     POST *data* as JSON to *path* on the configured backend.
 
@@ -396,7 +401,7 @@ async def _post(path: str, data: dict, action_type: str | None = None) -> dict:
 
     try:
         response = await _retry_with_backoff(
-            lambda: client.post(path, json=data),
+            lambda: client.post(path, json=data, headers=headers),
             config.max_retries,
             config.retry_backoff_base_ms,
         )

@@ -123,7 +123,7 @@ class TestChainCreationBody:
     async def test_policy_config_included_when_set_via_facade(self):
         captured = {}
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if path == "/v1/chains":
                 captured.update(data)
                 return _CHAIN_RESPONSE
@@ -146,7 +146,7 @@ class TestChainCreationBody:
     async def test_policy_config_included_when_set_via_constructor(self):
         captured = {}
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if path == "/v1/chains":
                 captured.update(data)
                 return _CHAIN_RESPONSE
@@ -167,7 +167,7 @@ class TestChainCreationBody:
         treats {} identically to NULL (org-wide config applies unchanged)."""
         captured = {}
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if path == "/v1/chains":
                 captured.update(data)
                 return _CHAIN_RESPONSE
@@ -191,7 +191,7 @@ class TestChainCreationBody:
         """
         bodies = []
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if path == "/v1/chains":
                 bodies.append(data["policy_config"])
                 return _CHAIN_RESPONSE

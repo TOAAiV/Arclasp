@@ -25,6 +25,7 @@ import httpx
 import pytest
 
 import arclasp
+from arclasp import client as _client
 from arclasp.chain import Chain
 from arclasp.exceptions import BackendUnavailableError
 
@@ -71,7 +72,7 @@ class TestIdempotencyKeyGeneration:
         """Each record_agent_action call gets a unique 32-char hex key."""
         captured = []
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if "events" in path:
                 captured.append(data.get("idempotency_key"))
                 return _ALLOW_DECISION
@@ -102,6 +103,56 @@ class TestIdempotencyKeyGeneration:
 
 
 class TestIdempotencyKeyRetryPersistence:
+    @pytest.mark.asyncio
+    async def test_chain_creation_idempotency_key_persists_through_retry(self):
+        """
+        Chain creation supplies one request header key before the retrying
+        _post operation begins, and every wire retry reuses that same key.
+        """
+        chain_create_headers: list[dict] = []
+
+        async def fake_client_post(path, json=None, headers=None, **kwargs):
+            if path == "/v1/chains":
+                chain_create_headers.append(dict(headers or {}))
+                if len(chain_create_headers) == 1:
+                    raise httpx.TimeoutException("simulated first-attempt timeout")
+                return _mock_response(201, _CHAIN_RESPONSE)
+            return _mock_response(201, _ALLOW_DECISION)
+
+        with patch("arclasp.client._get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.post = fake_client_post
+            mock_get_client.return_value = mock_client
+
+            chain = Chain("test")
+            await chain._start()
+
+        assert len(chain_create_headers) == 2
+        k1 = chain_create_headers[0].get("Idempotency-Key")
+        k2 = chain_create_headers[1].get("Idempotency-Key")
+        assert k1 is not None
+        assert k1 == k2
+        assert len(k1) == 32
+        int(k1, 16)
+
+    @pytest.mark.asyncio
+    async def test_generic_post_does_not_attach_idempotency_key_by_default(self):
+        """Only selected operations opt in to request-specific idempotency headers."""
+        captured_headers: list[dict | None] = []
+
+        async def fake_client_post(path, json=None, headers=None, **kwargs):
+            captured_headers.append(headers)
+            return _mock_response(201, {"ok": True})
+
+        with patch("arclasp.client._get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.post = fake_client_post
+            mock_get_client.return_value = mock_client
+
+            await _client._post("/v1/test", {"hello": "world"})
+
+        assert captured_headers == [None]
+
     @pytest.mark.asyncio
     async def test_idempotency_key_persists_through_retry(self):
         """

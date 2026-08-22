@@ -92,7 +92,7 @@ class TestDrainPermanent4xx:
 
         posts: list[str] = []
 
-        async def mock_post(path, body, action_type=None):
+        async def mock_post(path, body, action_type=None, headers=None):
             if "events" not in path:
                 return {}
             action_name = (body or {}).get("action_name", "")
@@ -140,7 +140,7 @@ class TestDrainTransientRetry:
         first_action1_attempt = True
         posts: list[str] = []
 
-        async def mock_post(path, body, action_type=None):
+        async def mock_post(path, body, action_type=None, headers=None):
             nonlocal first_action1_attempt
             if "events" not in path:
                 return {}
@@ -178,7 +178,7 @@ class TestDrainTransientRetry:
         first_action1_attempt = True
         posts: list[str] = []
 
-        async def mock_post(path, body, action_type=None):
+        async def mock_post(path, body, action_type=None, headers=None):
             nonlocal first_action1_attempt
             if "events" not in path:
                 return {}

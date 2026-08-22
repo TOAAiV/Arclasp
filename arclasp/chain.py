@@ -513,8 +513,12 @@ class Chain:
             "policy_config": self.policy_config,
         }
 
+        creation_idempotency_key = uuid.uuid4().hex
         response = await _client._post(
-            "/v1/chains", body, action_type="chain_create"
+            "/v1/chains",
+            body,
+            action_type="chain_create",
+            headers={"Idempotency-Key": creation_idempotency_key},
         )
         self._chain_id = response["id"]
 

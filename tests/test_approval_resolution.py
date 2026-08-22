@@ -90,7 +90,7 @@ class TestApprovalResolution:
 
         post_call_count = 0
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             nonlocal post_call_count
             post_call_count += 1
             if path == "/v1/chains":
@@ -129,7 +129,7 @@ class TestApprovalResolution:
         require_resp = _make_require_approval_response()
         approved_resp = _make_approval_status_response("approved", reason=None)
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             if path.endswith("/complete"):
@@ -168,7 +168,7 @@ class TestApprovalResolution:
             decision_notes="Too risky for this client.",
         )
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             if path.endswith("/complete"):
@@ -208,7 +208,7 @@ class TestApprovalResolution:
         require_resp = _make_require_approval_response()
         timedout_resp = _make_approval_status_response("timed_out", reason=None)
 
-        async def fake_post(path, data, action_type=None):
+        async def fake_post(path, data, action_type=None, headers=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             if path.endswith("/complete"):

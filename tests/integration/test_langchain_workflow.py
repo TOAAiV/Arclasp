@@ -223,7 +223,7 @@ async def test_bug_lc_02_strategy_b_propagates_policy_exception():
         "decision_source": "backend_evaluation",
     }
 
-    async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
         if path == "/v1/chains":
             return {"id": "chain-lc02-swallow"}
         if path.endswith("/complete"):
@@ -294,7 +294,7 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
             "decision_source": "backend_evaluation",
         }
 
-        async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
             if path == "/v1/chains":
                 return {"id": "chain-lc02-real"}
             if path.endswith("/complete"):
@@ -447,7 +447,7 @@ async def test_strategy_b_populates_parent_agent_name_real():
             environment="development",
         )
 
-        async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
             if path == "/v1/chains":
                 return {"id": "chain-parent-real"}
             if path.endswith("/complete"):
@@ -523,7 +523,7 @@ async def test_strategy_b_populates_parent_agent_name_real():
 async def test_post_execution_recording_failure_propagates_langchain():
     calls = []
 
-    async def mock_post(path: str, body: dict, action_type: str | None = None) -> dict:
+    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
         calls.append({"path": path, "body": dict(body or {})})
         if path == "/v1/chains":
             return {"id": "chain-lc-post-fail"}
