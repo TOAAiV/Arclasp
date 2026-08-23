@@ -41,13 +41,16 @@ Keep your agent stack. Add governance around it.
 
 ## Quick Start
 
-The smallest pattern is: initialize the SDK, open a chain, record the governed
-action before the application executes the real side effect.
+For hosted Arclasp, install the SDK, configure an API key issued for your
+organization, and point the SDK at the hosted backend:
 
 ```python
 import arclasp
 
-arclasp.init(api_key="prail_...")
+arclasp.init(
+    api_key="prail_...",
+    backend_url="https://api.proofrail.dev",
+)
 
 chain = arclasp.Chain("vendor-commitments")
 chain.add_financial_threshold(usd=10_000, notify=["finance@example.com"])
@@ -64,6 +67,25 @@ async with chain:
     # this line is reached only after the approval gate resolved.
     print(decision.decision_source)
 ```
+
+API-key provisioning is currently handled through dashboard/operator setup for
+authorized alpha users; do not use a placeholder key in production.
+
+For local development against a locally running backend, use the same SDK API
+with an intentional local backend URL:
+
+```python
+import arclasp
+
+arclasp.init(
+    api_key="prail_local_dev_key",
+    backend_url="http://localhost:8000",
+)
+```
+
+The SDK's default backend URL is local-development oriented. Hosted users should
+set `backend_url="https://api.proofrail.dev"` explicitly until the Arclasp
+domain cutover is complete.
 
 If the backend denies the action, a human denies the approval, the approval
 times out, or the organization kill switch is active, the SDK raises a typed
