@@ -307,7 +307,7 @@ async def test_bug_lg_01_aclose_race_preserves_policy_exception():
         "decision_source": "backend_evaluation",
     }
 
-    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         if path == "/v1/chains":
             return {"id": CHAIN_ID}
         if path.endswith("/complete"):
@@ -389,7 +389,7 @@ async def test_bug_lg_02_strategy_b_propagates_policy_exception():
         "decision_source": "backend_evaluation",
     }
 
-    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         if path == "/v1/chains":
             return {"id": CHAIN_ID}
         if path.endswith("/complete"):
@@ -451,7 +451,7 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
             "decision_source": "backend_evaluation",
         }
 
-        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
             if path == "/v1/chains":
                 return {"id": CHAIN_ID}
             if path.endswith("/complete"):

@@ -60,7 +60,7 @@ def _approval_required_response():
 async def test_development_safe_action_calls_backend_event():
     event_posts = []
 
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             return _chain_start_response()
         if "/events" in path:
@@ -86,7 +86,7 @@ async def test_development_safe_action_calls_backend_event():
 
 @pytest.mark.asyncio
 async def test_backend_down_fails_closed_before_action():
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             return _chain_start_response("chain-k1-down")
         if path.endswith("/complete"):
@@ -110,7 +110,7 @@ async def test_backend_down_fails_closed_before_action():
 
 @pytest.mark.asyncio
 async def test_backend_deny_is_returned_as_action_denied():
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             return _chain_start_response()
         if "/events" in path:
@@ -132,7 +132,7 @@ async def test_backend_deny_is_returned_as_action_denied():
 
 @pytest.mark.asyncio
 async def test_backend_require_approval_returns_human_approval_after_poll():
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             return _chain_start_response("chain-k1-approval")
         if "/events" in path:
@@ -158,7 +158,7 @@ async def test_backend_require_approval_returns_human_approval_after_poll():
 
 @pytest.mark.asyncio
 async def test_no_async_memory_buffer_is_used_for_public_execution():
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             return _chain_start_response()
         if "/events" in path:

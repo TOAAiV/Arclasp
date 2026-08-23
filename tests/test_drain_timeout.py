@@ -48,7 +48,7 @@ async def test_drain_timeout_scales_with_buffer_size():
         wait_for_calls.append(timeout)
         raise asyncio.TimeoutError
 
-    async def complete_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def complete_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         return {"status": "completed"}
 
     with patch("arclasp.chain.asyncio.wait_for", side_effect=spy_wait_for):
@@ -70,7 +70,7 @@ async def test_drain_timeout_drop_count_logged(caplog):
     async def spy_wait_for(coro, timeout=None, **kw):
         raise asyncio.TimeoutError
 
-    async def complete_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def complete_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         return {"status": "completed"}
 
     with caplog.at_level(logging.WARNING, logger="arclasp.chain"):
@@ -97,7 +97,7 @@ async def test_drain_timeout_config_override():
         wait_for_calls.append(timeout)
         raise asyncio.TimeoutError
 
-    async def complete_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def complete_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         return {"status": "completed"}
 
     with patch("arclasp.chain.asyncio.wait_for", side_effect=spy_wait_for):

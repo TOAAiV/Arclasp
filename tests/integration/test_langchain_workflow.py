@@ -223,7 +223,7 @@ async def test_bug_lc_02_strategy_b_propagates_policy_exception():
         "decision_source": "backend_evaluation",
     }
 
-    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         if path == "/v1/chains":
             return {"id": "chain-lc02-swallow"}
         if path.endswith("/complete"):
@@ -267,14 +267,13 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
     saved_lc = {k: sys.modules.pop(k)
                 for k in list(sys.modules.keys())
                 if k.startswith("langchain_core")}
-    saved_cb_mod = sys.modules.get("arclasp.langchain.callbacks")
 
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler
 
         # Reload our callbacks module so _BaseCallbackHandler becomes the real
         # langchain_core.callbacks.base.BaseCallbackHandler (not the stub).
-        sys.modules.pop("arclasp.langchain.callbacks", None)
+        saved_cb_mod = sys.modules.pop("arclasp.langchain.callbacks", None)
         import arclasp.langchain.callbacks as _fresh_cb_mod
         importlib.reload(_fresh_cb_mod)
 
@@ -294,7 +293,7 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
             "decision_source": "backend_evaluation",
         }
 
-        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
             if path == "/v1/chains":
                 return {"id": "chain-lc02-real"}
             if path.endswith("/complete"):
@@ -430,12 +429,11 @@ async def test_strategy_b_populates_parent_agent_name_real():
     saved_lc = {k: sys.modules.pop(k)
                 for k in list(sys.modules.keys())
                 if k.startswith("langchain_core")}
-    saved_cb_mod = sys.modules.get("arclasp.langchain.callbacks")
 
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler
 
-        sys.modules.pop("arclasp.langchain.callbacks", None)
+        saved_cb_mod = sys.modules.pop("arclasp.langchain.callbacks", None)
         import arclasp.langchain.callbacks as _fresh_cb_mod
         importlib.reload(_fresh_cb_mod)
 
@@ -447,7 +445,7 @@ async def test_strategy_b_populates_parent_agent_name_real():
             environment="development",
         )
 
-        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+        async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
             if path == "/v1/chains":
                 return {"id": "chain-parent-real"}
             if path.endswith("/complete"):
@@ -523,7 +521,7 @@ async def test_strategy_b_populates_parent_agent_name_real():
 async def test_post_execution_recording_failure_propagates_langchain():
     calls = []
 
-    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         calls.append({"path": path, "body": dict(body or {})})
         if path == "/v1/chains":
             return {"id": "chain-lc-post-fail"}

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import sys
 
@@ -121,8 +121,7 @@ def init_sdk():
     )
     yield
     # Reset module-level singletons so tests don't bleed into each other
-    _client._config = None
-    _client._clients_by_loop.clear()
+    _client._reset_for_tests()
 
 
 def _mock_get(payload: dict):
@@ -252,7 +251,7 @@ async def test_chain_detail_delegates_to_client(init_sdk):
 
     with patch.object(_client, "get_chain", new=AsyncMock(return_value=MagicMock(spec=ChainDetail))) as mock:
         await chain.detail()
-        mock.assert_called_once_with("fake-id")
+        mock.assert_called_once_with("fake-id", config=ANY)
 
 
 @pytest.mark.asyncio
@@ -274,7 +273,13 @@ async def test_chain_events_delegates_to_client(init_sdk):
     mock_response = MagicMock(spec=ChainEventsResponse)
     with patch.object(_client, "get_chain_events", new=AsyncMock(return_value=mock_response)) as mock:
         await chain.events(limit=50, offset=0, sequence_after=2)
-        mock.assert_called_once_with("fake-id", limit=50, offset=0, sequence_after=2)
+        mock.assert_called_once_with(
+            "fake-id",
+            limit=50,
+            offset=0,
+            sequence_after=2,
+            config=ANY,
+        )
 
 
 @pytest.mark.asyncio
@@ -296,7 +301,7 @@ async def test_chain_receipt_delegates_to_client(init_sdk):
     mock_response = MagicMock(spec=ChainReceiptResponse)
     with patch.object(_client, "get_chain_receipt", new=AsyncMock(return_value=mock_response)) as mock:
         result = await chain.receipt()
-        mock.assert_called_once_with("fake-id")
+        mock.assert_called_once_with("fake-id", config=ANY)
         assert result is mock_response
 
 

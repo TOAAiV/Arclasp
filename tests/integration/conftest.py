@@ -149,7 +149,7 @@ def make_mock_post(
     """
     calls: list[dict] = []
 
-    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None) -> dict:
+    async def mock_post(path: str, body: dict, action_type: str | None = None, headers: dict[str, str] | None = None, config=None) -> dict:
         calls.append({"path": path, "body": dict(body or {})})
 
         if unavailable:

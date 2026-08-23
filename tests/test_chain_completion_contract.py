@@ -20,7 +20,7 @@ def _post_factory(*complete_results):
     results = list(complete_results)
     calls: list[str] = []
 
-    async def fake_post(path, data, action_type=None, headers=None):
+    async def fake_post(path, data, action_type=None, headers=None, config=None):
         calls.append(path)
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}
@@ -59,7 +59,7 @@ async def test_async_context_cancellation_during_completion_waits_for_completion
     release_complete = asyncio.Event()
     calls: list[str] = []
 
-    async def fake_post(path, data, action_type=None, headers=None):
+    async def fake_post(path, data, action_type=None, headers=None, config=None):
         calls.append(path)
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}
@@ -91,7 +91,7 @@ async def test_async_context_repeated_cancellation_during_completion_uses_one_co
     release_complete = asyncio.Event()
     calls: list[str] = []
 
-    async def fake_post(path, data, action_type=None, headers=None):
+    async def fake_post(path, data, action_type=None, headers=None, config=None):
         calls.append(path)
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}
@@ -125,7 +125,7 @@ async def test_async_context_cancellation_keeps_cancel_primary_when_completion_f
     release_complete = asyncio.Event()
     calls: list[str] = []
 
-    async def fake_post(path, data, action_type=None, headers=None):
+    async def fake_post(path, data, action_type=None, headers=None, config=None):
         calls.append(path)
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}
@@ -182,7 +182,7 @@ async def test_async_context_user_exception_and_external_cancellation_prefers_ca
     release_complete = asyncio.Event()
     calls: list[str] = []
 
-    async def fake_post(path, data, action_type=None, headers=None):
+    async def fake_post(path, data, action_type=None, headers=None, config=None):
         calls.append(path)
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}
@@ -213,7 +213,7 @@ async def test_async_context_no_orphan_completion_task_after_cancellation():
     created_completion_tasks: list[asyncio.Task] = []
     real_create_task = asyncio.create_task
 
-    async def fake_post(path, data, action_type=None, headers=None):
+    async def fake_post(path, data, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}
         complete_entered.set()
@@ -249,7 +249,7 @@ async def test_async_context_cancellation_during_event_recording_still_attempts_
     release_event = asyncio.Event()
     calls: list[str] = []
 
-    async def fake_post(path, data, action_type=None, headers=None):
+    async def fake_post(path, data, action_type=None, headers=None, config=None):
         calls.append(path)
         if path == "/v1/chains":
             return {"id": "chain-complete-001"}

@@ -65,7 +65,7 @@ class TestDenialRaisesActionDeniedError:
             reason="$12,400 exceeds $10,000",
         )
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             return deny_resp
@@ -101,7 +101,7 @@ class TestDenialErrorFields:
             reason="Cumulative exposure $12,400 exceeds threshold $10,000",
         )
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             return deny_resp
@@ -132,7 +132,7 @@ class TestDenialErrorFields:
             reason="Domain evil.com is not in the allowlist",
         )
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             return deny_resp
@@ -161,7 +161,7 @@ class TestDenialErrorFields:
             reason="Batch size 500 exceeds limit 100",
         )
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             return deny_resp
@@ -191,7 +191,7 @@ class TestDenialErrorFields:
             docs_url="https://custom.docs/specific-page",
         )
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             return deny_resp
@@ -216,7 +216,7 @@ class TestDenialErrorFields:
             reason="Too big",
         )
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response("chain-xyz")
             return deny_resp

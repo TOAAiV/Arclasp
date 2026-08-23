@@ -90,7 +90,7 @@ class TestApprovalResolution:
 
         post_call_count = 0
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             nonlocal post_call_count
             post_call_count += 1
             if path == "/v1/chains":
@@ -99,7 +99,7 @@ class TestApprovalResolution:
                 return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
-        async def fake_get(path):
+        async def fake_get(path, config=None):
             return approved_resp
 
         with patch("arclasp.client._post", side_effect=fake_post), \
@@ -129,14 +129,14 @@ class TestApprovalResolution:
         require_resp = _make_require_approval_response()
         approved_resp = _make_approval_status_response("approved", reason=None)
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             if path.endswith("/complete"):
                 return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
-        async def fake_get(path):
+        async def fake_get(path, config=None):
             return approved_resp
 
         with patch("arclasp.client._post", side_effect=fake_post), \
@@ -168,14 +168,14 @@ class TestApprovalResolution:
             decision_notes="Too risky for this client.",
         )
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             if path.endswith("/complete"):
                 return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
-        async def fake_get(path):
+        async def fake_get(path, config=None):
             return denied_resp
 
         with patch("arclasp.client._post", side_effect=fake_post), \
@@ -208,14 +208,14 @@ class TestApprovalResolution:
         require_resp = _make_require_approval_response()
         timedout_resp = _make_approval_status_response("timed_out", reason=None)
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if path == "/v1/chains":
                 return _make_chain_start_response()
             if path.endswith("/complete"):
                 return {"id": "chain-approval-001", "status": "completed"}
             return require_resp
 
-        async def fake_get(path):
+        async def fake_get(path, config=None):
             return timedout_resp
 
         with patch("arclasp.client._post", side_effect=fake_post), \

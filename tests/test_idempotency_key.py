@@ -72,7 +72,7 @@ class TestIdempotencyKeyGeneration:
         """Each record_agent_action call gets a unique 32-char hex key."""
         captured = []
 
-        async def fake_post(path, data, action_type=None, headers=None):
+        async def fake_post(path, data, action_type=None, headers=None, config=None):
             if "events" in path:
                 captured.append(data.get("idempotency_key"))
                 return _ALLOW_DECISION

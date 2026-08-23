@@ -225,7 +225,7 @@ async def test_chain_metadata_api_key_redacted_in_post():
 
     captured: dict = {}
 
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             captured["body"] = body
             return {"id": "chain-sec-001"}
@@ -257,7 +257,7 @@ async def test_chain_metadata_value_prefix_redacted_in_post():
 
     captured: dict = {}
 
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             captured["body"] = body
             return {"id": "chain-sec-002"}
@@ -293,7 +293,7 @@ async def test_chain_metadata_nested_dict_sanitized():
 
     captured: dict = {}
 
-    async def mock_post(path, body, action_type=None, headers=None):
+    async def mock_post(path, body, action_type=None, headers=None, config=None):
         if path == "/v1/chains":
             captured["body"] = body
             return {"id": "chain-sec-003"}

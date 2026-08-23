@@ -37,6 +37,7 @@ from arclasp.exceptions import (
     _POLICY_REMEDIATION,
 )
 from arclasp.models import (
+    ChainConfig,
     ChainDetail,
     ChainEventsResponse,
     ChainReceiptResponse,
@@ -112,6 +113,10 @@ class Chain:
         # dict directly for the recognised keys (see add_financial_threshold
         # docstring for the schema).
         self.policy_config: dict = dict(policy_config) if policy_config else {}
+        try:
+            self._bound_config: ChainConfig | None = _client._snapshot_config()
+        except RuntimeError:
+            self._bound_config = None
 
         self._chain_id: str | None = None
         self._sequence_number: int = 1
@@ -234,6 +239,11 @@ class Chain:
     # Public async API
     # ------------------------------------------------------------------
 
+    def _config(self) -> ChainConfig:
+        if self._bound_config is None:
+            self._bound_config = _client._snapshot_config()
+        return self._bound_config
+
     async def record_agent_action(
         self,
         agent_name: str,
@@ -297,7 +307,7 @@ class Chain:
                 "Chain has not been started. Use it as a context manager."
             )
 
-        config = _client.get_config()
+        config = self._config()
         sanitized = sanitize_payload(payload or {}, config)
 
         # Generated once here; travels unchanged through retries, offline
@@ -326,6 +336,7 @@ class Chain:
             f"/v1/chains/{self._chain_id}/events",
             event_body,
             action_type=action_type,
+            config=config,
         )
 
         decision_obj = PolicyDecision.model_validate(response)
@@ -422,7 +433,7 @@ class Chain:
             raise RuntimeError(
                 "Chain has not been started. Use it as a context manager."
             )
-        return await _client.get_chain(self._chain_id)
+        return await _client.get_chain(self._chain_id, config=self._config())
 
     async def events(
         self,
@@ -461,6 +472,7 @@ class Chain:
             limit=limit,
             offset=offset,
             sequence_after=sequence_after,
+            config=self._config(),
         )
 
     async def receipt(self) -> ChainReceiptResponse | None:
@@ -487,7 +499,10 @@ class Chain:
                 "Chain has not been started. Use it as a context manager."
             )
         try:
-            return await _client.get_chain_receipt(self._chain_id)
+            return await _client.get_chain_receipt(
+                self._chain_id,
+                config=self._config(),
+            )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 return None
@@ -499,7 +514,7 @@ class Chain:
 
     async def _start(self) -> None:
         """Create the chain on the backend and store the assigned chain_id."""
-        config = _client.get_config()
+        config = self._config()
 
         body = {
             "organization_id": _ORG_ID_PLACEHOLDER,
@@ -519,6 +534,7 @@ class Chain:
             body,
             action_type="chain_create",
             headers={"Idempotency-Key": creation_idempotency_key},
+            config=config,
         )
         self._chain_id = response["id"]
 
@@ -547,7 +563,7 @@ class Chain:
 
         # Flush any transitional pending drain before marking the chain complete.
         if self._drain_task is not None and not self._drain_task.done():
-            config = _client.get_config()
+            config = self._config()
             buffer_size = len(self._offline_buffer)
             if config.drain_timeout_seconds is not None:
                 drain_timeout = float(config.drain_timeout_seconds)
@@ -571,7 +587,11 @@ class Chain:
                 )
 
         try:
-            response = await _client._post(f"/v1/chains/{self._chain_id}/complete", {})
+            response = await _client._post(
+                f"/v1/chains/{self._chain_id}/complete",
+                {},
+                config=self._config(),
+            )
             if not isinstance(response, dict) or response.get("status") != "completed":
                 raise ValueError("completion response did not confirm completed status")
             logger.debug("Chain completed (id=%s)", self._chain_id)
@@ -648,7 +668,7 @@ class Chain:
         ChainTimeoutError
             If the local polling window expires before a decision is made.
         """
-        config = _client.get_config()
+        config = self._config()
         poll_interval_seconds = 5
         timeout_seconds = config.default_approval_timeout_hours * 3600
         elapsed = 0
@@ -665,7 +685,8 @@ class Chain:
 
             try:
                 status_response = await _client._get(
-                    f"/v1/chains/{self._chain_id}/approval-status"
+                    f"/v1/chains/{self._chain_id}/approval-status",
+                    config=config,
                 )
             except Exception as exc:
                 logger.warning("Approval poll failed: %s — retrying", exc)
@@ -788,6 +809,7 @@ async def _drain_buffer_to_backend(chain: Chain) -> None:
                 f"/v1/chains/{chain._chain_id}/events",
                 event_body,
                 action_type=event_body.get("action_type"),
+                config=chain._config(),
             )
             chain._offline_buffer.pop(0)
         except Exception as exc:
@@ -843,6 +865,7 @@ async def _drain_offline_buffer(chain: Chain) -> None:
                     f"/v1/chains/{chain._chain_id}/events",
                     event_body,
                     action_type=event_body.get("action_type"),
+                    config=chain._config(),
                 )
                 chain._offline_buffer.pop(0)
                 sent_count += 1

@@ -150,8 +150,7 @@ def init_sdk():
         environment="development",
     )
     yield
-    _client._config = None
-    _client._clients_by_loop.clear()
+    _client._reset_for_tests()
 
 
 def _mock_get(payload: dict):

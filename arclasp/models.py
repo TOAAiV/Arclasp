@@ -115,7 +115,7 @@ class ChainConfig(BaseModel):
     and stored as a module-level singleton.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     api_key: SecretStr
 

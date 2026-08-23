@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import warnings
 import weakref
+from dataclasses import dataclass
 from contextvars import ContextVar
 from datetime import datetime
 from typing import NoReturn
@@ -52,13 +54,45 @@ def _is_localhost_url(url: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singletons
+# Context-local configuration and loop/config-aware client cache
 # ---------------------------------------------------------------------------
 
+# Compatibility mirror for tests/internal diagnostics. Runtime lookups use
+# `_config_ctx`, not this process-global value.
 _config: ChainConfig | None = None
-# Loop-aware client cache: one httpx.AsyncClient per event loop.  WeakKeyDictionary
-# ensures entries are removed automatically when a loop is garbage-collected, so
-# short-lived loops (e.g. asyncio.Runner()) never accumulate stale clients.
+
+_config_ctx: ContextVar[ChainConfig | None] = ContextVar(
+    "_arclasp_config_ctx", default=None
+)
+
+
+@dataclass(frozen=True)
+class _ClientCacheKey:
+    """Secret-safe identity for one HTTP client configuration."""
+
+    config_id: int
+    backend_url: str
+    api_key_sha256_prefix: str
+    timeout_seconds: int
+    max_retries: int
+    retry_backoff_base_ms: int
+
+
+def _client_cache_key(config: ChainConfig) -> _ClientCacheKey:
+    api_key = config.api_key.get_secret_value()
+    return _ClientCacheKey(
+        config_id=id(config),
+        backend_url=config.backend_url,
+        api_key_sha256_prefix=hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12],
+        timeout_seconds=config.backend_timeout_seconds,
+        max_retries=config.max_retries,
+        retry_backoff_base_ms=config.retry_backoff_base_ms,
+    )
+
+
+# One dict per event loop, then one client per bound config identity. The weak
+# outer cache preserves the previous loop-safety fix while allowing multiple
+# SDK identities to coexist inside the same loop.
 _clients_by_loop: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
@@ -167,27 +201,24 @@ def init(**kwargs) -> ChainConfig:
             "api_key is required. Call arclasp.init(api_key='prail_...') before using the SDK."
         )
 
+    old_config = _config_ctx.get()
     _config = ChainConfig(**kwargs)
+    _config_ctx.set(_config)
 
-    # On re-init: gracefully close the current loop's client (if we're inside
-    # an async context) so that TCP connections and file descriptors are
-    # released.  Then clear every cached client so the next _get_client() call
-    # creates a fresh instance with the updated config.
-    #
-    # Clients bound to *other* loops are dropped from the WeakKeyDictionary
-    # here.  Their resources are reclaimed by httpx + GC when those loops are
-    # eventually garbage-collected.  This is the standard httpx lifecycle for
-    # short-lived loops (e.g. asyncio.Runner()) and is safe for our usage.
+    # On re-init in the same execution context: gracefully close the previous
+    # config's client on the current loop, if one exists. Other active configs
+    # in the same loop may belong to concurrent tasks and must not be cleared.
     try:
         loop = asyncio.get_running_loop()
-        old_client = _clients_by_loop.get(loop)
-        if old_client is not None:
-            # Fire-and-forget: schedule aclose on the current loop.
-            loop.create_task(old_client.aclose())
+        clients_for_loop = _clients_by_loop.get(loop)
+        if old_config is not None and clients_for_loop is not None:
+            old_client = clients_for_loop.pop(_client_cache_key(old_config), None)
+            if old_client is not None:
+                # Fire-and-forget: schedule aclose on the current loop.
+                loop.create_task(old_client.aclose())
     except RuntimeError:
         # No running event loop — nothing to close explicitly.
         pass
-    _clients_by_loop.clear()
 
     # Warn when plaintext HTTP is used against a non-localhost backend.
     # Localhost URLs are exempt (development/testing). All other HTTP backends
@@ -215,14 +246,28 @@ def get_config() -> ChainConfig:
     RuntimeError
         If ``init()`` has not been called yet.
     """
-    if _config is None:
+    config = _config_ctx.get()
+    if config is None:
         raise RuntimeError(
             "arclasp has not been initialized. Call arclasp.init(api_key='prail_...') first."
         )
-    return _config
+    return config
 
 
-def _get_client() -> httpx.AsyncClient:
+def _reset_for_tests() -> None:
+    """Reset private SDK process/context state for isolated unit tests."""
+    global _config
+    _config = None
+    _config_ctx.set(None)
+    _clients_by_loop.clear()
+
+
+def _snapshot_config(config: ChainConfig | None = None) -> ChainConfig:
+    """Return the current one-time runtime config object."""
+    return config or get_config()
+
+
+def _get_client(config: ChainConfig | None = None) -> httpx.AsyncClient:
     """Return the httpx.AsyncClient bound to the currently running event loop.
 
     Each asyncio event loop gets its own client instance, stored in
@@ -239,25 +284,27 @@ def _get_client() -> httpx.AsyncClient:
         If ``init()`` has not been called, or if there is no running event loop
         (i.e. called from a non-async context without an active loop).
     """
-    if _config is None:
-        raise RuntimeError(
-            "arclasp has not been initialized. Call arclasp.init(api_key='prail_...') first."
-        )
+    config = config or get_config()
     loop = asyncio.get_running_loop()  # raises RuntimeError if no running loop
+    key = _client_cache_key(config)
+    clients_for_loop = _clients_by_loop.get(loop)
+    if clients_for_loop is None:
+        clients_for_loop = {}
+        _clients_by_loop[loop] = clients_for_loop
     sample = _benchmark_ctx.get()
     if sample is not None and sample.client_created is None:
-        sample.client_created = loop not in _clients_by_loop
-    client = _clients_by_loop.get(loop)
+        sample.client_created = key not in clients_for_loop
+    client = clients_for_loop.get(key)
     if client is None:
         client = httpx.AsyncClient(
-            base_url=_config.backend_url,
-            timeout=httpx.Timeout(_config.backend_timeout_seconds),
+            base_url=config.backend_url,
+            timeout=httpx.Timeout(config.backend_timeout_seconds),
             headers={
-                "Authorization": f"Bearer {_config.api_key.get_secret_value()}",
+                "Authorization": f"Bearer {config.api_key.get_secret_value()}",
                 "Content-Type": "application/json",
             },
         )
-        _clients_by_loop[loop] = client
+        clients_for_loop[key] = client
     return client
 
 
@@ -380,6 +427,7 @@ async def _post(
     data: dict,
     action_type: str | None = None,
     headers: dict[str, str] | None = None,
+    config: ChainConfig | None = None,
 ) -> dict:
     """
     POST *data* as JSON to *path* on the configured backend.
@@ -395,8 +443,8 @@ async def _post(
     4xx responses are non-retryable and always re-raise ``HTTPStatusError``
     immediately — these are deterministic client errors where retry won't help.
     """
-    config = get_config()
-    client = _get_client()
+    config = config or get_config()
+    client = _get_client(config)
     sample = _benchmark_ctx.get()
 
     try:
@@ -431,14 +479,18 @@ async def _post(
     return response.json()
 
 
-async def _get(path: str, action_type: str | None = None) -> dict:
+async def _get(
+    path: str,
+    action_type: str | None = None,
+    config: ChainConfig | None = None,
+) -> dict:
     """
     GET *path* on the configured backend.
 
     Same retry and fail-closed semantics as ``_post``.
     """
-    config = get_config()
-    client = _get_client()
+    config = config or get_config()
+    client = _get_client(config)
     sample = _benchmark_ctx.get()
 
     try:
@@ -473,14 +525,18 @@ async def _get(path: str, action_type: str | None = None) -> dict:
     return response.json()
 
 
-async def _post_once(path: str, data: dict) -> dict:
+async def _post_once(
+    path: str,
+    data: dict,
+    config: ChainConfig | None = None,
+) -> dict:
     """
     POST *data* without automatic retries.
 
     Used for mutation endpoints where replaying a successful-but-interrupted
     request could create duplicate state, such as one-time public token issue.
     """
-    client = _get_client()
+    client = _get_client(config)
     response = await client.post(path, json=data)
     response.raise_for_status()
     return response.json()
@@ -503,7 +559,11 @@ async def _get_unauthenticated_json(path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def get_chain(chain_id: str) -> ChainDetail:
+async def get_chain(
+    chain_id: str,
+    *,
+    config: ChainConfig | None = None,
+) -> ChainDetail:
     """
     Fetch full detail for a single chain.
 
@@ -522,7 +582,8 @@ async def get_chain(chain_id: str) -> ChainDetail:
     httpx.HTTPStatusError
         On 404 (chain not found) or 403 (forbidden).
     """
-    data = await _get(f"/v1/chains/{chain_id}")
+    path = f"/v1/chains/{chain_id}"
+    data = await _get(path, config=config) if config is not None else await _get(path)
     return ChainDetail.model_validate(data)
 
 
@@ -531,6 +592,8 @@ async def get_chain_events(
     limit: int = 100,
     offset: int = 0,
     sequence_after: int | None = None,
+    *,
+    config: ChainConfig | None = None,
 ) -> ChainEventsResponse:
     """
     Fetch a page of events for a chain.
@@ -555,11 +618,15 @@ async def get_chain_events(
     if sequence_after is not None:
         params["sequence_after"] = sequence_after
     path = f"/v1/chains/{chain_id}/events?{urlencode(params)}"
-    data = await _get(path)
+    data = await _get(path, config=config) if config is not None else await _get(path)
     return ChainEventsResponse.model_validate(data)
 
 
-async def get_chain_receipt(chain_id: str) -> ChainReceiptResponse:
+async def get_chain_receipt(
+    chain_id: str,
+    *,
+    config: ChainConfig | None = None,
+) -> ChainReceiptResponse:
     """
     Fetch the audit receipt for a completed chain.
 
@@ -580,7 +647,8 @@ async def get_chain_receipt(chain_id: str) -> ChainReceiptResponse:
         On 404 if the chain has no receipt yet (check ``chain.status``),
         or 403 if the caller's org does not own this chain.
     """
-    data = await _get(f"/v1/chains/{chain_id}/receipt")
+    path = f"/v1/chains/{chain_id}/receipt"
+    data = await _get(path, config=config) if config is not None else await _get(path)
     return ChainReceiptResponse.model_validate(data)
 
 
