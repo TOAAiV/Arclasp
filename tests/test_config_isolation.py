@@ -287,14 +287,28 @@ async def test_retry_configuration_is_bound_per_request(fake_http_client):
 
 
 @pytest.mark.asyncio
-async def test_reinit_closes_only_previous_context_client(fake_http_client):
+async def test_reinit_preserves_previous_context_client(fake_http_client):
     arclasp.init(api_key="prail_A", backend_url="http://backend-a")
-    _client._get_client()
+    old_client = _client._get_client()
     arclasp.init(api_key="prail_B", backend_url="http://backend-b")
     await asyncio.sleep(0)
 
-    assert _FakeAsyncClient.close_count == 1
+    assert _FakeAsyncClient.close_count == 0
+    assert old_client.headers["Authorization"] == "Bearer prail_A"
     assert _client._get_client().headers["Authorization"] == "Bearer prail_B"
+
+
+@pytest.mark.asyncio
+async def test_get_client_recreates_closed_cached_client(fake_http_client):
+    arclasp.init(api_key="prail_A", backend_url="http://backend-a")
+    config = _client._snapshot_config()
+    old_client = _client._get_client(config)
+    old_client.is_closed = True
+
+    new_client = _client._get_client(config)
+
+    assert new_client is not old_client
+    assert new_client.headers["Authorization"] == "Bearer prail_A"
 
 
 def test_public_api_surface_unchanged():

@@ -201,24 +201,12 @@ def init(**kwargs) -> ChainConfig:
             "api_key is required. Call arclasp.init(api_key='prail_...') before using the SDK."
         )
 
-    old_config = _config_ctx.get()
     _config = ChainConfig(**kwargs)
     _config_ctx.set(_config)
 
-    # On re-init in the same execution context: gracefully close the previous
-    # config's client on the current loop, if one exists. Other active configs
-    # in the same loop may belong to concurrent tasks and must not be cleared.
-    try:
-        loop = asyncio.get_running_loop()
-        clients_for_loop = _clients_by_loop.get(loop)
-        if old_config is not None and clients_for_loop is not None:
-            old_client = clients_for_loop.pop(_client_cache_key(old_config), None)
-            if old_client is not None:
-                # Fire-and-forget: schedule aclose on the current loop.
-                loop.create_task(old_client.aclose())
-    except RuntimeError:
-        # No running event loop — nothing to close explicitly.
-        pass
+    # Re-init does not close existing clients. Context-local configs are
+    # inherited by child tasks and may already be bound to live Chain objects,
+    # so ownership cannot be inferred from the context that calls init().
 
     # Warn when plaintext HTTP is used against a non-localhost backend.
     # Localhost URLs are exempt (development/testing). All other HTTP backends
@@ -295,6 +283,9 @@ def _get_client(config: ChainConfig | None = None) -> httpx.AsyncClient:
     if sample is not None and sample.client_created is None:
         sample.client_created = key not in clients_for_loop
     client = clients_for_loop.get(key)
+    if client is not None and getattr(client, "is_closed", False):
+        clients_for_loop.pop(key, None)
+        client = None
     if client is None:
         client = httpx.AsyncClient(
             base_url=config.backend_url,

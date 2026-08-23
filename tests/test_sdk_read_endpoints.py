@@ -387,43 +387,29 @@ async def test_verify_receipt_tampered(init_sdk):
 
 
 # ---------------------------------------------------------------------------
-# client.init() re-init closes old HTTP client (I-5)
+# client.init() re-init preserves old HTTP client (MAS1-001 lifecycle)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_reinit_closes_old_http_client():
+async def test_reinit_preserves_old_http_client_for_bound_contexts():
     """
-    Calling arclasp.init() a second time must close the current loop's
-    httpx.AsyncClient so that TCP connections and file descriptors are released.
-
-    With the loop-aware design, clients are created lazily on first _get_client()
-    call.  We force creation here, patch aclose, re-init, then verify the task
-    fired and a subsequent _get_client() returns a fresh instance.
+    Calling arclasp.init() a second time must not close the previous config's
+    httpx.AsyncClient. Context-local configs can be inherited by child tasks and
+    bound Chains, so init() cannot infer exclusive client ownership.
     """
-    import asyncio
     from unittest.mock import AsyncMock
 
-    # Force creation of the client for the current pytest-asyncio event loop.
     old_client = _client._get_client()
-
-    # Patch aclose on the existing client so we can verify it is scheduled.
     old_client.aclose = AsyncMock()
 
-    # Second init with a different api_key — must schedule aclose for current
-    # loop's client, then clear _clients_by_loop.
     arclasp.init(
         api_key="prail_newkey456",
         backend_url="http://test-backend-2",
         environment="development",
     )
 
-    # Allow the event loop to drain pending tasks (aclose is fire-and-forget).
-    await asyncio.sleep(0)
+    old_client.aclose.assert_not_called()
 
-    old_client.aclose.assert_called_once()
-
-    # After re-init the dict is empty; the next _get_client() builds a fresh
-    # client with the new config and is a different object from the old one.
     new_client = _client._get_client()
     assert new_client is not old_client
 
