@@ -146,7 +146,7 @@ class Chain:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        await self._complete(raise_on_failure=exc_type is None)
+        await self._complete_for_async_exit(raise_on_failure=exc_type is None)
         return False  # do not suppress exceptions
 
     # ------------------------------------------------------------------
@@ -584,6 +584,51 @@ class Chain:
                     self._chain_id,
                     "Authoritative chain completion could not be confirmed",
                 ) from exc
+
+    async def _complete_for_async_exit(self, *, raise_on_failure: bool = True) -> None:
+        """
+        Run async context-manager completion without orphaning it on cancellation.
+
+        ``asyncio.shield`` alone keeps the inner completion alive, but still
+        raises ``CancelledError`` to the outer task immediately.  We keep a
+        strong reference to the single completion task, continue awaiting that
+        same task until it settles, observe its result/exception, and only then
+        re-raise cancellation.
+        """
+        completion_task = asyncio.create_task(
+            self._complete(raise_on_failure=raise_on_failure)
+        )
+        cancellation: asyncio.CancelledError | None = None
+
+        while not completion_task.done():
+            try:
+                await asyncio.shield(completion_task)
+            except asyncio.CancelledError as exc:
+                if cancellation is None:
+                    cancellation = exc
+                continue
+            except Exception:
+                if cancellation is not None:
+                    break
+                raise
+
+        if cancellation is not None:
+            try:
+                completion_task.result()
+            except asyncio.CancelledError:
+                logger.warning(
+                    "Chain completion task was cancelled while closing chain %s",
+                    self._chain_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Chain completion failed after cancellation for chain %s: %s",
+                    self._chain_id,
+                    exc,
+                )
+            raise cancellation
+
+        completion_task.result()
 
     async def _poll_for_approval(self) -> str | None:
         """
