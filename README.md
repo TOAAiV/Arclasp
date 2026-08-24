@@ -234,6 +234,10 @@ async with arclasp.Chain("mcp-session") as chain:
         )
 ```
 
+MCP integration records the governed invocation and policy decision before tool
+execution. Tool return values and execution exceptions are not persisted as MCP
+action evidence in this release.
+
 For custom agent loops, use `Chain` directly as shown in the quickstart.
 
 ## Who Arclasp Is For
