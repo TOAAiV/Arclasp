@@ -1,7 +1,7 @@
 """
 arclasp.langgraph.callbacks — LangGraph-compatible callback handler.
 
-Records LangGraph node start and end events as Arclasp chain events.
+Records LangGraph node start events as Arclasp chain events.
 
 This module intentionally does NOT import langchain_core at module level so
 that ``arclasp`` itself can be imported without langgraph/langchain installed.
@@ -115,8 +115,15 @@ def _safe_value(v: Any) -> Any:
 
 class ArclaspLangGraphCallback:
     """
-    Callback handler that records LangGraph node lifecycle events as Arclasp
-    governance chain events.
+    Callback handler that records LangGraph node starts as Arclasp governance
+    chain events.
+
+    LangGraph completion/error callbacks are intentionally treated as local
+    lifecycle observations in this SDK release. The backend event API evaluates
+    every submitted event as a governed action, so result/error telemetry is not
+    submitted through ``record_agent_action()`` where it could re-gate an
+    already-authorized business action merely because cumulative chain metrics
+    remain above a threshold.
 
     This class is framework-agnostic.  The :class:`_AsLangChainCallback`
     below bridges it to LangChain's ``AsyncCallbackHandler`` interface so it
@@ -147,35 +154,19 @@ class ArclaspLangGraphCallback:
         parent_agent_name: str | None = None,
     ) -> None:
         """
-        Record the completion (or failure) of a node execution.
+        Observe completion (or failure) of a node execution locally.
 
-        If *error* is provided the event is tagged as ``node_error`` with the
-        exception details in the payload; otherwise it is tagged as
-        ``node_result`` with the node's output state.
+        The current backend has no observational-only event endpoint. Submitting
+        node result/error telemetry via ``record_agent_action()`` would make it
+        a second governed business action, so this callback logs the lifecycle
+        observation without persisting a separate ChainEvent.
         """
         if error is not None:
             logger.debug(
                 "LangGraph node errored: %s — %s", sanitize_log_field(node_name), error
             )
-            await self._chain.record_agent_action(
-                agent_name=node_name,
-                action_type="node_error",
-                action_name=f"{node_name}:error",
-                payload={
-                    "error_type": type(error).__name__,
-                    "error_message": str(error)[:500],
-                },
-                parent_agent_name=parent_agent_name,
-            )
         else:
             logger.debug("LangGraph node completed: %s", sanitize_log_field(node_name))
-            await self._chain.record_agent_action(
-                agent_name=node_name,
-                action_type="node_result",
-                action_name=f"{node_name}:result",
-                payload=_state_to_dict(output_state),
-                parent_agent_name=parent_agent_name,
-            )
 
     # ------------------------------------------------------------------
     # LangChain bridge — constructed on demand

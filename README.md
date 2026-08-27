@@ -179,14 +179,27 @@ were never instrumented.
 
 ```python
 import arclasp
-from arclasp.langgraph import govern
+from arclasp.langgraph import govern, governed_node
 from langchain_core.messages import HumanMessage
 
 arclasp.init(api_key="prail_...")
 
+# Wrap consequential node callables before graph.compile().
+graph.add_node("summarize_revenue", governed_node(summarize_revenue, name="summarize_revenue"))
 governed = govern(compiled_graph, chain_name="research-workflow")
 result = await governed.ainvoke({"messages": [HumanMessage(content="Summarize Q3 revenue")]})
 ```
+
+`govern()` opens one Arclasp Chain for the graph run and records lifecycle
+evidence. `governed_node()` is the pre-execution gate for node bodies that
+perform consequential side effects.
+
+Use `governed_node()` for enforcement. `govern()` alone provides Chain and
+node-start lifecycle integration; LangGraph observer callbacks are not a hard
+pre-execution boundary for arbitrary node side effects. Result/error telemetry
+is not submitted as a second governed action in this release, so an approved
+node is not re-gated just because cumulative Chain metrics remain above a
+threshold.
 
 ### LangChain
 

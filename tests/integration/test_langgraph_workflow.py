@@ -129,12 +129,11 @@ async def test_happy_path_langgraph():
     chain_calls = [c for c in calls if c["path"] == "/v1/chains"]
     assert len(chain_calls) == 1
     assert_chain_completed(calls)
-    # Node governance events: start + end for each of 2 nodes = 4 events
-    assert count_event_calls(calls) == 4
+    # Node governance events: start for each of 2 nodes. Result/error lifecycle
+    # observations are local only because backend events are authority-bearing.
+    assert count_event_calls(calls) == 2
     assert_event_recorded(calls, action_type="node_execution", action_name="fetch_data")
-    assert_event_recorded(calls, action_type="node_result",    action_name="fetch_data:result")
     assert_event_recorded(calls, action_type="node_execution", action_name="summarize")
-    assert_event_recorded(calls, action_type="node_result",    action_name="summarize:result")
 
 
 # ===========================================================================
@@ -277,7 +276,7 @@ class _GraphWithAcloseRace:
              "data": {"input": state}},
             {"event": "on_chain_start", "run_id": nid,
              "metadata": {"langgraph_node": "payment_node"}, "data": {"input": state}},
-            # This on_chain_end triggers require_approval → ChainTimeoutError
+            # Breaking on the start event triggers stream cleanup.
             {"event": "on_chain_end", "run_id": nid,
              "metadata": {"langgraph_node": "payment_node"},
              "data": {"output": {"amount": 7500}}},
@@ -313,7 +312,7 @@ async def test_bug_lg_01_aclose_race_preserves_policy_exception():
         if path.endswith("/complete"):
             return {"id": CHAIN_ID, "status": "completed"}
         action_name = (body or {}).get("action_name", "")
-        if action_name == "payment_node:result":
+        if action_name == "payment_node":
             return require_approval_resp
         return ALLOW_RESP
 
@@ -606,10 +605,6 @@ async def test_strategy_a_populates_parent_agent_name():
     assert bodies["child_node"].get("parent_agent_name") == "parent_node", (
         f"child_node should have parent_agent_name='parent_node', got: {bodies['child_node']}"
     )
-    # child_node result (on_node_end) also carries parent_agent_name
-    assert bodies["child_node:result"].get("parent_agent_name") == "parent_node", (
-        f"child_node:result should have parent_agent_name='parent_node', got: {bodies['child_node:result']}"
-    )
 
 
 @pytest.mark.asyncio
@@ -636,10 +631,6 @@ async def test_strategy_b_populates_parent_agent_name():
     assert bodies["child_node"].get("parent_agent_name") == "parent_node", (
         f"child_node should have parent_agent_name='parent_node', got: {bodies['child_node']}"
     )
-    # child_node:result also carries parent_agent_name
-    assert bodies["child_node:result"].get("parent_agent_name") == "parent_node", (
-        f"child_node:result should have parent_agent_name='parent_node', got: {bodies['child_node:result']}"
-    )
 
 
 # ===========================================================================
@@ -662,6 +653,5 @@ async def test_strategy_b_fallback_langgraph():
 
     assert result == {"result": "b_done"}
     assert_chain_completed(calls)
-    # The strategy_b_node events must appear (callback was injected and fired)
-    assert_event_recorded(calls, action_name="strategy_b_node",        action_type="node_execution")
-    assert_event_recorded(calls, action_name="strategy_b_node:result", action_type="node_result")
+    # The strategy_b_node start event must appear (callback was injected and fired).
+    assert_event_recorded(calls, action_name="strategy_b_node", action_type="node_execution")

@@ -4,9 +4,10 @@ arclasp.langgraph.adapter — Governance wrapper for compiled LangGraph graphs.
 Quick start
 -----------
     import arclasp
-    from arclasp.langgraph import govern
+    from arclasp.langgraph import govern, governed_node
 
     arclasp.init(api_key="prail_...")
+    graph.add_node("send_payment", governed_node(send_payment, name="send_payment"))
     governed = govern(compiled_graph, chain_name="my-workflow")
 
     # Drop-in replacement — same interface as the original graph:
@@ -18,27 +19,38 @@ How it works
     has identical ``.invoke`` / ``.ainvoke`` signatures.
 2.  On every invocation, a Arclasp ``Chain`` context manager is opened so the
     full workflow appears as a single governed chain in the dashboard.
-3.  Node-level events are captured via one of two strategies, tried in order:
+3.  Node start events are captured via one of two strategies, tried in order.
+    For pre-execution enforcement of consequential node bodies, wrap the node
+    callable with ``governed_node()`` before compiling the graph. Streaming
+    lifecycle events are useful trace context, but they are not the primitive
+    that blocks a node body before it runs. Result/error lifecycle telemetry is
+    observed locally only because the current backend event API evaluates every
+    submitted event as a governed action.
 
     Strategy A — ``astream_events`` (LangGraph >= 0.1, preferred)
         ``astream_events(version="v2")`` yields structured events with
         ``metadata["langgraph_node"]`` identifying each node.  We consume the
-        stream, fire ``ArclaspLangGraphCallback.on_node_start`` / ``on_node_end``
-        for each real node, and collect the graph's final output from the
-        root-level ``on_chain_end`` event.
+        stream, fire ``ArclaspLangGraphCallback.on_node_start`` for each real
+        node, observe node end/error events without submitting them as governed
+        actions, and collect the graph's final output from the root-level
+        ``on_chain_end`` event.
 
     Strategy B — LangChain ``AsyncCallbackHandler`` (fallback)
         Injects an ``_AsLangChainCallback`` instance via
         ``config={"callbacks": [...]}`` and calls the original
         ``graph.ainvoke``.  LangGraph calls ``on_chain_start`` /
-        ``on_chain_end`` for every node; we filter by ``langgraph_node``
-        in the event metadata.
+        ``on_chain_end`` for every node; we submit only the start event as a
+        governed action after filtering by ``langgraph_node`` in metadata.
 
 Policy enforcement
 ------------------
-``record_agent_action`` is called for every node.  If the Arclasp backend
-returns a ``"deny"`` decision, ``ActionDeniedError`` propagates out of
-``ainvoke`` / ``invoke`` — the graph execution is halted at that node.
+``governed_node()`` calls ``record_agent_action`` before invoking the customer
+node callable.  If the backend returns ``"deny"``, approval is denied/timed out,
+or backend authority is unavailable, the node body is not executed.
+
+Unwrapped nodes are still observed through LangGraph node-start events for
+trace continuity, but those observer events may arrive after execution has
+already started and must not be relied on for pre-execution side-effect control.
 """
 
 from __future__ import annotations
@@ -60,6 +72,12 @@ from arclasp.langgraph.callbacks import (
     ArclaspLangGraphCallback,
     _INTERNAL_NODES,
     _StrategyBPolicyBreak,
+)
+from arclasp.langgraph.nodes import (
+    _discover_pre_governed_nodes,
+    _is_pre_governed_node,
+    _reset_current_chain,
+    _set_current_chain,
 )
 
 logger = logging.getLogger(__name__)
@@ -162,9 +180,10 @@ class GovernedGraph:
         """
         Async-invoke the governed graph.
 
-        Opens a Arclasp chain, records every node execution, enforces policy
-        decisions, then closes the chain.  Returns the graph's final output
-        unchanged.
+        Opens a Arclasp chain, records LangGraph lifecycle events, enables
+        any ``governed_node()`` wrappers in the graph to enforce policy before
+        node bodies execute, then closes the chain.  Returns the graph's final
+        output unchanged.
 
         Raises
         ------
@@ -180,15 +199,20 @@ class GovernedGraph:
             self._chain_name, metadata=self._chain_metadata
         ) as arclasp_chain:
             callback = ArclaspLangGraphCallback(arclasp_chain)
-
-            if hasattr(self._graph, "astream_events"):
-                return await self._ainvoke_via_streaming(
-                    arclasp_chain, callback, state, config, **kwargs
-                )
-            else:
-                return await self._ainvoke_via_callbacks(
-                    arclasp_chain, callback, state, config, **kwargs
-                )
+            tokens = _set_current_chain(
+                arclasp_chain, _discover_pre_governed_nodes(self._graph)
+            )
+            try:
+                if hasattr(self._graph, "astream_events"):
+                    return await self._ainvoke_via_streaming(
+                        arclasp_chain, callback, state, config, **kwargs
+                    )
+                else:
+                    return await self._ainvoke_via_callbacks(
+                        arclasp_chain, callback, state, config, **kwargs
+                    )
+            finally:
+                _reset_current_chain(tokens)
 
     # ------------------------------------------------------------------
     # Sync invocation (non-async scripts only)
@@ -240,7 +264,7 @@ class GovernedGraph:
         ~~~~~~~~~~~~~~~
         - ``event == "on_chain_start"``  +  ``metadata.langgraph_node`` set
           and not in :data:`_INTERNAL_NODES`  → fire ``on_node_start``
-        - ``event == "on_chain_end"``    +  same node guard            → fire ``on_node_end``
+        - ``event == "on_chain_end"``    +  active node run            → observe locally
         - Root-level ``on_chain_end``    (run_id matches the first seen
           run_id with no parent)         → capture final graph output
         """
@@ -278,6 +302,7 @@ class GovernedGraph:
                         event_type == "on_chain_start"
                         and node_name
                         and node_name not in _INTERNAL_NODES
+                        and not _is_pre_governed_node(node_name)
                     ):
                         parent_agent_name: str | None = None
                         for pid in event.get("parent_ids") or []:
@@ -297,19 +322,21 @@ class GovernedGraph:
                     elif event_type == "on_chain_end" and run_id in active_nodes:
                         finished_node = active_nodes.pop(run_id)
                         par = active_node_parents.pop(run_id, None)
-                        output_state = (event.get("data") or {}).get("output")
-                        await callback.on_node_end(
-                            finished_node, output_state, parent_agent_name=par
-                        )
+                        if not _is_pre_governed_node(finished_node):
+                            output_state = (event.get("data") or {}).get("output")
+                            await callback.on_node_end(
+                                finished_node, output_state, parent_agent_name=par
+                            )
 
                     # --- Node error ---
                     elif event_type == "on_chain_error" and run_id in active_nodes:
                         finished_node = active_nodes.pop(run_id)
                         par = active_node_parents.pop(run_id, None)
-                        error = (event.get("data") or {}).get("error")
-                        await callback.on_node_end(
-                            finished_node, None, error=error, parent_agent_name=par
-                        )
+                        if not _is_pre_governed_node(finished_node):
+                            error = (event.get("data") or {}).get("error")
+                            await callback.on_node_end(
+                                finished_node, None, error=error, parent_agent_name=par
+                            )
 
                 except (
                     ChainTimeoutError,
@@ -360,7 +387,7 @@ class GovernedGraph:
         LangGraph routes node execution through LangChain's callback system;
         ``_AsLangChainCallback`` listens for ``on_chain_start`` /
         ``on_chain_end`` events that carry ``metadata["langgraph_node"]`` and
-        delegates them to the :class:`ArclaspLangGraphCallback`.
+        delegates start events to the :class:`ArclaspLangGraphCallback`.
 
         Falls back to plain ``ainvoke`` with no node tracking if
         ``langchain_core`` is not available, logging a warning.
