@@ -127,6 +127,7 @@ class Chain:
         self._cumulative_metrics: dict = {}
         # Single-flight drain task - at most one drain coroutine runs at a time.
         self._drain_task: asyncio.Task | None = None
+        self._backend_terminal_noncompletable: bool = False
 
     # ------------------------------------------------------------------
     # Properties
@@ -180,7 +181,7 @@ class Chain:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        asyncio.run(self._complete(raise_on_failure=exc_type is None))
+        asyncio.run(self._complete_for_context_exit(raise_on_failure=exc_type is None))
         return False
 
     # ------------------------------------------------------------------
@@ -354,6 +355,7 @@ class Chain:
         # Raise immediately so callers get a clear error rather than cascading
         # 409 responses on every subsequent record_agent_action call.
         if decision_obj.auto_paused:
+            self._mark_backend_terminal_noncompletable()
             raise ChainAutoPausedError(
                 message=(
                     f"Chain {self._chain_id} has been auto-paused by the backend. "
@@ -379,6 +381,7 @@ class Chain:
             # Kill-switch denials carry a distinct flag so callers can
             # differentiate them from ordinary policy violations.
             if decision_obj.kill_switch_active:
+                self._mark_backend_terminal_noncompletable()
                 raise ArclaspKillSwitchError(
                     message=decision_obj.decision_reason
                     or "All agent actions are denied: organisation kill switch is active",
@@ -605,6 +608,18 @@ class Chain:
                     "Authoritative chain completion could not be confirmed",
                 ) from exc
 
+    def _mark_backend_terminal_noncompletable(self) -> None:
+        self._backend_terminal_noncompletable = True
+
+    async def _complete_for_context_exit(self, *, raise_on_failure: bool = True) -> None:
+        if self._backend_terminal_noncompletable:
+            logger.debug(
+                "Skipping completion for terminal non-completable chain %s",
+                self._chain_id,
+            )
+            return
+        await self._complete(raise_on_failure=raise_on_failure)
+
     async def _complete_for_async_exit(self, *, raise_on_failure: bool = True) -> None:
         """
         Run async context-manager completion without orphaning it on cancellation.
@@ -615,6 +630,13 @@ class Chain:
         same task until it settles, observe its result/exception, and only then
         re-raise cancellation.
         """
+        if self._backend_terminal_noncompletable:
+            logger.debug(
+                "Skipping completion for terminal non-completable chain %s",
+                self._chain_id,
+            )
+            return
+
         completion_task = asyncio.create_task(
             self._complete(raise_on_failure=raise_on_failure)
         )
@@ -702,24 +724,32 @@ class Chain:
                 logger.info("Approval granted for chain %s", self._chain_id)
                 return approver_notes
 
-            if approval_status in ("denied", "timed_out"):
-                policy_name = (
-                    "human_approval_denied"
-                    if approval_status == "denied"
-                    else "approval_timeout"
-                )
+            if approval_status == "denied":
+                self._mark_backend_terminal_noncompletable()
+                policy_name = "human_approval_denied"
                 default_rem, default_docs = _POLICY_REMEDIATION.get(
                     policy_name, (None, None)
-                )
-                condition = (
-                    approver_notes
-                    if approval_status == "denied"
-                    else "Approval was not resolved within the configured timeout window."
                 )
                 raise ActionDeniedError(
                     message=f"Approval {approval_status} for chain {self._chain_id}",
                     policy_name=policy_name,
-                    condition=condition,
+                    condition=approver_notes,
+                    chain_context={"chain_id": self._chain_id},
+                    decision_source="human_approval",
+                    remediation=default_rem,
+                    docs_url=default_docs,
+                )
+
+            if approval_status == "timed_out":
+                self._mark_backend_terminal_noncompletable()
+                policy_name = "approval_timeout"
+                default_rem, default_docs = _POLICY_REMEDIATION.get(
+                    policy_name, (None, None)
+                )
+                raise ActionDeniedError(
+                    message=f"Approval {approval_status} for chain {self._chain_id}",
+                    policy_name=policy_name,
+                    condition="Approval was not resolved within the configured timeout window.",
                     chain_context={"chain_id": self._chain_id},
                     decision_source="human_approval",
                     remediation=default_rem,
