@@ -217,7 +217,7 @@ async def main() -> int:
     print("  Arclasp — CrewAI Production Demo")
     print("=" * 65)
     print()
-    print("  Backend   : https://api.proofrail.dev")
+    print("  Backend   : https://api.arclasp.com")
     print("  Adapter   : arclasp.crewai.adapter.govern()")
     print("  Strategy  : Mixed (CrewAI 1.x) — Strategy B + Strategy A")
     print("  Agents    : pricing-researcher -> offer-calculator ->")
@@ -229,7 +229,7 @@ async def main() -> int:
 
     arclasp.init(
         api_key=api_key,
-        backend_url="https://api.proofrail.dev",
+        backend_url="https://api.arclasp.com",
         environment="production",
         cumulative_financial_threshold_usd=10000,
         default_approval_timeout_hours=1,

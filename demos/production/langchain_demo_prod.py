@@ -176,7 +176,7 @@ async def main() -> int:
     print("  Arclasp — LangChain Production Demo")
     print("=" * 65)
     print()
-    print("  Backend   : https://api.proofrail.dev")
+    print("  Backend   : https://api.arclasp.com")
     print("  Adapter   : arclasp.langchain.adapter.govern()")
     print("  Agents    : pricing-research -> offer-calculator ->")
     print("              communication -> commitment-recorder (x4)")
@@ -187,7 +187,7 @@ async def main() -> int:
 
     arclasp.init(
         api_key=api_key,
-        backend_url="https://api.proofrail.dev",
+        backend_url="https://api.arclasp.com",
         environment="production",
         cumulative_financial_threshold_usd=10000,
         default_approval_timeout_hours=1,

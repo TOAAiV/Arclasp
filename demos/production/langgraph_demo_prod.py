@@ -2,7 +2,7 @@
 Production end-to-end demo: LangGraph 4-agent vendor purchase workflow.
 
 Runs the same 7-event scenario as the mocked demo, but against the live
-Arclasp backend at https://api.proofrail.dev with a real API key.
+Arclasp backend at https://api.arclasp.com with a real API key.
 
 The 4th commitment ($3,000 for vendor-d) pushes cumulative exposure to
 $12,000 — crossing the $10,000 default threshold.  The backend triggers
@@ -204,7 +204,7 @@ async def main() -> int:
     print("  Arclasp — LangGraph Production Demo")
     print("=" * 65)
     print()
-    print("  Backend   : https://api.proofrail.dev")
+    print("  Backend   : https://api.arclasp.com")
     print("  Adapter   : arclasp.Chain (direct, LangGraph-style)")
     print("  Agents    : pricing-research -> offer-calculator ->")
     print("              communication -> commitment-recorder (x4)")
@@ -216,7 +216,7 @@ async def main() -> int:
 
     arclasp.init(
         api_key=api_key,
-        backend_url="https://api.proofrail.dev",
+        backend_url="https://api.arclasp.com",
         environment="production",
         cumulative_financial_threshold_usd=10000,
         default_approval_timeout_hours=1,

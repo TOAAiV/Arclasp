@@ -138,7 +138,7 @@ class TestChainAutoPausedError:
 
     def test_docs_url_matches_sdk_convention(self):
         err = ChainAutoPausedError()
-        assert err.docs_url == "https://docs.proofrail.dev/policies/runaway-limits"
+        assert err.docs_url == "https://docs.arclasp.com/policies/runaway-limits"
 
     def test_remediation_includes_resume_hint(self):
         err = ChainAutoPausedError(chain_id="chain-xyz")

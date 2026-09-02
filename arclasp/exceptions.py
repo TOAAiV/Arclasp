@@ -14,37 +14,37 @@ from __future__ import annotations
 _POLICY_REMEDIATION: dict[str, tuple[str, str]] = {
     "cumulative_financial_threshold": (
         "Update `financial_approval_threshold_usd` in init(), or approve via dashboard.",
-        "https://docs.proofrail.dev/policies/thresholds",
+        "https://docs.arclasp.com/policies/thresholds",
     ),
     "unauthorized_domain": (
         "Add the domain to `external_domains_allowlist` in init(), or approve via dashboard.",
-        "https://docs.proofrail.dev/policies/domains",
+        "https://docs.arclasp.com/policies/domains",
     ),
     "bulk_operation": (
         "Reduce the operation batch size, or request approval via dashboard.",
-        "https://docs.proofrail.dev/policies/bulk-operations",
+        "https://docs.arclasp.com/policies/bulk-operations",
     ),
     "high_risk_agent": (
         "Remove the agent from `high_risk_agents` in init(), or approve via dashboard.",
-        "https://docs.proofrail.dev/policies/high-risk-agents",
+        "https://docs.arclasp.com/policies/high-risk-agents",
     ),
     "unapproved_llm_model": (
         "Add the model to the approved-models list in init(), or approve via dashboard.",
-        "https://docs.proofrail.dev/policies/llm-models",
+        "https://docs.arclasp.com/policies/llm-models",
     ),
     "pii_exposure": (
         "Add sensitive field names to `sensitive_field_patterns` in init() to redact them.",
-        "https://docs.proofrail.dev/policies/pii",
+        "https://docs.arclasp.com/policies/pii",
     ),
     "approval_timeout": (
         "Increase `default_approval_timeout_hours` in init(), or pre-approve the action.",
-        "https://docs.proofrail.dev/policies/approvals",
+        "https://docs.arclasp.com/policies/approvals",
     ),
     "human_approval_denied": (
         "The action was denied by a human approver. Review the denial reason "
         "(in the 'condition' field) and adjust the action or talk to your approver. "
         "Repeated denials of similar actions may indicate the policy needs tuning.",
-        "https://docs.proofrail.dev/policies/approvals/denials",
+        "https://docs.arclasp.com/policies/approvals/denials",
     ),
 }
 
@@ -267,6 +267,6 @@ class ChainAutoPausedError(ArclaspPolicyError):
             condition=reason,
             chain_context={"chain_id": chain_id} if chain_id else None,
             remediation=resume_hint,
-            docs_url="https://docs.proofrail.dev/policies/runaway-limits",
+            docs_url="https://docs.arclasp.com/policies/runaway-limits",
             decision_source="backend_evaluation",
         )

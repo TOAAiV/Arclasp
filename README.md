@@ -49,7 +49,7 @@ import arclasp
 
 arclasp.init(
     api_key="prail_...",
-    backend_url="https://api.proofrail.dev",
+    backend_url="https://api.arclasp.com",
 )
 
 chain = arclasp.Chain("vendor-commitments")
@@ -84,7 +84,7 @@ arclasp.init(
 ```
 
 The SDK's default backend URL is local-development oriented. Hosted users should
-set `backend_url="https://api.proofrail.dev"` explicitly until the Arclasp
+set `backend_url="https://api.arclasp.com"` explicitly until the Arclasp
 domain cutover is complete.
 
 If the backend denies the action, a human denies the approval, the approval
