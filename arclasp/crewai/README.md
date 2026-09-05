@@ -1,9 +1,9 @@
 # Arclasp CrewAI Adapter
 
-This adapter wraps a CrewAI `Crew` so that every task execution is automatically
-recorded as a governed event in Arclasp. Policies — including `deny` (which halts
-the crew immediately) and `require_approval` (which blocks until a human approves or
-times out) — are enforced transparently without changes to your crew definition.
+This adapter wraps a CrewAI `Crew` so that supported task execution paths are
+recorded as governed events in Arclasp. CrewAI does not expose a universal
+pre-task interception point in current supported versions, so denial and approval
+gates may surface after the task that triggered them has already completed.
 
 ## Contents
 
@@ -30,15 +30,19 @@ pip install "arclasp[crewai]"
 ## Basic usage
 
 ```python
+import asyncio
 import arclasp
 from arclasp.crewai import govern
 
-arclasp.init(api_key="prail_...")
+arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
 
 governed = govern(crew, chain_name="research-crew")
 
-# Drop-in replacement — same interface as the original crew:
-result = await governed.kickoff_async(inputs={"topic": "AI safety"})
+async def main():
+    # Drop-in replacement — same interface as the original crew:
+    return await governed.kickoff_async(inputs={"topic": "AI safety"})
+
+asyncio.run(main())
 ```
 
 `govern()` accepts two optional parameters:
@@ -84,16 +88,16 @@ consistent with the LangGraph and LangChain adapters.
 
 | Decision | Behaviour |
 |----------|-----------|
-| `deny` | `ActionDeniedError` raised from `kickoff_async`; crew halts at the denied task |
-| `require_approval` | `kickoff_async` blocks until approved; `ChainTimeoutError` raised if no decision arrives within timeout |
+| `deny` | `ActionDeniedError` is raised after the governed task event is recorded; subsequent workflow stages halt |
+| `require_approval` | The adapter may block after the task event is recorded until approved; `ChainTimeoutError` is raised if no decision arrives within timeout |
 
-Semantics match the LangGraph and LangChain adapters — CrewAI parity is full.
+For strict pre-execution prevention, place `record_agent_action()` inside the tool or task implementation before the side effect runs.
 
 ---
 
 ## Version compatibility
 
-Tested against **crewai 1.14.6** (Python 3.11+). Supported range: see `pyproject.toml`.
+Tested against **crewai 1.14.6** on Python 3.11. Supported range: see `pyproject.toml`; the current `crewai` extra is constrained to Python <3.14 because of CrewAI's upstream dependency support.
 
 CrewAI 0.x included `before_task_callback`; CrewAI 1.x removed it. The adapter detects
 which callbacks are present at runtime and activates the correct strategy combination —
@@ -116,18 +120,22 @@ no configuration required.
 ## Example: deny halts execution
 
 ```python
+import asyncio
 import arclasp
 from arclasp.crewai import govern
 from arclasp.exceptions import ActionDeniedError
 
-arclasp.init(api_key="prail_...", backend_url="https://your-backend")
+arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
 governed = govern(crew, chain_name="sensitive-ops")
 
-try:
-    result = await governed.kickoff_async(inputs={"task": "delete all records"})
-except ActionDeniedError as exc:
-    print(f"Crew halted: {exc.policy_name} denied '{exc.action_name}'")
-    # Receipt records the partial run and the denial decision.
+async def main():
+    try:
+        result = await governed.kickoff_async(inputs={"task": "delete all records"})
+    except ActionDeniedError as exc:
+        print(f"Crew halted: {exc.policy_name} denied '{exc.action_name}'")
+        # Receipt records the partial run and the denial decision.
+
+asyncio.run(main())
 ```
 
 The receipt captures all tasks that completed before the denial plus the policy
@@ -138,19 +146,23 @@ decision, so auditors can see exactly where and why the crew stopped.
 ## Example: approval gate
 
 ```python
+import asyncio
 import arclasp
 from arclasp.crewai import govern
 from arclasp.exceptions import ActionDeniedError, ChainTimeoutError
 
-arclasp.init(api_key="prail_...", backend_url="https://your-backend")
+arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
 governed = govern(crew, chain_name="finance-crew")
 
-try:
-    result = await governed.kickoff_async(inputs={"amount": 50000})
-except ChainTimeoutError:
-    print("Approval not received within timeout — crew halted.")
-except ActionDeniedError as exc:
-    print(f"Approval denied: {exc.policy_name}")
+async def main():
+    try:
+        result = await governed.kickoff_async(inputs={"amount": 50000})
+    except ChainTimeoutError:
+        print("Approval not received within timeout — crew halted.")
+    except ActionDeniedError as exc:
+        print(f"Approval denied: {exc.policy_name}")
+
+asyncio.run(main())
 ```
 
 Approve or deny via the Arclasp dashboard. A denial raises `ActionDeniedError`

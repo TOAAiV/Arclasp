@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b2] - 2026-09-05
+
+Documentation and release correction for the public beta package metadata.
+
+### Changed
+
+- Corrected the README Quick Start so the public PyPI long description shows a runnable async script using `async def main()` and `asyncio.run(main())`.
+- Corrected public SDK and configuration wording to match the current backend-authoritative SDK surface.
+- No intended SDK runtime behavior changes.
+
 ## [0.1.0b1] - 2026-09-05
 
 Public beta release candidate for the first public Arclasp SDK publication.

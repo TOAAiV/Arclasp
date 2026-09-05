@@ -19,7 +19,7 @@ policy enforcement before the customer's node body runs.
 ## Installation
 
 ```bash
-pip install arclasp langgraph
+pip install "arclasp[langgraph]"
 ```
 
 ---
@@ -27,16 +27,20 @@ pip install arclasp langgraph
 ## Basic usage
 
 ```python
+import asyncio
 import arclasp
 from arclasp.langgraph import govern, governed_node
 
-arclasp.init(api_key="prail_...")
+arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
 
 graph.add_node("send_payment", governed_node(send_payment, name="send_payment"))
 governed = govern(compiled_graph, chain_name="my-workflow")
 
-# Drop-in replacement — same interface as the original graph:
-result = await governed.ainvoke({"messages": [...]})
+async def main():
+    # Drop-in replacement — same interface as the original graph:
+    return await governed.ainvoke({"messages": [...]})
+
+asyncio.run(main())
 ```
 
 `govern()` accepts two optional parameters:

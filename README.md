@@ -75,6 +75,7 @@ Arclasp is Python-first today. Your application, tools, orchestration framework,
 Create an organization API key in the Arclasp dashboard, initialize the SDK, and place the consequential part of your workflow inside a Chain.
 
 ```python
+import asyncio
 import os
 import arclasp
 
@@ -83,19 +84,23 @@ arclasp.init(
     backend_url="https://api.arclasp.com",
 )
 
-async with arclasp.Chain("vendor-purchase") as chain:
-    decision = await chain.record_agent_action(
-        agent_name="purchasing-agent",
-        action_type="tool_call",
-        action_name="record_vendor_commitment",
-        payload={
-            "vendor": "Northstar Components",
-            "amount_usd": 4000,
-        },
-    )
+async def main():
+    async with arclasp.Chain("vendor-purchase") as chain:
+        decision = await chain.record_agent_action(
+            agent_name="purchasing-agent",
+            action_type="tool_call",
+            action_name="record_vendor_commitment",
+            payload={
+                "vendor": "Northstar Components",
+                "amount_usd": 4000,
+            },
+        )
 
-    # Perform the real customer-side action only after
-    # Arclasp permits the governed action.
+        # Perform the real customer-side action only after
+        # Arclasp permits the governed action.
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 The normal integration surface is deliberately small:
@@ -173,7 +178,7 @@ This makes cumulative governance useful for workflows such as purchasing, refund
 
 ### Registered-agent risk
 
-Organizations can register agents with ownership and risk-tier metadata, and that risk can participate in policy decisions. A registered Critical agent, for example, can require approval for governed actions.
+Organizations can register agents with risk-tier metadata, and that risk can participate in policy decisions. A registered Critical agent, for example, can require approval for governed actions.
 
 The Agents Registry is a governance profile, not a process-health monitor. An enabled agent profile means its governance configuration participates in policy; it does not mean Arclasp is claiming that the underlying process is online or healthy.
 
@@ -423,4 +428,4 @@ Please do not report security vulnerabilities through a public issue. Use the [s
 
 ## License
 
-The public Arclasp Python SDK is licensed under the **Apache License 2.0**. The full license text is included in `LICENSE`.
+The public Arclasp Python SDK is licensed under the **Apache License 2.0**. The full license text is included in [LICENSE](https://github.com/TOAAiV/Arclasp/blob/main/LICENSE).

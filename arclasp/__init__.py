@@ -2,17 +2,21 @@
 arclasp — AI Agent Governance Layer SDK.
 
 Quick start:
+    import asyncio
     import arclasp
 
     arclasp.init(api_key="prail_...")
 
-    async with arclasp.Chain("my-agent-workflow") as chain:
-        await chain.record_agent_action(
-            agent_name="my-agent",
-            action_type="tool_call",
-            action_name="send_email",
-            payload={"to": "user@example.com"},
-        )
+    async def main():
+        async with arclasp.Chain("my-agent-workflow") as chain:
+            await chain.record_agent_action(
+                agent_name="my-agent",
+                action_type="tool_call",
+                action_name="send_email",
+                payload={"to": "user@example.com"},
+            )
+
+    asyncio.run(main())
 """
 
 from arclasp.chain import Chain
@@ -33,7 +37,7 @@ from arclasp.exceptions import (
     ArclaspVerificationError,
 )
 
-__version__ = "0.1.0b1"
+__version__ = "0.1.0b2"
 
 __all__ = [
     "init",

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arclasp"
-version = "0.1.0b1"
+version = "0.1.0b2"
 description = "Runtime governance for AI-agent workflows with stateful policy, human approval, fail-closed controls, and verifiable evidence."
 readme = "README.md"
 license = { text = "Apache-2.0" }
