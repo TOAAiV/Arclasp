@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade build twine
+
+      - name: Verify tag matches package version
+        shell: python
+        run: |
+          import os
+          import sys
+          import tomllib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          if not tag.startswith("v"):
+              print(f"Release tag must start with 'v': {tag}", file=sys.stderr)
+              sys.exit(1)
+
+          with open("pyproject.toml", "rb") as project_file:
+              version = tomllib.load(project_file)["project"]["version"]
+
+          expected_tag = f"v{version}"
+          if tag != expected_tag:
+              print(
+                  f"Tag/version mismatch: tag {tag!r} does not match "
+                  f"pyproject project.version {version!r} ({expected_tag!r})",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Check distributions
+        run: python -m twine check dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install verification tools
+        run: python -m pip install --upgrade twine
+
+      - name: Verify tag matches package version
+        shell: python
+        run: |
+          import os
+          import sys
+          import tomllib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          if not tag.startswith("v"):
+              print(f"Release tag must start with 'v': {tag}", file=sys.stderr)
+              sys.exit(1)
+
+          with open("pyproject.toml", "rb") as project_file:
+              version = tomllib.load(project_file)["project"]["version"]
+
+          expected_tag = f"v{version}"
+          if tag != expected_tag:
+              print(
+                  f"Tag/version mismatch: tag {tag!r} does not match "
+                  f"pyproject project.version {version!r} ({expected_tag!r})",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Check distributions
+        run: python -m twine check dist/*
+
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
