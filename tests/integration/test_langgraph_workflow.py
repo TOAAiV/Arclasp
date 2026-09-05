@@ -427,6 +427,7 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
     import uuid as _uuid
 
     from arclasp.langgraph.callbacks import ArclaspLangGraphCallback, _StrategyBPolicyBreak
+    saved_lg_cb_mod = sys.modules.get("arclasp.langgraph.callbacks")
 
     # Temporarily remove conftest stubs so _build_langchain_base() picks up the
     # real langchain-core 1.4.0 installed in the environment.
@@ -490,6 +491,8 @@ async def test_bug_lg_02_base_exception_escapes_real_langchain_core():
             if k.startswith("langchain_core"):
                 del sys.modules[k]
         sys.modules.update(saved_lc)
+        if saved_lg_cb_mod is not None:
+            sys.modules["arclasp.langgraph.callbacks"] = saved_lg_cb_mod
 
 
 # ===========================================================================

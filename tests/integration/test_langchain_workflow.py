@@ -267,6 +267,7 @@ async def test_bug_lc_02_base_exception_escapes_real_langchain_core():
     saved_lc = {k: sys.modules.pop(k)
                 for k in list(sys.modules.keys())
                 if k.startswith("langchain_core")}
+    saved_cb_mod = None
 
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler
@@ -429,6 +430,7 @@ async def test_strategy_b_populates_parent_agent_name_real():
     saved_lc = {k: sys.modules.pop(k)
                 for k in list(sys.modules.keys())
                 if k.startswith("langchain_core")}
+    saved_cb_mod = None
 
     try:
         from langchain_core.callbacks.manager import _ahandle_event_for_handler

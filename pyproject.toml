@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arclasp"
-version = "0.1.0a10"
-description = "Runtime governance for AI-agent workflows with cumulative risk controls and human approval."
+version = "0.1.0b1"
+description = "Runtime governance for AI-agent workflows with stateful policy, human approval, fail-closed controls, and verifiable evidence."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 authors = [
-    { name = "Ansh Pradhan", email = "hello@proofrail.dev" },
+    { name = "Ansh Pradhan", email = "hello@arclasp.com" },
 ]
 keywords = [
     "ai",
@@ -25,7 +25,7 @@ keywords = [
     "llm",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
@@ -76,8 +76,8 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/TOAAiV/Arclasp"
-Documentation = "https://github.com/TOAAiV/Arclasp#readme"
+Homepage = "https://arclasp.com"
+Documentation = "https://docs.arclasp.com"
 Repository = "https://github.com/TOAAiV/Arclasp"
 Issues = "https://github.com/TOAAiV/Arclasp/issues"
 Changelog = "https://github.com/TOAAiV/Arclasp/blob/main/CHANGELOG.md"

@@ -1,8 +1,4 @@
-## Unreleased
-
-- Finalized the first public Arclasp Python namespace before PyPI publication: removed dead local-governance compatibility APIs, exposed `ArclaspPolicyError` at top level, kept legacy receipt verification under `arclasp.client`, and kept backend/wire verification contracts unchanged.
-
-﻿# Changelog
+# Changelog
 
 All notable changes to Arclasp (formerly ProofRail) will be documented in this file.
 
@@ -11,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b1] - 2026-09-05
+
+Public beta release candidate for the first public Arclasp SDK publication.
+
 ### Changed
 
 - **Breaking:** the Python import namespace is now `arclasp` (previously `proofrail`). `import arclasp`, `from arclasp import Chain`, `from arclasp.exceptions import ...` replace the old `proofrail` imports. The PyPI distribution name (`arclasp`) is unchanged from the prior prerelease. Exception classes `ProofRailPolicyError`, `ProofRailVerificationError`, and `ProofRailKillSwitchError` are renamed to `ArclaspPolicyError`, `ArclaspVerificationError`, and `ArclaspKillSwitchError`. There is no `proofrail` compatibility shim — the project has no external customers on the prior namespace yet.
 - Governed SDK execution now requires backend authority for every public Chain action. The deprecated `enable_local_fast_path=True` setting no longer produces local allow decisions, and backend unavailability raises `BackendUnavailableError` even when legacy `fail_mode="allow"` compatibility settings are supplied.
+- Finalized the first public Arclasp Python namespace before PyPI publication: removed dead local-governance compatibility APIs, exposed `ArclaspPolicyError` at top level, kept legacy receipt verification under `arclasp.client`, and kept backend/wire verification contracts unchanged.
+- Updated package metadata, security contacts, and public documentation links for the Arclasp public beta.
 
 ## [0.1.0a10] — 2026-08-19
 

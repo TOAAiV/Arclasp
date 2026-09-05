@@ -33,7 +33,7 @@ from arclasp.exceptions import (
     ArclaspVerificationError,
 )
 
-__version__ = "0.1.0a10"
+__version__ = "0.1.0b1"
 
 __all__ = [
     "init",

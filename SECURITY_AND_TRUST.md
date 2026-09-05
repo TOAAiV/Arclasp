@@ -5,7 +5,7 @@ the public SDK and hosted governance service. It is architectural context, not
 a vulnerability reporting policy. To report a vulnerability, see
 [SECURITY.md](SECURITY.md).
 
-Arclasp is currently in Alpha. The public SDK is open source; the hosted
+Arclasp is currently in public beta. The public SDK is open source; the hosted
 backend is operated as Arclasp infrastructure and remains the authority for
 governed workflow decisions.
 
@@ -158,11 +158,10 @@ Operators remain responsible for protecting runtime environments, managing API
 keys, configuring policies correctly, securing third-party agent frameworks,
 and using HTTPS for non-local backend connections.
 
-The current product brand is Arclasp. Some operational infrastructure may still
-use existing ProofRail domains, such as `api.proofrail.dev`,
-`app.proofrail.dev`, `docs.proofrail.dev`, or `www.proofrail.dev`. Those names
-are operational infrastructure identifiers, not Arclasp brand-domain claims.
-No Arclasp-owned public domain is claimed by this package.
+The current product brand is Arclasp. Canonical public services use
+`api.arclasp.com`, `app.arclasp.com`, `docs.arclasp.com`, and `arclasp.com`.
+Legacy ProofRail domains may remain available temporarily for compatibility,
+but they are not the canonical public Arclasp brand domains.
 
 Arclasp is not a legal certification, compliance certification, guarantee of
 legal admissibility, guarantee of non-repudiation in every context, or guarantee
@@ -170,7 +169,7 @@ of universal exactly-once execution.
 
 ## 15. Reporting Security Issues
 
-The published reporting address is `security@proofrail.dev`.
+The published reporting address is `security@arclasp.com`.
 
 Please do not report security vulnerabilities through public GitHub issues.
 Include a description, affected component, reproduction steps if available, and

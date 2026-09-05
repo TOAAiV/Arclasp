@@ -8,7 +8,7 @@ deploying it, and how to report vulnerabilities.
 
 ## 0. Supported versions
 
-Arclasp is currently in **pre-release (alpha)**. Only the latest published
+Arclasp is currently in **public beta**. Only the latest published
 version on PyPI receives security fixes; there is no backport policy for
 older pre-release versions. Once a stable `1.0` ships, this section will be
 updated with a supported-version table.
@@ -144,7 +144,7 @@ ordinary SDK verification JSON today.
 ## 8. Security disclosure
 
 To report a security vulnerability in Arclasp, please email the published
-reporting address: **security@proofrail.dev**. Please do not report
+reporting address: **security@arclasp.com**. Please do not report
 vulnerabilities via public GitHub issues.
 
 Please include:
@@ -158,4 +158,4 @@ disclosure. We will credit reporters in release notes unless you request
 anonymity.
 
 For general support questions (non-security), open an issue on the public
-repository or contact support@proofrail.dev.
+repository or contact support@arclasp.com.

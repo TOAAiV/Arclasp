@@ -68,8 +68,7 @@ async with chain:
     print(decision.decision_source)
 ```
 
-API-key provisioning is currently handled through dashboard/operator setup for
-authorized alpha users; do not use a placeholder key in production.
+Create an API key in the Arclasp dashboard for your organization; do not use a placeholder key in production.
 
 For local development against a locally running backend, use the same SDK API
 with an intentional local backend URL:
@@ -84,8 +83,7 @@ arclasp.init(
 ```
 
 The SDK's default backend URL is local-development oriented. Hosted users should
-set `backend_url="https://api.arclasp.com"` explicitly until the Arclasp
-domain cutover is complete.
+set `backend_url="https://api.arclasp.com"` explicitly.
 
 If the backend denies the action, a human denies the approval, the approval
 times out, or the organization kill switch is active, the SDK raises a typed
@@ -295,9 +293,9 @@ Recognized per-chain policy keys include:
 | `cumulative_financial_threshold_action` | Uses `"pause_for_approval"` by default; `"deny"` hard-denies instead. |
 | `notify` | Adds approver emails for this chain. |
 
-## Alpha Status
+## Public Beta
 
-Arclasp is currently in Alpha. The public API is intentionally small and the
+Arclasp is currently in public beta. The public API is intentionally small and the
 release is designed for teams evaluating runtime governance in real agent
 workflows. Expect active development before a stable 1.0 contract.
 

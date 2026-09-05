@@ -55,5 +55,5 @@ def test_removed_top_level_names_are_absent():
 
 
 def test_version_contract():
-    assert arclasp.__version__ == "0.1.0a10"
-    assert importlib.metadata.version("arclasp") == "0.1.0a10"
+    assert arclasp.__version__ == "0.1.0b1"
+    assert importlib.metadata.version("arclasp") == "0.1.0b1"
