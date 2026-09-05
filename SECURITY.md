@@ -1,161 +1,126 @@
-# Arclasp SDK — Security Model
+# Security Policy
 
-This document describes the security guarantees the Arclasp SDK provides,
-the intentional design trade-offs that operators must understand before
-deploying it, and how to report vulnerabilities.
+Security is part of Arclasp's product boundary, not a marketing label. This document explains which releases receive security fixes, what kinds of issues we want reported privately, and the limits that matter when testing or deploying Arclasp.
 
----
+Arclasp is currently in public beta. The open-source repository contains the Python SDK and supported integrations; the hosted Arclasp governance service is operated separately. Security issues affecting either the public SDK or the hosted service can be reported through the process below.
 
-## 0. Supported versions
+## Supported versions
 
-Arclasp is currently in **public beta**. Only the latest published
-version on PyPI receives security fixes; there is no backport policy for
-older pre-release versions. Once a stable `1.0` ships, this section will be
-updated with a supported-version table.
+During the public beta, Arclasp supports the latest published public-beta release. Security fixes may require upgrading to that release.
 
----
+| Version | Security support |
+| --- | --- |
+| Latest published public-beta release | Supported |
 
-## 1. Threat model
+This policy will be revised when Arclasp reaches a stable release line with a longer-term compatibility policy.
 
-The Arclasp SDK acts as a governance intercept layer between AI agent
-frameworks (LangChain, LangGraph, CrewAI, MCP) and the Arclasp backend.
-Its security goal is to ensure that agent actions are **evaluated against
-policy before (or immediately after) they execute**, and that a tamper-evident
-audit trail of every governed action is transmitted to the backend.
+## Security model
 
-**In scope:**
-- Preventing sensitive values in action payloads from reaching the backend
-  in plaintext (sanitization layer).
-- Ensuring the API key is never exposed via logs, repr, or debug output.
-- Failing closed when the backend is unreachable.
-- Transmitting all governed events to the backend before returning an allow decision.
+A few boundaries are important to understand before deploying or testing Arclasp.
 
-**Out of scope (operator responsibility):**
-- TLS certificate pinning for the backend connection.
-- Encrypting the offline event buffer at rest.
-- Securing the process environment where the SDK runs (API key in env vars,
-  memory access by co-resident processes).
-- Vulnerabilities in third-party agent frameworks (LangChain, LangGraph,
-  CrewAI, MCP) themselves; we operate as an intercept layer and inherit their
-  security posture for in-framework operations.
-- Backend data-at-rest encryption and access control.
+**Backend-authoritative governance.** Governed SDK actions rely on the Arclasp backend for authoritative policy decisions. The SDK does not silently replace a required backend decision with a local allow decision.
 
----
+**Fail-closed behavior.** If a required governance decision cannot be obtained after the configured retry behavior, the governed operation raises an error instead of implicitly continuing.
 
-## 2. Backend-unavailable handling
+**Organization scoping.** SDK API keys and authenticated product operations are scoped to the relevant Arclasp organization. Cross-organization access is not an intended capability.
 
-Governed SDK execution requires an authoritative backend response before an
-action is allowed to proceed. When the backend is unreachable after configured
-retries (network failure, timeout, 5xx, or 429 exhaustion), the SDK raises
-`BackendUnavailableError` and fails closed. There is no public fail-open
-configuration in the first Arclasp package.
+**Sensitive-data handling.** The SDK applies pattern-based sanitization and redaction to supported event-payload and chain-metadata paths before submission. These controls are defense in depth, not a guarantee that every secret or sensitive value will be detected. Applications should still minimize sensitive data and keep credentials out of source code, logs, screenshots, issue reports, and test fixtures.
 
-A network partition must not silently disable governance or produce audit gaps.
+**Approval and verification boundaries.** Approval decisions may be submitted through authenticated product flows or signed approval-token mechanisms, and resolved approvals may produce signed certificate evidence. Public verification uses scoped tokens and exposes a narrower projection than authenticated verification.
 
----
+**Tamper-evident evidence.** Completed governance evidence can use signing and hash linkage with supported verification paths. Arclasp describes this as tamper-evident, not tamper-proof. It is not a guarantee of legal admissibility, regulatory compliance, legal non-repudiation, or proof of an external action that the customer did not instrument.
 
-## 3. HTTP/HTTPS policy
+**Customer-side execution.** Arclasp governs actions that actually pass through the Arclasp governance boundary. It does not remotely control arbitrary customer code or guarantee exactly-once execution of customer-side tools.
 
-The SDK's default `backend_url` is `http://localhost:8000`, which is
-intentionally HTTP — it targets a local development server where TLS is
-not needed.
+## API keys
 
-**Warning behaviour:** At `arclasp.init()` time, the SDK logs a WARNING if
-`backend_url` uses plaintext HTTP and the host is **not** localhost
-(`127.0.0.1`, `localhost`, `::1`). The warning text names the impact:
-> *"All audit data will be transmitted unencrypted."*
+Treat an Arclasp API key as a secret. Store it in an environment variable or appropriate secret-management system, avoid logging it, and rotate or revoke it if you believe it has been exposed.
 
-Localhost URLs (any port) are exempt from this warning. They are assumed to
-be development or test environments where TLS overhead is inappropriate.
+The current `prail_` prefix is an intentional compatibility identifier for Arclasp API keys.
 
-**Production requirement:** Any deployment where `backend_url` points to a
-remote host must use an `https://` URL. Sending the API key (Bearer token)
-and governance payloads over unencrypted HTTP exposes both credentials and
-potentially sensitive agent data to network interception. *(Audit finding:
-SDK-S-6)*
+Do not include real API keys in:
 
----
+- GitHub issues or pull requests
+- logs or screenshots
+- example projects
+- benchmark output
+- support messages unless a secure support process explicitly requires it
 
-## 4. API key handling
+## Network transport
 
-The Arclasp API key (`api_key`) is stored as a Pydantic `SecretStr`. Its
-value is masked in all repr and str output — `str(config)` and log lines
-that include `config` will display `**********` rather than the raw key.
-*(Audit finding: SDK-S-7)*
+For the hosted service, use the canonical HTTPS endpoint:
 
-The key is transmitted **only** as a Bearer token in the `Authorization`
-header of outbound requests to `backend_url`. It is never:
-- Interpolated into log messages or exception strings.
-- Included in event payload bodies sent to the backend.
-- Passed to third-party framework adapters (LangChain, LangGraph, CrewAI).
+`https://api.arclasp.com`
 
-The sanitization layer also redacts string values that begin with `prail_`
-(the Arclasp API key prefix) from action payloads, so an agent that echoes
-a key back in a tool result will have it redacted before transmission.
+Plain HTTP should be limited to intentional local-development use, such as a loopback backend on `localhost` or `127.0.0.1`.
 
----
+Do not disable TLS verification in production integrations.
 
-## 5. Transitional buffer limitations
+## What to report privately
 
-Public governed execution does not create offline or fast-path buffers. The
-`Chain` object still retains internal buffer fields used by focused lifecycle
-tests, but backend unavailability at record time raises `BackendUnavailableError`
-instead of allowing the action.
+Examples of issues that should be reported to the security address include:
 
-If transitional internal buffer state exists, it remains in-memory only, bounded
-by `offline_buffer_max_events`, and best-effort drained. It must not be treated
-as a compliance-grade durable queue.
+- cross-organization data access or authorization bypass
+- API-key exposure or authentication bypass
+- a path that lets governed execution silently bypass a required backend decision
+- approval-token forgery, replay, or authorization problems
+- public-verification exposure beyond the intended scoped projection
+- receipt or approval-certificate signing/verification flaws with security impact
+- sanitization failures that expose sensitive information in a way the documented boundary should prevent
+- code execution, injection, request smuggling, or similar vulnerabilities in Arclasp-controlled surfaces
+- dependency vulnerabilities that are actually exploitable through Arclasp
 
----
+Documentation mistakes, ordinary feature requests, expected public-beta limitations, and general support questions can use the public issue tracker once the repository is public.
 
-## 6. Receipt verification model
+## Responsible security research
 
-Arclasp audit receipts are integrity-protected server-side. When
-`chain.receipt()` returns a `ChainReceiptResponse`, the `signature` field
-contains an HMAC computed by the backend over the receipt's `structured_data`.
+Please limit security testing to systems, accounts, and data you are authorized to use. Avoid disrupting production availability, accessing or retaining another user's data, targeting third-party services, or using social engineering.
 
-**Verification flow:**
+If testing unexpectedly exposes another user's data or a production secret, stop and report it promptly. Please allow a reasonable opportunity to investigate and remediate a vulnerability before public disclosure.
 
-```python
-receipt = await chain.receipt()
-if receipt and receipt.id:
-    result = await arclasp.verify_receipt_v2(receipt.id)
-    assert result.verification.integrity.status == "valid"
-```
+## Reporting a vulnerability
 
-`arclasp.verify_receipt_v2(receipt_id)` calls
-`GET /v1/verification/v2/receipts/{id}` on the backend. The backend re-derives
-HMAC integrity server-side and returns a role-aware verification envelope. This
-is server-attested integrity verification, not independent or offline proof.
+Email:
 
-**Trust model:** The SDK trusts the backend's verification response. There is no
-independent client-side hash-chain verification; the SDK does not re-compute the
-HMAC locally and the backend does not expose the HMAC secret. The security
-guarantee therefore depends on the integrity of the TLS connection to the backend
-and the backend's own tamper-resistance. *(Audit finding: SDK-S-12)*
+**security@arclasp.com**
 
-A future explicit admin evidence export may provide raw signatures,
-certificates, RFC3161 payloads, OpenTimestamps proofs, or full snapshots for
-separate offline analysis. That export is future work and is not part of the
-ordinary SDK verification JSON today.
+Please do not report security vulnerabilities through a public GitHub issue.
 
----
+If GitHub Private Vulnerability Reporting is enabled for this repository, you may also use GitHub's private vulnerability-reporting workflow.
 
-## 8. Security disclosure
+A useful report includes:
 
-To report a security vulnerability in Arclasp, please email the published
-reporting address: **security@arclasp.com**. Please do not report
-vulnerabilities via public GitHub issues.
+- a clear description of the issue
+- the affected Arclasp component and version
+- reproduction steps or a minimal proof of concept
+- the security impact you believe is possible
+- relevant logs, request/response examples, or screenshots with secrets removed
+- any suggested mitigation, if you have one
 
-Please include:
-- A description of the vulnerability and the affected component.
-- Steps to reproduce, if applicable.
-- Your assessment of severity and exploitability.
-- Any suggested mitigations.
+You do not need a polished write-up before contacting us. If the issue appears serious, send the initial report and we can coordinate details privately.
 
-Please allow reasonable time for investigation and remediation before public
-disclosure. We will credit reporters in release notes unless you request
-anonymity.
+## Disclosure process
 
-For general support questions (non-security), open an issue on the public
-repository or contact support@arclasp.com.
+We aim to acknowledge security reports promptly, investigate reported issues in good faith, and coordinate remediation and disclosure where appropriate. Please allow a reasonable remediation window before public disclosure, especially where a fix requires coordinated deployment of the hosted service and a new SDK release.
+
+Arclasp does not currently advertise a public bug-bounty program. A security report is welcome regardless of whether a bounty program exists.
+
+We may credit reporters in release notes or security advisories when appropriate, unless anonymity is requested.
+
+## Security advisories and fixes
+
+When a vulnerability affects the public SDK, fixes may be released through a new PyPI version and documented in the changelog or a GitHub security advisory where appropriate.
+
+When an issue affects the hosted service, remediation may be deployed server-side without requiring an SDK release.
+
+Users should keep the Arclasp SDK current during the public beta because security fixes may require upgrading to the latest public-beta release.
+
+## General support
+
+For non-security questions, use the public issue tracker once the repository is public or contact:
+
+**support@arclasp.com**
+
+Product documentation is available at:
+
+https://docs.arclasp.com

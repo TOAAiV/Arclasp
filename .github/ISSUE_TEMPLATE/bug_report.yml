@@ -15,8 +15,8 @@ body:
       description: What did you do, and what did you see?
       placeholder: |
         I called `chain.record_agent_action` with payload X and expected the
-        approval gate to block, but it returned `decision_source="local_fast_path"`
-        without blocking.
+        approval gate to block, but the governed action continued without a
+        required backend approval.
     validations:
       required: true
 

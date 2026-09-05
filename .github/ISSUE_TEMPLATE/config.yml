@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/TOAAiV/Arclasp/blob/main/SECURITY.md
     about: Please report security issues privately via email, not as a public issue.
   - name: Questions about usage
-    url: https://docs.proofrail.dev
+    url: https://docs.arclasp.com
     about: Check the docs first — most questions are answered there.
