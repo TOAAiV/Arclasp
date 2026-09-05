@@ -335,9 +335,9 @@ Arclasp's security model is easier to understand through concrete boundaries tha
 
 **Sanitized evidence.** The SDK applies pattern-based sanitization and redaction to supported event-payload and chain-metadata paths before submission. These controls are defense in depth, not a guarantee that every secret or sensitive value will be detected.
 
-**Scoped approval and verification.** Approval flows and public verification use signed or scoped access mechanisms rather than unrestricted internal state.
+**Scoped approval and verification.** Approval decisions use authenticated or signed decision paths, while public verification uses scoped tokens and exposes a bounded view of governance evidence.
 
-**Tamper-evident records.** Completed governance evidence uses signing and hash linkage with supported verification paths.
+**Tamper-evident records.** Completed Chain Records can use signing and hash linkage with supported verification paths, while approval decisions can produce signed certificate evidence.
 
 These controls protect the paths that actually go through Arclasp; they are not a claim of universal control over customer code outside the governance boundary.
 
@@ -367,7 +367,7 @@ If an application only generates drafts or recommendations that a human already 
 
 **It does not promise universal result capture.** Evidence coverage depends on the integration and what the customer application actually instruments. In particular, MCP governance covers the invocation boundary rather than every downstream external effect.
 
-**It is not a mature enterprise IAM or GRC suite.** Organization roles and permissions exist, but mature custom RBAC, enterprise SSO/group mapping, and fine-grained enterprise IAM are not part of the current public-beta contract.
+**It is not a mature enterprise IAM or GRC suite.** Organization roles and permissions exist, but mature custom RBAC, enterprise SSO/group mapping, and fine-grained enterprise IAM are not current public-beta capabilities.
 
 **It is not a mature self-hosting product today.** The current customer model uses the hosted Arclasp governance backend.
 
@@ -379,7 +379,7 @@ Arclasp also does not claim universal distributed exactly-once execution. Its id
 
 ## Public beta
 
-Arclasp `0.1.0b1` is a public-beta release of the Python SDK. The supported API is deliberately small, the hosted product is under active development, and prerelease versioning should be treated accordingly.
+**Arclasp is currently in public beta.** The supported Python API is deliberately small, the hosted product is under active development, and prerelease versioning should be treated accordingly.
 
 The public beta is for teams that want to evaluate runtime governance in real agent workflows now: start with one consequential workflow, observe it in shadow mode, put one meaningful boundary into enforcement, use human approval where autonomy should stop, and inspect the evidence that remains after completion.
 
@@ -409,13 +409,13 @@ https://app.arclasp.com
 
 ## Contributing
 
-Focused bug reports, reproducible integration issues, and well-scoped contributions are welcome. Please read `CONTRIBUTING.md` in the repository before opening a pull request.
+Focused bug reports, reproducible integration issues, and well-scoped contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/TOAAiV/Arclasp/blob/main/CONTRIBUTING.md) before opening a pull request.
 
 ---
 
 ## Security reporting
 
-Please do not report security vulnerabilities through a public issue. Use the reporting process in `SECURITY.md` or contact:
+Please do not report security vulnerabilities through a public issue. Use the [security reporting process](https://github.com/TOAAiV/Arclasp/security/policy) or contact:
 
 **security@arclasp.com**
 
