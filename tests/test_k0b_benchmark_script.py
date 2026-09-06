@@ -889,6 +889,19 @@ def test_production_url_refusal_without_explicit_authorization():
     assert "prail_fake_secret_should_not_appear_anywhere_12345" not in output
 
 
+def test_arclasp_production_url_refusal_without_explicit_authorization():
+    exit_code, output = _run_main(
+        [],
+        {
+            "ARCLASP_K0B_BACKEND_URL": "https://api.arclasp.com",
+            "ARCLASP_K0B_API_KEY": "prail_fake_secret_should_not_appear_anywhere_12345",
+        },
+    )
+    assert exit_code != 0
+    assert "production-like" in output
+    assert "prail_fake_secret_should_not_appear_anywhere_12345" not in output
+
+
 def test_api_key_never_disclosed_on_unreachable_backend():
     secret = "prail_super_secret_value_must_never_print_98765"
     exit_code, output = _run_main(

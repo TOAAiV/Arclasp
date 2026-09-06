@@ -123,7 +123,7 @@ from arclasp.sanitization import sanitize_payload  # noqa: E402
 _ALLOWED_EVENT_COUNTS = (1, 20, 50)
 _DEFAULT_MAX_REQUESTS = 30
 _HARD_REQUEST_CEILING = 500  # this script refuses to plan more than this, ever
-_PRODUCTION_URL_MARKERS = ("proofrail.dev", "api.proofrail")
+_PRODUCTION_URL_MARKERS = ("arclasp.com", "api.arclasp", "proofrail.dev", "api.proofrail")
 
 # Request-side half of the backend's dual opt-in (see
 # backend/app/main.py::_k0b_benchmark_timing_header). Not a secret — sent

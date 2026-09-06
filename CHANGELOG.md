@@ -37,8 +37,8 @@ Pre-release repository hygiene pass ahead of first public GitHub/PyPI release.
 - Repository renamed to `TOAAiV/Arclasp`; all project URLs, issue templates,
   and in-repo documentation links now point at the current repository instead
   of the prior `proofrail` name.
-- Fixed inconsistent documentation domain: exception remediation links now
-  consistently use `docs.proofrail.dev`.
+- Fixed then-current ProofRail documentation-domain inconsistency in exception
+  remediation links before the later Arclasp domain migration.
 - Removed internal engineering/audit working documents and a private-backend
   end-to-end test from the public repository; they do not affect the public
   SDK's behavior or test coverage.

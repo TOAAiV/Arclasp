@@ -1,41 +1,40 @@
 ﻿# Public Roadmap
 
-What's planned after the initial release. Directional, not a committed timeline —
-priorities shift based on what people actually try to use Arclasp for.
+What's planned after the initial release. This is directional, not a committed
+timeline, and priorities may change based on customer usage, security review,
+and product learning during the public beta.
 
 If something on this list is the difference between adopting Arclasp and not,
-file an issue or email me. That's how priorities get adjusted — louder than
-internal guesses about what matters.
+open an issue with your use case once the repository is public.
 
 ## Near-term
 
 **Additional framework adapters.**
 LangGraph, LangChain, CrewAI, and MCP shipped with the initial release. AutoGen
-and LlamaIndex are candidates for later releases. No ETA — I want to see
-real demand before committing.
+and LlamaIndex are possible future candidates, but no additional adapter is
+committed until there is enough demand and a reliable governance boundary.
 
 **Slack and Teams approval integration.**
 The human approval gate currently surfaces via email and the Arclasp dashboard.
 Native Slack and Teams integrations would let reviewers approve or deny directly
-from a message, without opening a separate UI. This is high on the list.
+from a message, without opening a separate UI.
 
 **Improved CrewAI pre-execution interception.**
 The current CrewAI adapter records governance events at task execution time but
-can't block mid-flight denials synchronously — CrewAI's architecture doesn't
-expose the hook we'd need. Tracking upstream changes; if their callback API
-opens up, this gets fixed.
+does not provide a universal synchronous pre-execution barrier for every task
+body. Future work may improve this boundary if supported framework hooks make
+that reliable.
 
 ## Medium-term
 
 **Self-hosted deployment.**
-A Docker-based deployment for teams that can't send chain data to a hosted
-service. Significant undertaking — depends on demand from the beta. If your
-security team won't sign off on a hosted backend, tell me; that's the signal
-that moves this up.
+A self-hosted deployment path may matter for teams that cannot send governed
+workflow data to a hosted service. This would be a significant product and
+support commitment, so it remains exploratory during the public beta.
 
 **Multi-region deployment.**
-The hosted backend currently runs in a single region (US-East). Multi-region is
-on the roadmap for organizations with data-residency requirements.
+Broader deployment-region options may become important for latency,
+availability, and data-residency requirements.
 
 ## Longer-term
 
@@ -45,5 +44,6 @@ Right now policies are configured in the dashboard. A code-based policy format
 in PRs.
 
 **Non-Python SDKs.**
-TypeScript first, then likely Go. Not happening soon — the Python SDK needs to
-be solid before I split focus.
+TypeScript and Go are possible future SDK directions after the Python SDK and
+hosted governance model are stable enough to support additional language
+surfaces.
