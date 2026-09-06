@@ -34,7 +34,7 @@ import asyncio
 import arclasp
 from arclasp.crewai import govern
 
-arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
+arclasp.init(api_key="prail_...")
 
 governed = govern(crew, chain_name="research-crew")
 
@@ -125,7 +125,7 @@ import arclasp
 from arclasp.crewai import govern
 from arclasp.exceptions import ActionDeniedError
 
-arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
+arclasp.init(api_key="prail_...")
 governed = govern(crew, chain_name="sensitive-ops")
 
 async def main():
@@ -151,7 +151,7 @@ import arclasp
 from arclasp.crewai import govern
 from arclasp.exceptions import ActionDeniedError, ChainTimeoutError
 
-arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
+arclasp.init(api_key="prail_...")
 governed = govern(crew, chain_name="finance-crew")
 
 async def main():

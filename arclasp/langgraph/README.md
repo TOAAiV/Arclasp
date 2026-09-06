@@ -31,7 +31,7 @@ import asyncio
 import arclasp
 from arclasp.langgraph import govern, governed_node
 
-arclasp.init(api_key="prail_...", backend_url="https://api.arclasp.com")
+arclasp.init(api_key="prail_...")
 
 graph.add_node("send_payment", governed_node(send_payment, name="send_payment"))
 governed = govern(compiled_graph, chain_name="my-workflow")

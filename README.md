@@ -81,7 +81,6 @@ import arclasp
 
 arclasp.init(
     api_key=os.environ["ARCLASP_API_KEY"],
-    backend_url="https://api.arclasp.com",
 )
 
 async def main():

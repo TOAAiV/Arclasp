@@ -120,7 +120,7 @@ class ChainConfig(BaseModel):
     api_key: SecretStr
 
     environment: str = "production"
-    backend_url: str = "http://localhost:8000"
+    backend_url: str = "https://api.arclasp.com"
 
     financial_approval_threshold_usd: float = 5000.0
     external_domains_allowlist: list[str] = Field(default_factory=list)

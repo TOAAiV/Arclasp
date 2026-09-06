@@ -522,6 +522,16 @@ def test_init_no_warn_on_https(caplog):
     assert not any("plaintext HTTP" in r.message for r in caplog.records)
 
 
+def test_init_defaults_to_hosted_https_backend(caplog):
+    """Omitting backend_url uses the hosted HTTPS backend without warnings."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="arclasp.client"):
+        config = arclasp.init(api_key="prail_test_default_hosted")
+
+    assert config.backend_url == "https://api.arclasp.com"
+    assert not any("plaintext HTTP" in r.message for r in caplog.records)
+
+
 def test_init_no_warn_on_http_localhost(caplog):
     """
     localhost URLs are exempt from the HTTP warning regardless of environment.
@@ -539,16 +549,17 @@ def test_init_no_warn_on_http_localhost(caplog):
     assert not any("plaintext HTTP" in r.message for r in caplog.records)
 
 
-def test_init_no_warn_on_http_localhost_in_production(caplog):
-    """http://localhost:8000 in production must not warn — localhost is always exempt."""
+def test_explicit_http_localhost_in_production_remains_supported(caplog):
+    """Explicit localhost development remains supported without HTTP warnings."""
     import logging
     with caplog.at_level(logging.WARNING, logger="arclasp.client"):
-        arclasp.init(
+        config = arclasp.init(
             api_key="prail_test_dev",
             backend_url="http://localhost:8000",
             environment="production",
         )
 
+    assert config.backend_url == "http://localhost:8000"
     assert not any("plaintext HTTP" in r.message for r in caplog.records)
 
 

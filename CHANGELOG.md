@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b3] - 2026-09-06
+
+Security corrective for the public beta SDK.
+
+### Changed
+
+- Hardened payload sanitization so configured sensitive value patterns are
+  redacted when token-like values appear inside larger strings, including
+  nested dict/list payloads.
+- Changed the default SDK backend to the hosted HTTPS Arclasp backend
+  (`https://api.arclasp.com`). Local backend development remains available by
+  explicitly passing `backend_url`.
+- No intended top-level public API expansion.
+
 ## [0.1.0b2] - 2026-09-05
 
 Documentation and release correction for the public beta package metadata.

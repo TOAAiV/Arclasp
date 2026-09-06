@@ -136,6 +136,67 @@ def test_ghp_prefix_value_redacted():
     assert result["auth"] == "[REDACTED]"
 
 
+def test_sensitive_value_segment_at_start_redacted():
+    """Prefix-at-start behavior remains compatible."""
+    cfg = _config()
+    result = sanitize_payload({"auth": "ghp_startToken"}, cfg)
+    assert result["auth"] == "[REDACTED]"
+
+
+def test_sensitive_value_segment_in_middle_redacted_with_context_preserved():
+    cfg = _config()
+    result = sanitize_payload(
+        {"note": "request failed with token ghp_middleToken inside"}, cfg
+    )
+    assert result["note"] == "request failed with token [REDACTED] inside"
+
+
+def test_sensitive_value_segment_at_end_redacted_with_context_preserved():
+    cfg = _config()
+    result = sanitize_payload({"note": "token was ghp_endToken"}, cfg)
+    assert result["note"] == "token was [REDACTED]"
+
+
+def test_sensitive_value_segment_after_punctuation_redacted():
+    cfg = _config()
+    result = sanitize_payload({"note": "Authorization: Bearer=ghp_punctToken"}, cfg)
+    assert result["note"] == "Authorization: Bearer=[REDACTED]"
+
+
+def test_multiple_sensitive_value_segments_redacted():
+    cfg = _config()
+    result = sanitize_payload({"note": "first ghp_one second hf_two"}, cfg)
+    assert result["note"] == "first [REDACTED] second [REDACTED]"
+
+
+def test_dot_delimited_custom_sensitive_value_segment_redacted():
+    cfg = _config(sensitive_value_patterns=["ya29."])
+    result = sanitize_payload(
+        {"note": "oauth token ya29.a0AfH6SMD.foo_bar-baz end"}, cfg
+    )
+    assert result["note"] == "oauth token [REDACTED] end"
+
+
+def test_embedded_sensitive_value_in_nested_dict_redacted():
+    cfg = _config()
+    result = sanitize_payload(
+        {"outer": {"note": "nested request used prail_nestedSecret"}}, cfg
+    )
+    assert result["outer"]["note"] == "nested request used [REDACTED]"
+
+
+def test_embedded_sensitive_value_in_nested_list_redacted():
+    cfg = _config()
+    result = sanitize_payload({"events": ["ok", "nested ghp_listSecret"]}, cfg)
+    assert result["events"] == ["ok", "nested [REDACTED]"]
+
+
+def test_ordinary_word_containing_sensitive_prefix_text_is_unchanged():
+    cfg = _config()
+    result = sanitize_payload({"note": "the flask_app setting is harmless"}, cfg)
+    assert result["note"] == "the flask_app setting is harmless"
+
+
 def test_hf_prefix_value_redacted():
     """Hugging Face tokens embedded in values are redacted."""
     cfg = _config()
@@ -250,8 +311,8 @@ async def test_chain_metadata_api_key_redacted_in_post():
 @pytest.mark.asyncio
 async def test_chain_metadata_value_prefix_redacted_in_post():
     """
-    Value-prefix path: a GitHub token stored under a benign key name (github_token)
-    must be redacted because the value starts with 'ghp_', regardless of the key.
+    Value-prefix path: a GitHub token stored under a benign key name must be
+    redacted because the value contains 'ghp_', regardless of the key.
     """
     from arclasp.chain import Chain
 
@@ -273,12 +334,12 @@ async def test_chain_metadata_value_prefix_redacted_in_post():
     with patch("arclasp.client._post", side_effect=mock_post):
         async with Chain(
             "test",
-            metadata={"github_token": "ghp_abc123XYZ", "env": "staging"},
+            metadata={"note": "saw ghp_abc123XYZ", "env": "staging"},
         ):
             pass
 
     meta = captured["body"]["metadata"]
-    assert meta["github_token"] == "[REDACTED]", "ghp_ value must be redacted by value-prefix path"
+    assert meta["note"] == "saw [REDACTED]", "ghp_ value must be redacted by value-prefix path"
     assert meta["env"] == "staging", "non-sensitive field must pass through unchanged"
 
 

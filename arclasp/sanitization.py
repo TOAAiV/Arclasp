@@ -11,10 +11,10 @@ Two categories of redaction (v2 spec section 12):
    ``config.sensitive_field_patterns``) has its value replaced with
    ``"[REDACTED]"``.
 
-2. Value-prefix patterns — any string value that starts with one of the
-   ``DEFAULT_SENSITIVE_VALUE_PATTERNS`` prefixes (or
+2. Value-prefix patterns — any token-like segment in a string value that
+   starts with one of the ``DEFAULT_SENSITIVE_VALUE_PATTERNS`` prefixes (or
    ``config.sensitive_value_patterns``) is replaced with ``"[REDACTED]"``
-   regardless of the key name.  This catches leaked API keys that appear as
+   regardless of the key name. This catches leaked API keys that appear as
    plain string values (e.g. ``{"text": "my key is sk_live_abc..."}``)
 """
 
@@ -49,7 +49,7 @@ def sanitize_payload(payload: dict, config: ChainConfig) -> dict:
     1. Any dict key whose name matches (case-insensitive substring) one of
        ``config.sensitive_field_patterns`` has its value replaced with
        ``"[REDACTED]"``.
-    2. Any string value that starts with a prefix in
+    2. Any token-like segment in a string value that starts with a prefix in
        ``config.sensitive_value_patterns`` is replaced with ``"[REDACTED]"``
        regardless of its key name (catches leaked API keys in values).
     3. Any string value longer than ``config.max_payload_string_length`` is
@@ -87,11 +87,61 @@ def _truncate(value: str, max_length: int) -> str:
     return value[:max_length] + "...[truncated]"
 
 
+_TOKEN_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    "_-"
+)
+
+
+def _token_chars_for_prefix(prefix: str) -> frozenset[str]:
+    if prefix == "eyJ" or "." in prefix:
+        return _TOKEN_CHARS | frozenset(".")
+    return _TOKEN_CHARS
+
+
+def _is_token_boundary(value: str, index: int) -> bool:
+    return index == 0 or value[index - 1] not in _TOKEN_CHARS
+
+
 def _has_sensitive_value_prefix(value: str, patterns: list[str]) -> bool:
     for prefix in patterns:
         if value.startswith(prefix):
             return True
     return False
+
+
+def _redact_sensitive_value_segments(value: str, patterns: list[str]) -> str:
+    result: list[str] = []
+    index = 0
+    redacted_whole_value = False
+
+    while index < len(value):
+        matched_prefix = next(
+            (
+                prefix
+                for prefix in patterns
+                if _is_token_boundary(value, index) and value.startswith(prefix, index)
+            ),
+            None,
+        )
+        if matched_prefix is None:
+            result.append(value[index])
+            index += 1
+            continue
+
+        token_chars = _token_chars_for_prefix(matched_prefix)
+        end = index + len(matched_prefix)
+        while end < len(value) and value[end] in token_chars:
+            end += 1
+        result.append("[REDACTED]")
+        redacted_whole_value = index == 0 and end == len(value)
+        index = end
+
+    if redacted_whole_value and result == ["[REDACTED]"]:
+        return "[REDACTED]"
+    return "".join(result)
 
 
 def _sanitize_value(value: object, config: ChainConfig) -> object:
@@ -100,11 +150,14 @@ def _sanitize_value(value: object, config: ChainConfig) -> object:
     if isinstance(value, list):
         return [_sanitize_value(item, config) for item in value]
     if isinstance(value, str):
-        # Value-level redaction: catch API keys embedded as string values
-        # (e.g. {"text": "sk_live_abc..."}) regardless of the key name.
+        # Fast compatibility path for whole-value tokens, then segment redaction
+        # for token-like credentials embedded in otherwise harmless text.
         if _has_sensitive_value_prefix(value, config.sensitive_value_patterns):
             return "[REDACTED]"
-        return _truncate(value, config.max_payload_string_length)
+        redacted = _redact_sensitive_value_segments(
+            value, config.sensitive_value_patterns
+        )
+        return _truncate(redacted, config.max_payload_string_length)
     if isinstance(value, bytes):
         return "[REDACTED_BYTES]"
     return value
