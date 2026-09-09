@@ -2,7 +2,7 @@
 
 Thanks for considering a contribution to Arclasp.
 
-This repository contains the public Python SDK, supported framework integrations, tests, examples, verification material, and release metadata for Arclasp. The hosted governance backend and dashboard are separate Arclasp infrastructure; opening an issue or pull request here does not imply that every server-side feature is implemented in this repository.
+This repository contains the public Python SDK, supported framework integrations, tests, examples, and release metadata for Arclasp. The hosted governance backend and dashboard are separate Arclasp infrastructure; opening an issue or pull request here does not imply that every server-side feature is implemented in this repository.
 
 The best contributions are focused, reproducible, and easy to review.
 
@@ -55,7 +55,7 @@ Run the public test suite before submitting a pull request:
 python -m pytest -q
 ```
 
-Some tests are intentionally environment-dependent and may skip when an optional external runtime or private service is unavailable. A skip should be explainable; do not turn a failing regression test into a skip simply to make CI green.
+Some tests are intentionally environment-dependent and may skip when an optional framework runtime is unavailable. A skip should be explainable; do not turn a failing regression test into a skip simply to make CI green.
 
 Run lint checks as well:
 
@@ -175,7 +175,7 @@ Do not commit:
 
 Use obviously synthetic values such as `finance@example.com` and test-only keys.
 
-Before committing a new artifact or fixture, ask whether it is necessary for a public SDK repository and whether it reveals anything that a user needs in order to understand or verify the SDK.
+Before committing a new fixture, ask whether it is necessary for a public SDK repository and whether it reveals anything that a user needs in order to understand or verify the SDK.
 
 ## Pull request checklist
 

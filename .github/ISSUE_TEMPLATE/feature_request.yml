@@ -5,10 +5,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before filing: check [PUBLIC_ROADMAP.md](../PUBLIC_ROADMAP.md) — your
-        request might already be on the list. If it is, comment there with
-        your use case instead of opening a new issue. That's how priorities
-        get adjusted.
+        Before filing: search existing issues and discussions so related use
+        cases can be grouped. Concrete workflow details help decide whether a
+        request belongs in the SDK, hosted governance service, an integration,
+        or documentation.
 
   - type: textarea
     id: problem

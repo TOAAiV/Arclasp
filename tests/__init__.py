@@ -1,3 +1,3 @@
 """
-aag SDK test suite.
+Arclasp SDK test suite.
 """

@@ -35,8 +35,8 @@ BACKEND_DENY = {
     "decision_reason": "Chain cumulative exposure of $12,400 exceeds configured threshold of $10,000",
     "decision_source": "backend_evaluation",
     "policy_name": "cumulative_financial_threshold",
-    "remediation": "Update financial_approval_threshold_usd in init()",
-    "docs_url": "https://docs.proofrail.dev/policies/thresholds",
+    "remediation": "Update the chain policy_config or hosted organization policy threshold",
+    "docs_url": "https://docs.arclasp.com/policies/thresholds",
 }
 
 BACKEND_DENY_KILL_SWITCH = {
@@ -47,7 +47,7 @@ BACKEND_DENY_KILL_SWITCH = {
     "pause_reason": "Security incident in progress",
 }
 
-OFFLINE_STUB = {
+LEGACY_OFFLINE_STUB = {
     "policy_decision": "allow",
     "decision_reason": "Offline — backend unavailable",
     "decision_source": "offline_stub",
@@ -84,8 +84,8 @@ class TestModelValidate:
         assert d.kill_switch_active is True
         assert d.pause_reason == "Security incident in progress"
 
-    def test_offline_stub_parses(self):
-        d = PolicyDecision.model_validate(OFFLINE_STUB)
+    def test_legacy_offline_stub_parses_for_response_compatibility(self):
+        d = PolicyDecision.model_validate(LEGACY_OFFLINE_STUB)
         assert d.policy_decision == "allow"
         assert d.decision_source == "offline_stub"
 
@@ -180,8 +180,8 @@ class TestRemediationV1Compatibility:
         d = PolicyDecision.model_validate(BACKEND_DENY)
         assert d.remediation_v1 is None
         # The pre-existing plain-string fallback fields are unaffected.
-        assert d.remediation == "Update financial_approval_threshold_usd in init()"
-        assert d.docs_url == "https://docs.proofrail.dev/policies/thresholds"
+        assert d.remediation == "Update the chain policy_config or hosted organization policy threshold"
+        assert d.docs_url == "https://docs.arclasp.com/policies/thresholds"
 
     def test_legacy_remediation_string_still_parses(self):
         d = PolicyDecision.model_validate(BACKEND_DENY)

@@ -26,8 +26,9 @@ The backend is the authority for governed allow, deny, approval, kill-switch,
 and auto-pause decisions. The public SDK does not expose a local allow fast path
 in this release.
 
-The local policy code in the SDK is useful for transparency and parity testing,
-but public governed execution depends on the hosted backend's decision.
+The local policy code in the SDK is useful for transparency and local reference
+behavior, but public governed execution depends on the hosted backend's
+decision.
 
 ## 3. Fail-Closed Governed Execution
 
@@ -46,8 +47,9 @@ Organization-owned operations are scoped by organization. The backend derives
 the effective organization from authentication rather than trusting caller-owned
 organization identifiers for authority.
 
-The public SDK's test suite includes cross-organization isolation coverage for
-UUID-bearing SDK/backend paths.
+The public SDK models organization scoping in its request and response
+contracts. Cross-organization enforcement is a hosted-backend responsibility
+and is not proven solely by this standalone SDK repository.
 
 ## 5. Authentication Model
 
@@ -131,9 +133,8 @@ verification can expose more context according to role and capability flags.
 ## 12. Dependency, CI, And Package Controls
 
 The public package is built and tested separately from the production backend.
-The release candidate has been checked with package build, Twine rendering, SDK
-tests, wheel/sdist hygiene, dependency review, and GitHub CI on supported
-Python versions.
+The release candidate is checked with package build, Twine rendering, SDK
+tests, wheel/sdist hygiene, and GitHub CI on supported Python versions.
 
 Optional framework integrations remain optional package extras. Installing the
 base SDK does not make LangChain, LangGraph, CrewAI, or MCP mandatory runtime

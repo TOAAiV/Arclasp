@@ -121,7 +121,7 @@ class TestDenialErrorFields:
         assert err.decision_source == "backend_evaluation"
         # SDK should fill in remediation from built-in lookup when backend omits it
         assert err.remediation is not None
-        assert "financial_approval_threshold_usd" in err.remediation
+        assert "policy_config" in err.remediation or "organization policy" in err.remediation
         assert err.docs_url is not None
         assert "thresholds" in err.docs_url
 
@@ -150,7 +150,7 @@ class TestDenialErrorFields:
         err = exc_info.value
         assert err.policy_name == "unauthorized_domain"
         assert err.remediation is not None
-        assert "external_domains_allowlist" in err.remediation
+        assert "organization policy allowlist" in err.remediation
         assert err.docs_url is not None
         assert "domains" in err.docs_url
 

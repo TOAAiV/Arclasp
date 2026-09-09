@@ -13,11 +13,11 @@ from __future__ import annotations
 # return these fields so the error still gives the operator actionable guidance.
 _POLICY_REMEDIATION: dict[str, tuple[str, str]] = {
     "cumulative_financial_threshold": (
-        "Update `financial_approval_threshold_usd` in init(), or approve via dashboard.",
+        "Update the chain policy_config or hosted organization policy threshold, or approve via dashboard.",
         "https://docs.arclasp.com/policies/thresholds",
     ),
     "unauthorized_domain": (
-        "Add the domain to `external_domains_allowlist` in init(), or approve via dashboard.",
+        "Add the domain to the hosted organization policy allowlist, or approve via dashboard.",
         "https://docs.arclasp.com/policies/domains",
     ),
     "bulk_operation": (

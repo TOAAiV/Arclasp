@@ -14,7 +14,7 @@ Three tests:
 
   3. test_idempotency_key_persists_until_exhausted_failure
        When all transport retries fail, each wire attempt carries the same
-       idempotency_key and no offline buffer is created.
+       idempotency_key and governed execution fails closed.
 """
 
 from __future__ import annotations

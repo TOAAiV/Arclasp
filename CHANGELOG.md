@@ -66,7 +66,9 @@ Pre-release repository hygiene pass ahead of first public GitHub/PyPI release.
 
 ## [0.1.0] — 2026-06-17
 
-Initial public release.
+Earlier development release. This entry records the then-current ProofRail-era
+implementation state. It is preserved for chronology and should not be read as
+the current Arclasp public-beta SDK contract.
 
 ### Added
 
@@ -74,19 +76,21 @@ Initial public release.
 - Chain-level governance with cumulative metrics across an entire agent workflow
   (financial exposure, external communications, records modified, privileged actions,
   tokens used, external domains contacted).
-- Open-source reference policy engine in `proofrail/policies.py`, verified for parity
-  against the backend policy engine on every test run.
+- Open-source reference policy engine in `proofrail/policies.py` during the
+  earlier ProofRail-era implementation. Current public governed execution is
+  backend-authoritative; standalone SDK tests do not prove backend parity.
 - Blocking human approval gate with configurable timeouts and fallback approvers.
   Returns a fully-resolved `PolicyDecision` to the caller after the approver responds.
-- Local fast-path evaluation for sub-5ms decisions on obviously-safe actions,
-  with asynchronous backend logging so the dashboard and audit trail stay accurate.
+- Earlier local fast-path evaluation work. The current Arclasp public-beta SDK
+  does not expose a local allow fast path for governed execution.
 - Policy shadow mode for testing new policies against real traffic in observe-only
   mode before flipping them to enforce.
-- Per-action-class fail modes for backend-unreachable scenarios (e.g., deny financial
-  actions, allow reads).
+- Earlier per-action-class fail-mode work for backend-unreachable scenarios.
+  Current governed execution fails closed when backend authority is unavailable.
 - Time-boxed policy exceptions with explicit scope and expiration.
-- Org-wide kill switch raising `ProofRailKillSwitchError` distinct from regular
-  policy denials.
+- Org-wide kill switch behavior, then using the ProofRail-era exception name
+  `ProofRailKillSwitchError`; the current public SDK exposes
+  `ArclaspKillSwitchError`.
 
 **Audit and trust**
 - HMAC-SHA256 signed audit receipts, hash-chained across an organization so
@@ -108,15 +112,16 @@ Initial public release.
 - Payload sanitization with default patterns for API keys, passwords, credit cards,
   SSNs, private keys, and common token formats (OpenAI, Stripe, GitHub,
   Hugging Face, AWS, JWT). Raw payloads are never persisted.
-- Offline buffer with idempotency keys to prevent duplicate audit events on
-  network retry.
+- Offline-buffer work from the earlier implementation. Current public governed
+  action paths retain retry idempotency but do not convert backend uncertainty
+  into a local allow path.
 - Cost tracking and monthly budgets: recorded LLM token usage and estimated
   dollar cost, with dashboard-configured UTC calendar month budgets. A governed
   chain requires approval only after a newly recorded total is greater than the
   configured budget; unknown model pricing is not counted as zero.
-- Cross-organization isolation enforced on every UUID-bearing endpoint, with a
-  dedicated test suite verifying one organization's API key cannot reach
-  another organization's data.
+- Cross-organization isolation belongs to authenticated backend enforcement.
+  The standalone public SDK repository no longer carries the private backend
+  end-to-end suite that was used to exercise those paths.
 
 ### Security
 
@@ -133,10 +138,10 @@ have been resolved:
 - Bytes-type payload handling added to the sanitizer.
 - Action name truncation hardened against oversized inputs.
 - Log sanitization helper applied across all framework adapter log sites.
-- Fast-path cumulative metrics propagation fixed (the financial threshold gate
-  was previously not updating local metrics from fast-path decisions).
-- Documented kill-switch limitation in fast-path; full enforcement is on the
-  post-launch backlog.
+- Earlier fast-path cumulative metrics propagation was fixed in the then-current
+  implementation; current public governed execution is backend-authoritative.
+- Earlier fast-path kill-switch limitation was documented before the public SDK
+  moved to backend-authoritative governed execution.
 - Unused `cryptography` dependency removed.
 
 Full security policy and disclosure process in [SECURITY.md](SECURITY.md).
